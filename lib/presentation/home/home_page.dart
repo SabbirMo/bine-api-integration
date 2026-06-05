@@ -312,34 +312,12 @@ class ProductSectionWidget extends StatefulWidget {
 }
 
 class _ProductSectionWidgetState extends State<ProductSectionWidget> {
-  final ScrollController _scrollController = ScrollController();
-
-  void _scrollNext() {
-    if (_scrollController.hasClients) {
-      double currentOffset = _scrollController.offset;
-      double itemWidth = 180.0 + 12.0; // 180 width + 12 padding right
-      double targetOffset = currentOffset + (itemWidth * 2);
-
-      if (targetOffset > _scrollController.position.maxScrollExtent) {
-        targetOffset = _scrollController.position.maxScrollExtent;
-      }
-
-      _scrollController.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (widget.section.products.isEmpty) {
+      return const SizedBox(); // Don't show empty categories
+    }
+
     return Column(
       children: [
         CategorySectionHeader(
@@ -359,7 +337,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
         _buildVideoHorizontalListDynamic(
           widget.section.products,
           widget.section.categoryName ?? 'Category',
-          _scrollController,
         ),
       ],
     );
@@ -368,12 +345,10 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
   Widget _buildVideoHorizontalListDynamic(
     List<ProductModel> allProducts,
     String categoryName,
-    ScrollController scrollController,
   ) {
     return SizedBox(
       height: 260,
       child: ListView.builder(
-        controller: scrollController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: allProducts.length,
