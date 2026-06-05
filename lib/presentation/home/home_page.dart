@@ -269,10 +269,11 @@ class _AccueilScreenState extends State<AccueilScreen> {
           final mappedStories = cat.stories.map((s) {
             bool isVid = s.contentType == 'video';
             bool isImg = s.contentType == 'image';
+            bool isAud = s.contentType == 'audio';
             return StoryContent(
               url: s.mediaUrl ?? '',
               isVideo: isVid,
-              isAudio: false,
+              isAudio: isAud,
               isImage: isImg,
               isNetwork: s.mediaUrl?.startsWith('http') ?? false,
             );

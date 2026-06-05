@@ -50,7 +50,8 @@ class ProductModel {
       subcategoryName: json['subcategory_name'],
       sellingPrice: json['selling_price']?.toString() ?? '0',
       discountPercentage: json['discount_percentage']?.toString() ?? '0',
-      priceAfterDiscount: (json['price_after_discount'] as num?)?.toDouble() ?? 0.0,
+      priceAfterDiscount:
+          (json['price_after_discount'] as num?)?.toDouble() ?? 0.0,
       status: json['status'] ?? '',
       mainImage: json['main_image'],
       media: json['media'] != null
@@ -61,7 +62,9 @@ class ProductModel {
       description: json['description'],
       deliveryMessage: json['delivery_message'],
       variants: json['variants'] != null
-          ? (json['variants'] as List).map((i) => ProductVariantModel.fromJson(i)).toList()
+          ? (json['variants'] as List)
+                .map((i) => ProductVariantModel.fromJson(i))
+                .toList()
           : [],
       createdAt: json['created_at'],
     );
