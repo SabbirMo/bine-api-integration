@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 class StoryDetailScreen extends StatefulWidget {
   final List<StoryContent> stories;
@@ -19,12 +20,16 @@ class StoryDetailScreen extends StatefulWidget {
 }
 
 class _StoryDetailScreenState extends State<StoryDetailScreen> {
-  VideoPlayerController? _controller;
+  Player? _player;
+  VideoController? _videoController;
   int _currentIndex = 0;
   bool _isMuted = false;
   Timer? _timer;
   double _imageProgress = 0.0;
   final TextEditingController _replyController = TextEditingController();
+
+  StreamSubscription? _positionSub;
+  double _currentMediaProgress = 0.0;
 
   @override
   void initState() {
@@ -34,10 +39,12 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 
   void _loadStory(int index) {
     _cancelTimer();
-    _controller?.removeListener(_videoListener);
-    _controller?.dispose();
-    _controller = null;
+    _positionSub?.cancel();
+    _player?.dispose();
+    _player = null;
+    _videoController = null;
     _imageProgress = 0.0;
+    _currentMediaProgress = 0.0;
 
     final story = widget.stories[index];
 
@@ -50,21 +57,31 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   }
 
   void _initializeMedia(StoryContent story) {
-    _controller = VideoPlayerController.networkUrl(Uri.parse(story.url));
-    _controller!..initialize().then((_) {
-      if (mounted) {
-        setState(() {});
-        _controller!.setVolume(_isMuted ? 0 : 1);
-        _controller!.play();
-        _controller!.addListener(_videoListener);
+    _player = Player();
+    _videoController = VideoController(_player!, configuration: const VideoControllerConfiguration(enableHardwareAcceleration: false));
+    
+    _player!.setVolume(_isMuted ? 0.0 : 100.0);
+    if (story.isNetwork) {
+      _player!.open(Media(story.url));
+    } else {
+      _player!.open(Media('asset://${story.url}'));
+    }
+
+    _positionSub = _player!.stream.position.listen((pos) {
+      if (!mounted) return;
+      final dur = _player!.state.duration;
+      setState(() {
+        if (dur.inMilliseconds > 0) {
+          _currentMediaProgress = pos.inMilliseconds / dur.inMilliseconds;
+        }
+      });
+    });
+
+    _player!.stream.completed.listen((completed) {
+      if (mounted && completed) {
+        _nextStory();
       }
     });
-  }
-
-  void _videoListener() {
-    if (_controller != null && _controller!.value.position >= _controller!.value.duration) {
-      _nextStory();
-    }
   }
 
   void _startImageTimer() {
@@ -85,8 +102,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       _loadStory(_currentIndex);
     } else {
       _cancelTimer();
-      _controller?.pause();
-      _controller?.removeListener(_videoListener);
+      _player?.pause();
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
@@ -103,7 +119,8 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   @override
   void dispose() {
     _cancelTimer();
-    _controller?.dispose();
+    _positionSub?.cancel();
+    _player?.dispose();
     _replyController.dispose();
     super.dispose();
   }
@@ -127,11 +144,11 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               }
             },
             onLongPressStart: (_) {
-              _controller?.pause();
+              _player?.pause();
               _cancelTimer();
             },
             onLongPressEnd: (_) {
-              if (story.isImage) _startImageTimer(); else _controller?.play();
+              if (story.isImage) _startImageTimer(); else _player?.play();
             },
             child: Center(child: _buildMedia(story)),
           ),
@@ -142,8 +159,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               children: [
                 _buildProgressBars(),
                 _buildHeader(),
-                // const Spacer(),
-                // _buildFooter(), // Reply bar & Reactions
               ],
             ),
           ),
@@ -155,8 +170,20 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   Widget _buildMedia(StoryContent story) {
     if (story.isImage) return Image.network(story.url, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
     if (story.isAudio) return _buildAudioPlaceholder();
-    if (story.isVideo && _controller != null && _controller!.value.isInitialized) {
-      return SizedBox.expand(child: FittedBox(fit: BoxFit.cover, child: SizedBox(width: _controller!.value.size.width, height: _controller!.value.size.height, child: VideoPlayer(_controller!))));
+    if (story.isVideo && _videoController != null) {
+      return SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: _player!.state.width?.toDouble() ?? 16.0,
+            height: _player!.state.height?.toDouble() ?? 9.0,
+            child: Video(
+              controller: _videoController!,
+              controls: NoVideoControls,
+            )
+          )
+        )
+      );
     }
     return const CircularProgressIndicator(color: Colors.white);
   }
@@ -165,11 +192,10 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     return Center(child: InkWell(
       onTap: (){
         setState(() {
-          if (_controller != null && _controller!.value.isInitialized) {
-            // Toggle between Play and Pause
-            _controller!.value.isPlaying 
-                ? _controller!.pause() 
-                : _controller!.play();
+          if (_player != null) {
+            _player!.state.playing 
+                ? _player!.pause() 
+                : _player!.play();
           }
         });
       },
@@ -184,9 +210,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
           double val = 0.0;
           if (index < _currentIndex) val = 1.0;
           else if (index == _currentIndex) {
-            val = (_controller != null && _controller!.value.isInitialized)
-                ? (_controller!.value.position.inMilliseconds / _controller!.value.duration.inMilliseconds)
-                : _imageProgress;
+            val = (_player != null) ? _currentMediaProgress : _imageProgress;
           }
           return Expanded(
             child: Container(
@@ -212,40 +236,14 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
           const SizedBox(width: 8),
           const Text("12h", style: TextStyle(color: Colors.white54, fontSize: 12)),
           const Spacer(),
-          IconButton(icon: Icon(_isMuted ? Icons.volume_off : Icons.volume_up, color: Colors.white), onPressed: () => setState(() { _isMuted = !_isMuted; _controller?.setVolume(_isMuted ? 0 : 1); })),
+          IconButton(icon: Icon(_isMuted ? Icons.volume_off : Icons.volume_up, color: Colors.white), onPressed: () => setState(() { _isMuted = !_isMuted; _player?.setVolume(_isMuted ? 0.0 : 100.0); })),
           IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(context)),
         ],
       ),
     );
   }
-
-  // Widget _buildFooter() {
-  //   return Padding(
-  //     padding: const EdgeInsets.all(16.0),
-  //     child: Row(
-  //       children: [
-  //         Expanded(
-  //           child: TextField(
-  //             controller: _replyController,
-  //             style: const TextStyle(color: Colors.white),
-  //             decoration: InputDecoration(
-  //               hintText: "Send message",
-  //               hintStyle: const TextStyle(color: Colors.white60),
-  //               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-  //               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.white38)),
-  //               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: const BorderSide(color: Colors.white)),
-  //             ),
-  //           ),
-  //         ),
-  //         const SizedBox(width: 15),
-  //         const Icon(Icons.favorite_border, color: Colors.white, size: 28),
-  //         const SizedBox(width: 15),
-  //         const Icon(Icons.send_outlined, color: Colors.white, size: 28),
-  //       ],
-  //     ),
-  //   );
-  // }
 }
+
 class StoryContent {
   final String url;
   final bool isVideo;

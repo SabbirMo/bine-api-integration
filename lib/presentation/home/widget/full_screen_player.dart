@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 class FullScreenVideoPlayer extends StatefulWidget {
-  final VideoPlayerController controller;
-  const FullScreenVideoPlayer({super.key, required this.controller});
+  final Player player;
+  const FullScreenVideoPlayer({super.key, required this.player});
 
   @override
   State<FullScreenVideoPlayer> createState() => _FullScreenVideoPlayerState();
 }
 
 class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
+  late final VideoController _controller;
   
   @override
   void initState() {
     super.initState();
+    _controller = VideoController(widget.player, configuration: const VideoControllerConfiguration(enableHardwareAcceleration: false));
     // 1. Hide status bar and navigation bar
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     // 2. Force landscape orientation
@@ -43,9 +46,11 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
         children: [
           // The Full-Screen Video
           Center(
-            child: AspectRatio(
-              aspectRatio: widget.controller.value.aspectRatio,
-              child: VideoPlayer(widget.controller),
+            child: SizedBox.expand(
+              child: Video(
+                controller: _controller,
+                controls: AdaptiveVideoControls, // Basic controls for full screen
+              ),
             ),
           ),
           // Back Button to exit full screen

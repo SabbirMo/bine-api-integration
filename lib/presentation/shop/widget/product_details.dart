@@ -1,12 +1,16 @@
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_video_item.dart';
-import 'package:binetatour/presentation/shop/widget/shop_product_card.dart';
+import 'package:binetatour/presentation/shop/widget/product_audio_item.dart';
+import 'package:binetatour/data/models/product_model.dart';
+import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/product_provider.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
-  final List<ShopProductCard>
+  final List<ProductModel>
   allProducts; // The list of all products for vertical scroll
   final int initialProductIndex; // The product the user clicked on
 
@@ -66,7 +70,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
 /// This widget handles the Horizontal Media for a SINGLE product
 class ProductMediaGallery extends StatefulWidget {
-  final ShopProductCard product;
+  final ProductModel product;
   final bool isMuted;
   bool isExpanded;
   final VoidCallback onMuteToggle;
@@ -86,11 +90,59 @@ class ProductMediaGallery extends StatefulWidget {
 class _ProductMediaGalleryState extends State<ProductMediaGallery> {
   int _currentMediaIndex = 0;
   late PageController _horizontalController;
+  late ProductModel _product;
+  bool _isLoadingDetails = true;
+
+  List<ProductContent> get _mediaContent {
+    if (_product.media.isNotEmpty) {
+      return _product.media
+          .map(
+            (m) => ProductContent(
+              url: m.mediaUrl,
+              isVideo: m.mediaType == 'video',
+              isImage: m.mediaType == 'image',
+              isAudio: m.mediaType == 'audio',
+              isNetwork: true,
+            ),
+          )
+          .toList();
+    } else if (_product.mainImage != null && _product.mainImage!.isNotEmpty) {
+      return [
+        ProductContent(
+          url: _product.mainImage!,
+          isVideo: false,
+          isImage: true,
+          isAudio: false,
+          isNetwork: true,
+        ),
+      ];
+    } else {
+      return [];
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _horizontalController = PageController();
+    _product = widget.product;
+    _fetchDetails();
+  }
+
+  Future<void> _fetchDetails() async {
+    final detailedProduct = await context
+        .read<ProductProvider>()
+        .fetchProductDetails(widget.product.id);
+    if (mounted && detailedProduct != null) {
+      setState(() {
+        _product = detailedProduct;
+        _isLoadingDetails = false;
+      });
+    } else if (mounted) {
+      setState(() {
+        _isLoadingDetails = false;
+      });
+    }
   }
 
   @override
@@ -98,29 +150,51 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
     return Stack(
       children: [
         // 1. HORIZONTAL MEDIA (Images and Videos mix)
-        PageView.builder(
-          controller: _horizontalController,
-          scrollDirection: Axis.horizontal,
-          itemCount: widget.product.content.length,
-          onPageChanged: (i) => setState(() => _currentMediaIndex = i),
-          itemBuilder: (context, index) {
-            final media = widget.product.content[index];
-            if (media.isVideo) {
-              return ProductVideoItem(
-                videoUrl: media.url,
-                isMuted: widget.isMuted,
-              );
-            } else {
-              return InteractiveViewer(
-                child: Image.network(
-                  media.url,
-                  fit: BoxFit.contain,
-                  width: double.infinity,
+        _mediaContent.isEmpty
+            ? const Center(
+                child: Icon(
+                  Icons.image_not_supported,
+                  size: 100,
+                  color: Colors.white54,
                 ),
-              );
-            }
-          },
-        ),
+              )
+            : PageView.builder(
+                controller: _horizontalController,
+                scrollDirection: Axis.horizontal,
+                itemCount: _mediaContent.length,
+                onPageChanged: (i) => setState(() => _currentMediaIndex = i),
+                itemBuilder: (context, index) {
+                  final media = _mediaContent[index];
+                  if (media.isVideo) {
+                    return ProductVideoItem(
+                      productId: _product.id,
+                      videoUrl: media.url,
+                      isMuted: widget.isMuted,
+                    );
+                  } else if (media.isAudio) {
+                    return ProductAudioItem(
+                      audioUrl: media.url,
+                      isMuted: widget.isMuted,
+                    );
+                  } else {
+                    return InteractiveViewer(
+                      child: Image.network(
+                        media.url,
+                        fit: BoxFit.contain,
+                        width: double.infinity,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Center(
+                              child: Icon(
+                                Icons.broken_image,
+                                size: 100,
+                                color: Colors.white54,
+                              ),
+                            ),
+                      ),
+                    );
+                  }
+                },
+              ),
 
         // 2. TOP UI OVERLAY
         SafeArea(
@@ -129,26 +203,29 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
             child: Row(
               children: [
                 // Media Counter (e.g., 1/3)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    "${_currentMediaIndex + 1} / ${widget.product.content.length}",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                if (_mediaContent.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      "${_currentMediaIndex + 1} / ${_mediaContent.length}",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
                 const Spacer(),
-                // Mute button only for Videos
-                if (widget.product.content[_currentMediaIndex].isVideo)
+                // Mute button only for Videos and Audios
+                if (_mediaContent.isNotEmpty &&
+                    (_mediaContent[_currentMediaIndex].isVideo ||
+                        _mediaContent[_currentMediaIndex].isAudio))
                   _buildCircleIcon(
                     icon: widget.isMuted ? Icons.volume_off : Icons.volume_up,
                     onTap: widget.onMuteToggle,
@@ -294,15 +371,15 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                 Row(
                   children: [
                     Text(
-                      widget.product.price,
+                      "${_product.priceAfterDiscount} FCFA",
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    if (widget.product.showOldPrice &&
-                        widget.product.oldPrice != null) ...[
+                    if ((double.tryParse(_product.discountPercentage) ?? 0) >
+                        0) ...[
                       // Reduced spacing slightly
                       SizedBox(width: 5),
                       Flexible(
@@ -311,7 +388,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                             left: 4.0,
                           ), // Slightly more padding for clarity
                           child: Text(
-                            widget.product.oldPrice!,
+                            "${_product.sellingPrice} FCFA",
                             style: TextStyle(
                               // Use a light grey/white that matches the image exactly
                               color: Colors.white.withOpacity(0.7),
@@ -328,25 +405,81 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                         ),
                       ),
                     ],
+                    if (_isLoadingDetails)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 10),
+                        child: SizedBox(
+                          width: 15,
+                          height: 15,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        "Description: ${widget.product.title} - Ballon de compétition haute performance. Idéal pour les matchs officiels sur gazon naturel ou synthétique. Résistant à l'usure et imperméable.",
-                        // Toggle between 1 and 100 lines
-                        maxLines: widget.isExpanded ? 100 : 1,
-                        overflow: widget.isExpanded
-                            ? TextOverflow.visible
-                            : TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize:
-                              14, // Reduced slightly for better readability
-                          height: 1.4,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _product.description ??
+                                "Description: ${_product.productName} - Ce produit appartient à la catégorie ${_product.categoryName}. ${(double.tryParse(_product.discountPercentage) ?? 0) > 0 ? "Profitez d'une réduction de ${double.tryParse(_product.discountPercentage)?.toInt()}%!" : "Produit de haute qualité."}",
+                            // Toggle between 1 and 100 lines
+                            maxLines: widget.isExpanded ? 100 : 1,
+                            overflow: widget.isExpanded
+                                ? TextOverflow.visible
+                                : TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize:
+                                  14, // Reduced slightly for better readability
+                              height: 1.4,
+                            ),
+                          ),
+                          if (widget.isExpanded &&
+                              _product.variants.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              "Variantes:",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            ..._product.variants.map(
+                              (v) => Text(
+                                "• ${v.colorName} (${v.size}) : ${v.stockQuantity} en stock",
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (widget.isExpanded &&
+                              _product.deliveryMessage != null) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              "Livraison: ${_product.deliveryPrice != null ? '${_product.deliveryPrice} FCFA' : 'Gratuite'}",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              _product.deliveryMessage!,
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     GestureDetector(
@@ -355,13 +488,16 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                           widget.isExpanded = !widget.isExpanded;
                         });
                       },
-                      child:  widget.isExpanded ?  Icon(
-                        
-                            Icons.arrow_upward,
-                           
-                        color: Colors.white,
-                        size: 24,
-                      ) : SvgPicture.asset("assets/icon/mdi_arrow-down-thin.svg") 
+                      child: widget.isExpanded
+                          ? Icon(
+                              Icons.arrow_upward,
+
+                              color: Colors.white,
+                              size: 24,
+                            )
+                          : SvgPicture.asset(
+                              "assets/icon/mdi_arrow-down-thin.svg",
+                            ),
                     ),
                   ],
                 ),

@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'routing/app_routing.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'providers/home_provider.dart';
+import 'providers/category_provider.dart';
+import 'providers/product_provider.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => HomeProvider()),
+        ChangeNotifierProvider(create: (_) => CategoryProvider()),
+        ChangeNotifierProvider(create: (_) => ProductProvider()),
       ],
       child: const MyApp(),
     ),

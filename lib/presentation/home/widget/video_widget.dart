@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:binetatour/presentation/home/widget/full_screen_player.dart';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 class VideoPlaceholder extends StatefulWidget {
   final String link;
@@ -14,11 +15,17 @@ class VideoPlaceholder extends StatefulWidget {
 }
 
 class _VideoPlaceholderState extends State<VideoPlaceholder> {
-  late VideoPlayerController _controller;
+  late final Player _player = Player();
+  late final VideoController _videoController = VideoController(_player, configuration: const VideoControllerConfiguration(enableHardwareAcceleration: false));
+  
   bool _isInitialized = false;
   bool _showControls = false;
   bool _isMuted = true;
   Timer? _hideTimer;
+  
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  bool _isPlaying = false;
 
   @override
   void initState() {
@@ -27,26 +34,30 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   }
 
   void _initializePlayer() {
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.link))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() => _isInitialized = true);
-          _controller.setLooping(true);
-          _controller.setVolume(0); // Default muted
-          _controller.play();
-        }
-      });
-
-    // Listen for time updates to refresh the timer and slider
-    _controller.addListener(() {
-      if (mounted) setState(() {});
+    _player.setPlaylistMode(PlaylistMode.loop);
+    _player.setVolume(0.0); // Default muted
+    
+    _player.stream.position.listen((pos) {
+      if (mounted) setState(() => _position = pos);
     });
+    _player.stream.duration.listen((dur) {
+      if (mounted) setState(() => _duration = dur);
+    });
+    _player.stream.playing.listen((playing) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = playing;
+        });
+      }
+    });
+
+    _player.open(Media(widget.link));
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
-    _controller.dispose();
+    _player.dispose();
     super.dispose();
   }
 
@@ -64,7 +75,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
     }
   }
 
-  // Formats Duration to mm:ss as seen in image_bf37dd.png
+  // Formats Duration to mm:ss
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes.remainder(60).toString();
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -85,25 +96,42 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // 1. Thumbnail / Loading State
-                if (!_isInitialized)
-                  widget.thumbnailUrl != null
-                      ? Image.network(widget.thumbnailUrl!, fit: BoxFit.cover)
-                      : const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
-                        ),
-
-                // 2. The Video Player
-                if (_isInitialized)
-                  SizedBox.expand(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      clipBehavior: Clip.hardEdge,
-                      child: SizedBox(
-                        width: _controller.value.size.width,
-                        height: _controller.value.size.height,
-                        child: VideoPlayer(_controller),
+                // 1. The Video Player (ALWAYS IN TREE so libmpv can attach to surface)
+                SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      width: _videoController.player.state.width?.toDouble() ?? 16.0,
+                      height: _videoController.player.state.height?.toDouble() ?? 9.0,
+                      child: Video(
+                        controller: _videoController,
+                        controls: NoVideoControls,
                       ),
+                    ),
+                  ),
+                ),
+
+                // 2. Thumbnail / Loading State (On top, hides when playing starts)
+                if (!_isPlaying)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black,
+                      child: widget.thumbnailUrl != null
+                          ? Image.network(
+                              widget.thumbnailUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.image_not_supported, color: Colors.white38, size: 40),
+                              ),
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(child: CircularProgressIndicator(color: Colors.white));
+                              },
+                            )
+                          : const Center(
+                              child: CircularProgressIndicator(color: Colors.white),
+                            ),
                     ),
                   ),
 
@@ -126,7 +154,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                   ),
                 ),
 
-                // 4. Center Play/Pause Circle (image_bf37dd.png style)
+                // 4. Center Play/Pause Circle
                 AnimatedOpacity(
                   opacity: _showControls ? 1.0 : 0.0,
                   duration: const Duration(milliseconds: 300),
@@ -134,9 +162,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                     child: GestureDetector(
                       onTap: () {
                         setState(() {
-                          _controller.value.isPlaying
-                              ? _controller.pause()
-                              : _controller.play();
+                          _isPlaying ? _player.pause() : _player.play();
                         });
                       },
                       child: Container(
@@ -146,9 +172,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          _controller.value.isPlaying
-                              ? Icons.pause
-                              : Icons.play_arrow_rounded,
+                          _isPlaying ? Icons.pause : Icons.play_arrow_rounded,
                           color: Colors.black,
                           size: 45,
                         ),
@@ -158,7 +182,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                 ),
 
                 // 5. Bottom Controls (Timer, Icons, Slider)
-                if (_isInitialized)
+                if (_isPlaying || _position > Duration.zero)
                   AnimatedPositioned(
                     duration: const Duration(milliseconds: 300),
                     bottom: _showControls ? 10 : -100,
@@ -171,7 +195,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                         Row(
                           children: [
                             Text(
-                              "${_formatDuration(_controller.value.position)} / ${_formatDuration(_controller.value.duration)}",
+                              "${_formatDuration(_position)} / ${_formatDuration(_duration)}",
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -183,7 +207,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                               onPressed: () {
                                 setState(() {
                                   _isMuted = !_isMuted;
-                                  _controller.setVolume(_isMuted ? 0 : 1);
+                                  _player.setVolume(_isMuted ? 0.0 : 100.0);
                                 });
                               },
                               icon: Icon(
@@ -197,7 +221,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => FullScreenVideoPlayer(
-                                      controller: _controller,
+                                      player: _player,
                                     ),
                                   ),
                                 );
@@ -224,14 +248,10 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                             thumbColor: Colors.white,
                           ),
                           child: Slider(
-                            value: _controller.value.position.inMilliseconds
-                                .toDouble(),
-                            max: _controller.value.duration.inMilliseconds
-                                .toDouble(),
+                            value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
+                            max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
                             onChanged: (val) {
-                              _controller.seekTo(
-                                Duration(milliseconds: val.toInt()),
-                              );
+                              _player.seek(Duration(milliseconds: val.toInt()));
                             },
                           ),
                         ),

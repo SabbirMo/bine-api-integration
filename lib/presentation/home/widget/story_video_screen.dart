@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 class VideoStoryScreen extends StatefulWidget {
-  final List<StoryContent> stories; // Updated to use your model
+  final List<StoryContent> stories;
 
   const VideoStoryScreen({super.key, required this.stories});
 
@@ -13,11 +14,14 @@ class VideoStoryScreen extends StatefulWidget {
 }
 
 class _VideoStoryScreenState extends State<VideoStoryScreen> {
-  VideoPlayerController? _controller;
+  Player? _player;
+  VideoController? _videoController;
   int _currentIndex = 0;
   bool _isMuted = false;
-  Timer? _timer; // To handle progress for images/audio
+  Timer? _timer;
   double _manualProgress = 0.0;
+
+  StreamSubscription? _positionSub;
 
   @override
   void initState() {
@@ -27,8 +31,14 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
 
   void _loadStory(int index) {
     _cancelTimer();
-    _controller?.dispose();
-    _controller = null;
+    
+    if (_player != null) {
+      _positionSub?.cancel();
+      _player?.dispose();
+    }
+    
+    _player = null;
+    _videoController = null;
     _manualProgress = 0.0;
 
     final story = widget.stories[index];
@@ -36,31 +46,31 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
     if (story.isVideo) {
       _initializeVideo(story);
     } else {
-      // For Image or Audio, we start a manual 5-second timer
       _startTimer();
     }
     setState(() {});
   }
 
   void _initializeVideo(StoryContent story) {
-    _controller = story.isNetwork 
-        ? VideoPlayerController.networkUrl(Uri.parse(story.url))
-        : VideoPlayerController.asset(story.url);
+    _player = Player();
+    _videoController = VideoController(_player!, configuration: const VideoControllerConfiguration(enableHardwareAcceleration: false));
 
-    _controller!..initialize().then((_) {
-      if (mounted) {
-        setState(() {});
-        _controller!.setVolume(_isMuted ? 0 : 1);
-        _controller!.play();
-        _controller!.addListener(_videoListener);
+    _player!.setVolume(_isMuted ? 0.0 : 100.0);
+    
+    if (story.isNetwork) {
+      _player!.open(Media(story.url));
+    } else {
+      // media_kit supports assets via asset:// schema
+      _player!.open(Media('asset://${story.url}'));
+    }
+
+    _player!.stream.completed.listen((completed) {
+      if (mounted && completed) {
+         _nextStory();
       }
     });
-  }
 
-  void _videoListener() {
-    if (_controller!.value.position >= _controller!.value.duration) {
-      _nextStory();
-    }
+    setState(() {});
   }
 
   void _startTimer() {
@@ -69,10 +79,12 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
     int elapsed = 0;
 
     _timer = Timer.periodic(tick, (t) {
-      setState(() {
-        elapsed += tick.inMilliseconds;
-        _manualProgress = elapsed / duration.inMilliseconds;
-      });
+      if (mounted) {
+        setState(() {
+          elapsed += tick.inMilliseconds;
+          _manualProgress = elapsed / duration.inMilliseconds;
+        });
+      }
 
       if (elapsed >= duration.inMilliseconds) {
         _nextStory();
@@ -101,8 +113,8 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
   @override
   void dispose() {
     _cancelTimer();
-    _controller?.removeListener(_videoListener);
-    _controller?.dispose();
+    _positionSub?.cancel();
+    _player?.dispose();
     super.dispose();
   }
 
@@ -114,7 +126,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. Content Layer (Image / Video / Audio)
+          // 1. Content Layer
           Center(child: _buildContent(story)),
 
           // 2. Navigation Layer
@@ -134,7 +146,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
                         child: VideoProgressBar(
                           index: index,
                           currentIndex: _currentIndex,
-                          controller: _controller,
+                          player: _player,
                           manualProgress: _manualProgress,
                         ),
                       ),
@@ -159,18 +171,27 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
     } 
     
     if (story.isVideo || story.isAudio) {
-      // If audio, you can show a special UI or just a black screen with the player
-      if (_controller != null && _controller!.value.isInitialized) {
-        return AspectRatio(
-          aspectRatio: _controller!.value.aspectRatio,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              VideoPlayer(_controller!),
-              if (story.isAudio) 
-                const Icon(Icons.music_note, size: 100, color: Colors.white54),
-            ],
-          ),
+      if (_player != null && _videoController != null) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox.expand(
+               child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                     width: _player!.state.width?.toDouble() ?? 16.0,
+                     height: _player!.state.height?.toDouble() ?? 9.0,
+                     child: Video(
+                        controller: _videoController!,
+                        controls: NoVideoControls,
+                        fill: Colors.transparent,
+                     ),
+                  ),
+               ),
+            ),
+            if (story.isAudio) 
+              const Icon(Icons.music_note, size: 100, color: Colors.white54),
+          ],
         );
       }
     }
@@ -198,7 +219,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
           onTap: () {
             setState(() {
               _isMuted = !_isMuted;
-              _controller?.setVolume(_isMuted ? 0 : 1);
+              _player?.setVolume(_isMuted ? 0.0 : 100.0);
             });
           },
         ),
@@ -223,14 +244,14 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
 class VideoProgressBar extends StatelessWidget {
   final int index;
   final int currentIndex;
-  final VideoPlayerController? controller;
+  final Player? player;
   final double manualProgress;
 
   const VideoProgressBar({
     super.key,
     required this.index,
     required this.currentIndex,
-    this.controller,
+    this.player,
     required this.manualProgress,
   });
 
@@ -243,13 +264,13 @@ class VideoProgressBar extends StatelessWidget {
       child: index < currentIndex
           ? Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)))
           : index == currentIndex
-              ? (controller != null 
-                  ? AnimatedBuilder(
-                      animation: controller!,
-                      builder: (context, child) {
-                        final vProgress = (controller!.value.isInitialized)
-                            ? controller!.value.position.inMilliseconds / controller!.value.duration.inMilliseconds
-                            : 0.0;
+              ? (player != null 
+                  ? StreamBuilder<Duration>(
+                      stream: player!.stream.position,
+                      builder: (context, snapshot) {
+                        final pos = snapshot.data?.inMilliseconds.toDouble() ?? 0.0;
+                        final dur = player!.state.duration.inMilliseconds.toDouble();
+                        final vProgress = (dur > 0) ? pos / dur : 0.0;
                         return _progressBox(vProgress);
                       },
                     )

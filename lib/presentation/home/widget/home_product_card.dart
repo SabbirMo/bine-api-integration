@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 class HomeProductCard extends StatefulWidget {
   final String videoUrl;
@@ -24,12 +25,14 @@ class HomeProductCard extends StatefulWidget {
 }
 
 class _HomeProductCardState extends State<HomeProductCard> {
-  VideoPlayerController? _controller;
+  Player? _player;
+  VideoController? _videoController;
   bool _isInitializing = false;
   bool _hasError = false;
+  bool _isPlaying = false;
 
   Future<void> _playVideo() async {
-    if (_isInitializing) return;
+    if (_isInitializing || _player != null) return;
 
     setState(() {
       _isInitializing = true;
@@ -37,22 +40,28 @@ class _HomeProductCardState extends State<HomeProductCard> {
     });
 
     try {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
-          allowBackgroundPlayback: false,
+      _player = Player();
+      _videoController = VideoController(
+        _player!,
+        configuration: const VideoControllerConfiguration(
+          enableHardwareAcceleration: false,
         ),
       );
 
-      await _controller!.initialize();
+      _player!.setPlaylistMode(PlaylistMode.loop);
 
-      if (!mounted) return;
+      _player!.stream.playing.listen((playing) {
+        if (mounted) {
+          setState(() {
+            _isPlaying = playing;
+            if (playing) {
+              _isInitializing = false;
+            }
+          });
+        }
+      });
 
-      await _controller!.setLooping(true);
-      await _controller!.play();
-
-      setState(() => _isInitializing = false);
+      await _player!.open(Media(widget.videoUrl));
     } catch (e) {
       debugPrint('Video Init Error: $e');
       if (mounted) {
@@ -60,25 +69,25 @@ class _HomeProductCardState extends State<HomeProductCard> {
           _isInitializing = false;
           _hasError = true;
         });
-        _controller?.dispose();
-        _controller = null;
+        _player?.dispose();
+        _player = null;
+        _videoController = null;
       }
     }
   }
 
   void _togglePlayPause() {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_player == null) return;
     setState(() {
-      _controller!.value.isPlaying ? _controller!.pause() : _controller!.play();
+      _isPlaying ? _player!.pause() : _player!.play();
     });
   }
 
-  bool get _isVideoReady =>
-      _controller != null && _controller!.value.isInitialized;
+  bool get _isVideoReady => _player != null && _videoController != null;
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _player?.dispose();
     super.dispose();
   }
 
@@ -93,27 +102,38 @@ class _HomeProductCardState extends State<HomeProductCard> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Thumbnail
-            Image.asset(
-              widget.assetThumbnail,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: Colors.grey.shade900,
-                child: const Icon(Icons.image_not_supported,
-                    color: Colors.white38),
-              ),
-            ),
-
-            // 2. Video Layer
+            // 1. Video Layer (ALWAYS IN TREE so libmpv can attach to surface)
             if (_isVideoReady)
               SizedBox.expand(
                 child: FittedBox(
                   fit: BoxFit.cover,
                   clipBehavior: Clip.hardEdge,
                   child: SizedBox(
-                    width: _controller!.value.size.width,
-                    height: _controller!.value.size.height,
-                    child: VideoPlayer(_controller!),
+                    width: _player!.state.width?.toDouble() ?? 16.0,
+                    height: _player!.state.height?.toDouble() ?? 9.0,
+                    child: Video(
+                      controller: _videoController!,
+                      controls: NoVideoControls,
+                    ),
+                  ),
+                ),
+              ),
+
+            // 2. Thumbnail (On top, hides when playing starts)
+            if (!_isVideoReady || _isInitializing || !_isPlaying)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black,
+                  child: Image.asset(
+                    widget.assetThumbnail,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: Colors.grey.shade900,
+                      child: const Icon(
+                        Icons.image_not_supported,
+                        color: Colors.white38,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -124,10 +144,7 @@ class _HomeProductCardState extends State<HomeProductCard> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.85),
-                  ],
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
                   stops: const [0.5, 1.0],
                 ),
               ),
@@ -139,8 +156,10 @@ class _HomeProductCardState extends State<HomeProductCard> {
                 top: 10,
                 left: 10,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.red,
                     borderRadius: BorderRadius.circular(12),
@@ -158,8 +177,7 @@ class _HomeProductCardState extends State<HomeProductCard> {
 
             // 5. Play / Pause Icon (Center) — shown when not playing
             if (!_isInitializing && !_hasError)
-              if (!_isVideoReady ||
-                  (_isVideoReady && !_controller!.value.isPlaying))
+              if (!_isVideoReady || (_isVideoReady && !_isPlaying))
                 Center(
                   child: Container(
                     padding: const EdgeInsets.all(10),
@@ -167,8 +185,8 @@ class _HomeProductCardState extends State<HomeProductCard> {
                       color: Colors.black.withOpacity(0.45),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
-                      _isVideoReady ? Icons.play_arrow_rounded : Icons.play_arrow_rounded,
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
                       color: Colors.white,
                       size: 32,
                     ),
@@ -190,8 +208,11 @@ class _HomeProductCardState extends State<HomeProductCard> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.wifi_off_rounded,
-                        color: Colors.white70, size: 28),
+                    const Icon(
+                      Icons.wifi_off_rounded,
+                      color: Colors.white70,
+                      size: 28,
+                    ),
                     const SizedBox(height: 6),
                     const Text(
                       'Tap to retry',

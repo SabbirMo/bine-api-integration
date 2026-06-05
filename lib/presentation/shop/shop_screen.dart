@@ -2,6 +2,10 @@ import 'package:binetatour/presentation/shop/widget/product_details.dart';
 import 'package:binetatour/presentation/shop/widget/shop_product_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/category_provider.dart';
+import 'package:binetatour/data/models/category_model.dart';
+import 'package:binetatour/providers/product_provider.dart';
 
 class BoutiqueScreen extends StatefulWidget {
   const BoutiqueScreen({super.key});
@@ -17,55 +21,16 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
 
   bool isSubcategoryShow = true;
 
-  int selectedSubCategoryIndex = 0;
-
-  final List<Map<String, dynamic>> categories = [
-    {"name": "Tous", "icon": "assets/icon/tous.svg"},
-    {"name": "Sport", "icon": "assets/icon/sports.svg"},
-    {"name": "Maison", "icon": "assets/icon/mansion.svg"},
-    {"name": "Mode", "icon": "assets/icon/fashion.svg"},
-    {"name": "Tech", "icon": "assets/icon/tech_tok.svg"},
-  ];
-
-  final Map<String, List<String>> subCategories = {
-    "Sport": [
-      "Tous",
-      "Fitness",
-      "Musculation",
-      "Cardio",
-      "Accessories",
-      "Vetements",
-      "Chaussures",
-      "Nutrition",
-    ],
-    "Maison": [
-      "Tous",
-      "Securite",
-      "Decoration",
-      "Meubles",
-      "Electromenager",
-      "Jardin",
-      "Bricolage",
-      "Linge",
-    ],
-    "Mode": ["Tous", "Vetements", "Chaussures", "Sacs", "Montres", "Bijoux"],
-    "Tous": [],
-
-    "Tech": [
-      "Smartphones",
-      "Audio",
-      "Informatique",
-      "Accessories",
-      "Gaming",
-      "Objects connectes",
-      "TV",
-    ],
-  };
+  int selectedSubCategoryIndex = -1;
 
   @override
   void initState() {
     super.initState();
     _categoryScrollController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CategoryProvider>().fetchCategories();
+      context.read<ProductProvider>().fetchProducts();
+    });
   }
 
   @override
@@ -76,8 +41,69 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> currentSubCategories =
-        subCategories[selectedCategoryName] ?? [];
+    final categoryProvider = context.watch<CategoryProvider>();
+    final categories = categoryProvider.categories;
+    final isLoading = categoryProvider.isLoading;
+
+    final productProvider = context.watch<ProductProvider>();
+    final isProductsLoading = productProvider.isLoading;
+
+    int? currentCategoryId;
+    if (categories.isNotEmpty && selectedCategory < categories.length) {
+      currentCategoryId = categories[selectedCategory].id;
+    }
+
+    List<SubcategoryModel> currentSubCategories = [];
+    if (categories.isNotEmpty) {
+      if (selectedCategory >= categories.length) {
+        selectedCategory = 0;
+      }
+      currentSubCategories = categories[selectedCategory].subcategories;
+      if (selectedCategoryName == "Tous" ||
+          categories.where((c) => c.name == selectedCategoryName).isEmpty) {
+        selectedCategoryName = categories[selectedCategory].name;
+      }
+    }
+
+    int? currentSubcategoryId;
+    if (currentSubCategories.isNotEmpty &&
+        selectedSubCategoryIndex >= 0 &&
+        selectedSubCategoryIndex < currentSubCategories.length) {
+      currentSubcategoryId = currentSubCategories[selectedSubCategoryIndex].id;
+    }
+
+    final filteredProducts = productProvider.getFilteredProducts(
+      currentCategoryId,
+      currentSubcategoryId,
+    );
+    final List<ShopProductCard> filteredProductCards = filteredProducts.map((
+      p,
+    ) {
+      final double discount = double.tryParse(p.discountPercentage) ?? 0;
+      final bool hasDiscount = discount > 0;
+
+      return ShopProductCard(
+        title: p.productName,
+        price: "${p.priceAfterDiscount} FCFA",
+        oldPrice: "${p.sellingPrice} FCFA",
+        discount: "-${discount.toInt()}%",
+        showDiscountPercentage: hasDiscount,
+        showOldPrice: hasDiscount,
+        assetThumbnail: p.mainImage ?? '',
+        content: p.media
+            .map(
+              (m) => ProductContent(
+                url: m.mediaUrl,
+                isVideo: m.mediaType == 'video',
+                isImage: m.mediaType == 'image',
+                isAudio: m.mediaType == 'audio',
+                isNetwork: true,
+              ),
+            )
+            .toList(),
+      );
+    }).toList();
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -129,13 +155,18 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
           // Horizontal Category Selector
           SizedBox(
             height: 100,
-            child: ListView.builder(
-              controller: _categoryScrollController,
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: categories.length,
-              itemBuilder: (context, index) => _buildCategoryItem(index),
-            ),
+            child: isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.orange),
+                  )
+                : ListView.builder(
+                    controller: _categoryScrollController,
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: categories.length,
+                    itemBuilder: (context, index) =>
+                        _buildCategoryItem(categories[index], index),
+                  ),
           ),
 
           Padding(
@@ -172,73 +203,76 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
 
           //sub category show here
           if (currentSubCategories.isNotEmpty)
-          isSubcategoryShow ?   Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Wrap(
-                spacing: 10.0, // Horizontal gap between chips
-                runSpacing: 10.0, // Vertical gap between lines
-                children: List.generate(
-                  currentSubCategories.length,
-                  (index) =>
-                      _buildSubCategoryItem(currentSubCategories[index], index),
-                ),
-              ),
-            ) : SizedBox(),
+            isSubcategoryShow
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Wrap(
+                      spacing: 10.0, // Horizontal gap between chips
+                      runSpacing: 10.0, // Vertical gap between lines
+                      children: List.generate(
+                        currentSubCategories.length,
+                        (index) => _buildSubCategoryItem(
+                          currentSubCategories[index],
+                          index,
+                        ),
+                      ),
+                    ),
+                  )
+                : SizedBox(),
           SizedBox(height: 10),
           // Product Grid
           Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: GridView.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.75,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                ),
-                itemCount:
-                    sportsProductList.length, // Replace with dynamic data
-                itemBuilder: (context, index) {
-                  final product = sportsProductList[index];
-                  return InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ProductDetailsScreen(
-                            allProducts: sportsProductList,
-                            initialProductIndex: index,
-                          ), // Pass the video URL to details screen
-                        ),
-                      );
-                    },
-                    child: ShopProductCard(
-                      title: product.title,
-                      price: product.price,
-
-                      oldPrice: product.oldPrice,
-                      discount: product.discount,
-                      showDiscountPercentage: product.showDiscountPercentage,
-                      showOldPrice: product.showOldPrice,
-                      assetThumbnail: product.assetThumbnail,
-                      content: [],
+            child: isProductsLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.orange),
+                  )
+                : filteredProductCards.isEmpty
+                ? const Center(child: Text("Aucun produit trouvé"))
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 0.75,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                          ),
+                      itemCount: filteredProductCards.length,
+                      itemBuilder: (context, index) {
+                        return InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ProductDetailsScreen(
+                                  allProducts: filteredProducts,
+                                  initialProductIndex: index,
+                                ),
+                              ),
+                            );
+                          },
+                          child: filteredProductCards[index],
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
-            ),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCategoryItem(int index) {
+  Widget _buildCategoryItem(CategoryModel category, int index) {
     bool isSelected = selectedCategory == index;
     return GestureDetector(
       onTap: () => setState(() {
         selectedCategory = index;
-        selectedCategoryName = categories[index]["name"];
+        selectedCategoryName = category.name;
+        selectedSubCategoryIndex = -1;
       }),
       child: Padding(
         padding: const EdgeInsets.only(right: 15),
@@ -248,16 +282,31 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
             Container(
               height: 70,
               width: 80,
-              padding: const EdgeInsets.all(15),
+              padding: EdgeInsets.all(
+                category.imageUrl.endsWith('.svg') ? 15 : 5,
+              ),
               decoration: BoxDecoration(
                 color: isSelected ? Colors.orange[800] : Colors.grey[100],
                 borderRadius: BorderRadius.circular(15),
               ),
-              child: SvgPicture.asset(categories[index]["icon"]),
+              child: category.imageUrl.endsWith('.svg')
+                  ? SvgPicture.asset(category.imageUrl)
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        category.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                              Icons.image_not_supported,
+                              color: Colors.grey,
+                            ),
+                      ),
+                    ),
             ),
             const SizedBox(height: 5),
             Text(
-              categories[index]["name"],
+              category.name,
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 color: isSelected ? Colors.orange[800] : Colors.black,
@@ -269,26 +318,20 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
     );
   }
 
-  Widget _buildSubCategoryItem(String title, int index) {
+  Widget _buildSubCategoryItem(SubcategoryModel subcategory, int index) {
     bool isSelected = selectedSubCategoryIndex == index;
     return GestureDetector(
       onTap: () => setState(() {
         selectedSubCategoryIndex = index;
       }),
       child: Container(
-        // Remove margin: right, Wrap uses 'spacing' instead
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFFF4500) : Colors.white,
-          borderRadius: BorderRadius.circular(
-            30,
-          ), // Increased for a smoother pill shape
+          borderRadius: BorderRadius.circular(30),
           border: isSelected
               ? null
-              : Border.all(
-                  color: Colors.grey.shade200,
-                  width: 1.5,
-                ), // Subtle border like image_be4743.png
+              : Border.all(color: Colors.grey.shade200, width: 1.5),
           boxShadow: [
             if (!isSelected)
               BoxShadow(
@@ -299,13 +342,11 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
           ],
         ),
         child: Text(
-          title,
+          subcategory.name,
           style: TextStyle(
-            fontSize: 15, // Slightly larger for better readability
+            fontSize: 15,
             color: isSelected ? Colors.white : const Color(0xFF34495E),
-            fontWeight: isSelected
-                ? FontWeight.bold
-                : FontWeight.w600, // Semi-bold for unselected
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
           ),
         ),
       ),
@@ -317,12 +358,14 @@ class ProductContent {
   final String url;
   final bool isVideo;
   final bool isImage;
+  final bool isAudio;
   final bool isNetwork;
 
   ProductContent({
     required this.url,
     required this.isVideo,
     required this.isImage,
+    this.isAudio = false,
     this.isNetwork = false,
   });
 }
