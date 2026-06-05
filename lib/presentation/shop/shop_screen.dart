@@ -8,7 +8,9 @@ import 'package:binetatour/data/models/category_model.dart';
 import 'package:binetatour/providers/product_provider.dart';
 
 class BoutiqueScreen extends StatefulWidget {
-  const BoutiqueScreen({super.key});
+  final int? initialCategoryId;
+
+  const BoutiqueScreen({super.key, this.initialCategoryId});
 
   @override
   State<BoutiqueScreen> createState() => _BoutiqueScreenState();
@@ -22,6 +24,7 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   bool isSubcategoryShow = true;
 
   int selectedSubCategoryIndex = -1;
+  bool _initialCategorySet = false;
 
   @override
   void initState() {
@@ -47,6 +50,19 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
 
     final productProvider = context.watch<ProductProvider>();
     final isProductsLoading = productProvider.isLoading;
+
+    if (!_initialCategorySet &&
+        categories.isNotEmpty &&
+        widget.initialCategoryId != null) {
+      final index = categories.indexWhere(
+        (c) => c.id == widget.initialCategoryId,
+      );
+      if (index != -1) {
+        selectedCategory = index;
+        selectedCategoryName = categories[index].name;
+      }
+      _initialCategorySet = true;
+    }
 
     int? currentCategoryId;
     if (categories.isNotEmpty && selectedCategory < categories.length) {

@@ -13,13 +13,17 @@ class HomeResponseModel {
 
   factory HomeResponseModel.fromJson(Map<String, dynamic> json) {
     return HomeResponseModel(
-      banner: json['banner'] != null ? BannerModel.fromJson(json['banner']) : null,
+      banner: json['banner'] != null
+          ? BannerModel.fromJson(json['banner'])
+          : null,
       storeAddress: json['store_address'],
-      storyCategories: (json['story_categories'] as List?)
+      storyCategories:
+          (json['story_categories'] as List?)
               ?.map((e) => StoryCategoryModel.fromJson(e))
               .toList() ??
           [],
-      productSections: (json['product_sections'] as List?)
+      productSections:
+          (json['product_sections'] as List?)
               ?.map((e) => ProductSectionModel.fromJson(e))
               .toList() ??
           [],
@@ -32,11 +36,7 @@ class BannerModel {
   final String? videoUrl;
   final String? thumbnailUrl;
 
-  BannerModel({
-    required this.id,
-    this.videoUrl,
-    this.thumbnailUrl,
-  });
+  BannerModel({required this.id, this.videoUrl, this.thumbnailUrl});
 
   factory BannerModel.fromJson(Map<String, dynamic> json) {
     return BannerModel(
@@ -65,7 +65,11 @@ class StoryCategoryModel {
       id: json['id'],
       name: json['name'],
       imageUrl: json['image_url'],
-      stories: (json['stories'] as List?)?.map((e) => StoryModel.fromJson(e)).toList() ?? [],
+      stories:
+          (json['stories'] as List?)
+              ?.map((e) => StoryModel.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 }
@@ -111,7 +115,11 @@ class ProductSectionModel {
       categoryId: json['category_id'],
       categoryName: json['category_name'],
       categoryImageUrl: json['category_image_url'],
-      products: (json['products'] as List?)?.map((e) => ProductModel.fromJson(e)).toList() ?? [],
+      products:
+          (json['products'] as List?)
+              ?.map((e) => ProductModel.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 }
@@ -141,7 +149,9 @@ class ProductModel {
       productName: json['product_name'],
       sellingPrice: json['selling_price'],
       discountPercentage: json['discount_percentage'],
-      priceAfterDiscount: json['price_after_discount'] != null ? double.tryParse(json['price_after_discount'].toString()) : null,
+      priceAfterDiscount: json['price_after_discount'] != null
+          ? double.tryParse(json['price_after_discount'].toString())
+          : null,
       status: json['status'],
       mainImage: json['main_image'],
     );

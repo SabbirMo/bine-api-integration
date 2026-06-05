@@ -13,7 +13,7 @@ class ShopProductCard extends StatelessWidget {
   final bool showDiscountPercentage; // Controls the red badge
   final bool showOldPrice; // Controls the strikethrough text
 
-   ShopProductCard({
+  ShopProductCard({
     super.key,
     required this.content,
     this.assetThumbnail,
@@ -44,18 +44,26 @@ class ShopProductCard extends StatelessWidget {
             Container(
               color: Colors.grey[300],
               child: const Center(
-                child: Icon(Icons.image_not_supported, size: 50, color: Colors.black45),
+                child: Icon(
+                  Icons.image_not_supported,
+                  size: 50,
+                  color: Colors.black45,
+                ),
               ),
             )
           else
             assetThumbnail!.startsWith('http')
                 ? Image.network(
-                    assetThumbnail!, 
+                    assetThumbnail!,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
                       color: Colors.grey[300],
                       child: const Center(
-                        child: Icon(Icons.image_not_supported, size: 50, color: Colors.black45),
+                        child: Icon(
+                          Icons.image_not_supported,
+                          size: 50,
+                          color: Colors.black45,
+                        ),
                       ),
                     ),
                   )
@@ -131,13 +139,11 @@ class ShopProductCard extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                         fontSize: 14,
                       ),
-                     
                     ),
 
                     // Old Price (Conditional)
                     if (showOldPrice && oldPrice != null) ...[
-                   // Reduced spacing slightly
-                   
+                      // Reduced spacing slightly
                       Flexible(
                         child: Padding(
                           padding: const EdgeInsets.only(left: 2.0),

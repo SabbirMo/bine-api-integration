@@ -12,6 +12,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/home_provider.dart';
 import 'package:binetatour/data/models/home_response_model.dart';
+import 'package:binetatour/data/models/product_model.dart' as shop_model;
 
 class AccueilScreen extends StatefulWidget {
   const AccueilScreen({super.key});
@@ -344,7 +345,16 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
         CategorySectionHeader(
           title: widget.section.categoryName ?? 'Category',
           imagePath: widget.section.categoryImageUrl,
-          onSeeMoreTap: _scrollNext,
+          onSeeMoreTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BoutiqueScreen(
+                  initialCategoryId: widget.section.categoryId,
+                ),
+              ),
+            );
+          },
         ),
         _buildVideoHorizontalListDynamic(
           widget.section.products,
@@ -398,10 +408,31 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
             padding: const EdgeInsets.only(right: 12.0),
             child: InkWell(
               onTap: () {
+                // Convert the lightweight ProductModel into the expected full ProductModel
+                final convertedProducts = allProducts
+                    .map(
+                      (p) => shop_model.ProductModel(
+                        id: p.id,
+                        productName: p.productName ?? '',
+                        categoryId: widget.section.categoryId,
+                        categoryName: widget.section.categoryName ?? '',
+                        sellingPrice: p.sellingPrice ?? '0',
+                        discountPercentage: p.discountPercentage ?? '0',
+                        priceAfterDiscount: p.priceAfterDiscount ?? 0.0,
+                        status: p.status ?? '',
+                        mainImage: p.mainImage,
+                        media: [],
+                      ),
+                    )
+                    .toList();
+
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => ProductDetailsScreen(allProducts: []),
+                    builder: (context) => ProductDetailsScreen(
+                      allProducts: convertedProducts,
+                      initialProductIndex: index,
+                    ),
                   ),
                 );
               },
