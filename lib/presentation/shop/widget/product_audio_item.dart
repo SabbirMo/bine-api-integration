@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
+import 'dart:math';
 
 class ProductAudioItem extends StatefulWidget {
   final String audioUrl;
   final bool isMuted;
 
-  const ProductAudioItem({super.key, required this.audioUrl, required this.isMuted});
+  const ProductAudioItem({
+    super.key,
+    required this.audioUrl,
+    required this.isMuted,
+  });
 
   @override
   State<ProductAudioItem> createState() => _ProductAudioItemState();
@@ -26,7 +31,7 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
     _player.setPlaylistMode(PlaylistMode.loop);
     _player.setVolume(widget.isMuted ? 0.0 : 100.0);
     await _player.open(Media(widget.audioUrl));
-    
+
     if (mounted) {
       setState(() {
         _isInitialized = true;
@@ -64,27 +69,162 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black87,
+      color: Colors.black,
       child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.audiotrack, size: 80, color: Colors.white),
-            const SizedBox(height: 20),
-            if (!_isInitialized)
-              const CircularProgressIndicator(color: Color(0xFFFF6900))
-            else
-              IconButton(
-                iconSize: 64,
-                icon: Icon(
-                  _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                  color: const Color(0xFFFF6900),
-                ),
-                onPressed: _togglePlay,
+        child: !_isInitialized
+            ? const CircularProgressIndicator(color: Color(0xFFFF6900))
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _AudioWave(isPlaying: _isPlaying, isReversed: true),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: _togglePlay,
+                    child: Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFFF6900).withValues(alpha: 0.4),
+                          width: 2,
+                        ),
+                        color: Colors.transparent,
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFFFF6900),
+                          ),
+                          child: Icon(
+                            _isPlaying
+                                ? Icons.volume_up_rounded
+                                : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  _AudioWave(isPlaying: _isPlaying, isReversed: false),
+                ],
               ),
-          ],
-        ),
       ),
+    );
+  }
+}
+
+class _AudioWave extends StatefulWidget {
+  final bool isPlaying;
+  final bool isReversed;
+
+  const _AudioWave({required this.isPlaying, required this.isReversed});
+
+  @override
+  State<_AudioWave> createState() => _AudioWaveState();
+}
+
+class _AudioWaveState extends State<_AudioWave>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    if (widget.isPlaying) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AudioWave oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      if (widget.isPlaying) {
+        _controller.repeat(reverse: true);
+      } else {
+        _controller.stop();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Taller near the center button, fading to shorter on the edges.
+    final List<double> sideHeights = [
+      4,
+      6,
+      8,
+      12,
+      10,
+      16,
+      20,
+      14,
+      24,
+      30,
+      22,
+      36,
+      44,
+      32,
+      50,
+      40,
+    ];
+
+    // If reversed (Left wave), the taller bars should be on the right (end of the list).
+    // If not reversed (Right wave), the taller bars should be on the left (start of the list).
+    List<double> actualHeights = widget.isReversed
+        ? sideHeights
+        : sideHeights.reversed.toList();
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(actualHeights.length, (index) {
+            // Factor to make them animate slightly out of phase
+            double factor = sin(_controller.value * pi * 2 + index);
+            double baseH = actualHeights[index];
+
+            double currentHeight = widget.isPlaying
+                ? baseH +
+                      (factor *
+                          (baseH * 0.3)) // Animate by +/- 30% of their height
+                : baseH * 0.3; // When paused, they are smaller
+
+            currentHeight = currentHeight.clamp(2.0, 80.0);
+
+            // Opacity decreases towards the smaller bars
+            double opacity = (baseH / 50).clamp(0.2, 1.0);
+
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 1.5),
+              width: 3,
+              height: currentHeight,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6900).withValues(alpha: opacity),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }

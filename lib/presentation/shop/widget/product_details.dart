@@ -260,17 +260,14 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      // This is the magic part for top positioning:
-                      margin: EdgeInsets.only(
-                        bottom:
-                            MediaQuery.of(context).size.height -
-                            120, // Pushes it to the top
-                        left: 20,
-                        right: 20,
-                      ),
+                      // Using a huge bottom margin to push the SnackBar to the top causes 
+                      // layout overflow crashes because it exceeds the Scaffold's safe area.
+                      // Using a standard floating margin instead.
+                      margin: const EdgeInsets.all(20),
                     ),
                   );
                   await Future.delayed(const Duration(seconds: 2));
+                  if (!mounted) return;
                   showModalBottomSheet(
                     context: context,
                     isScrollControlled: true, // Allows it to take more height
@@ -427,8 +424,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _product.description ??
-                                "Description: ${_product.productName} - Ce produit appartient à la catégorie ${_product.categoryName}. ${(double.tryParse(_product.discountPercentage) ?? 0) > 0 ? "Profitez d'une réduction de ${double.tryParse(_product.discountPercentage)?.toInt()}%!" : "Produit de haute qualité."}",
+                            "Description: ${_product.description ?? ''}",
                             // Toggle between 1 and 100 lines
                             maxLines: widget.isExpanded ? 100 : 1,
                             overflow: widget.isExpanded

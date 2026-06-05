@@ -30,6 +30,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 
   StreamSubscription? _positionSub;
   double _currentMediaProgress = 0.0;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -45,12 +46,14 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     _videoController = null;
     _imageProgress = 0.0;
     _currentMediaProgress = 0.0;
+    _isLoading = true;
 
     final story = widget.stories[index];
 
     if (story.isVideo || story.isAudio) {
       _initializeMedia(story);
     } else {
+      _isLoading = false;
       _startImageTimer();
     }
     setState(() {});
@@ -81,6 +84,14 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       if (mounted && completed) {
         _nextStory();
       }
+    });
+
+    _player!.stream.buffering.listen((buffering) {
+      if (mounted) setState(() => _isLoading = buffering);
+    });
+
+    _player!.stream.playing.listen((playing) {
+      if (mounted && playing) setState(() => _isLoading = false);
     });
   }
 
@@ -168,21 +179,39 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   }
 
   Widget _buildMedia(StoryContent story) {
-    if (story.isImage) return Image.network(story.url, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+    if (story.isImage) {
+      return Image.network(
+        story.url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6900)));
+        },
+      );
+    }
     if (story.isAudio) return _buildAudioPlaceholder();
     if (story.isVideo && _videoController != null) {
-      return SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: SizedBox(
-            width: _player!.state.width?.toDouble() ?? 16.0,
-            height: _player!.state.height?.toDouble() ?? 9.0,
-            child: Video(
-              controller: _videoController!,
-              controls: NoVideoControls,
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: _player!.state.width?.toDouble() ?? 16.0,
+                height: _player!.state.height?.toDouble() ?? 9.0,
+                child: Video(
+                  controller: _videoController!,
+                  controls: NoVideoControls,
+                )
+              )
             )
-          )
-        )
+          ),
+          if (_isLoading)
+            const CircularProgressIndicator(color: Color(0xFFFF6900)),
+        ],
       );
     }
     return const CircularProgressIndicator(color: Colors.white);

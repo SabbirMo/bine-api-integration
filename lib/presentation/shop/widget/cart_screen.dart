@@ -30,98 +30,103 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Row(
-              children: [
-                // 1. Left Back Arrow
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.black),
-                  onPressed: () => Navigator.pop(context),
-                ),
-
-                // 2. Centered Title
-                const Expanded(
-                  child: Text(
-                    "MON PANIER",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Row(
+                children: [
+                  // 1. Left Back Arrow
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.black),
+                    onPressed: () => Navigator.pop(context),
                   ),
-                ),
 
-                // 3. Right Cancel Button
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.black),
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                ),
-              ],
+                  // 2. Centered Title
+                  const Expanded(
+                    child: Text(
+                      "MON PANIER",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                  // 3. Right Cancel Button
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.black),
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          Expanded(
-            child: isDeleted
-                ? const Center(child: Text("Votre panier est vide"))
-                : ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    children: [
-                      _buildCartItem(),
-                      const SizedBox(height: 30),
+            Expanded(
+              child: isDeleted
+                  ? const Center(child: Text("Votre panier est vide"))
+                  : ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      children: [
+                        _buildCartItem(),
+                        const SizedBox(height: 30),
 
-                      // Total Box
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF3E6),
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(
-                            color: const Color(0xFFFFD1A1),
-                            width: 0.5,
+                        // Total Box
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E6),
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(
+                              color: const Color(0xFFFFD1A1),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "Total",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                "$totalDisplay FCFA",
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFFF6900),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              "Total",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              "$totalDisplay FCFA",
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFFF6900),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-
-          // Bottom Buttons
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                const Divider(),
-                const SizedBox(height: 10),
-                _buildSecondaryButton("Continuer Mes Achats", Icons.add),
-                const SizedBox(height: 12),
-                _buildPrimaryButton("JE VALIDE"),
-              ],
+                      ],
+                    ),
             ),
-          ),
-        ],
+
+            // Bottom Buttons
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  const Divider(),
+                  const SizedBox(height: 10),
+                  _buildSecondaryButton("Continuer Mes Achats", Icons.add),
+                  const SizedBox(height: 12),
+                  _buildPrimaryButton("JE VALIDE"),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

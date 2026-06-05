@@ -20,6 +20,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
   bool _isMuted = false;
   Timer? _timer;
   double _manualProgress = 0.0;
+  bool _isLoading = false;
 
   StreamSubscription? _positionSub;
 
@@ -31,21 +32,23 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
 
   void _loadStory(int index) {
     _cancelTimer();
-    
+
     if (_player != null) {
       _positionSub?.cancel();
       _player?.dispose();
     }
-    
+
     _player = null;
     _videoController = null;
     _manualProgress = 0.0;
+    _isLoading = true;
 
     final story = widget.stories[index];
 
     if (story.isVideo) {
       _initializeVideo(story);
     } else {
+      _isLoading = false;
       _startTimer();
     }
     setState(() {});
@@ -53,10 +56,15 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
 
   void _initializeVideo(StoryContent story) {
     _player = Player();
-    _videoController = VideoController(_player!, configuration: const VideoControllerConfiguration(enableHardwareAcceleration: false));
+    _videoController = VideoController(
+      _player!,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: false,
+      ),
+    );
 
     _player!.setVolume(_isMuted ? 0.0 : 100.0);
-    
+
     if (story.isNetwork) {
       _player!.open(Media(story.url));
     } else {
@@ -66,8 +74,16 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
 
     _player!.stream.completed.listen((completed) {
       if (mounted && completed) {
-         _nextStory();
+        _nextStory();
       }
+    });
+
+    _player!.stream.buffering.listen((buffering) {
+      if (mounted) setState(() => _isLoading = buffering);
+    });
+
+    _player!.stream.playing.listen((playing) {
+      if (mounted && playing) setState(() => _isLoading = false);
     });
 
     setState(() {});
@@ -165,32 +181,43 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
 
   Widget _buildContent(StoryContent story) {
     if (story.isImage) {
-      return story.isNetwork 
-          ? Image.network(story.url, fit: BoxFit.contain) 
+      return story.isNetwork
+          ? Image.network(
+              story.url,
+              fit: BoxFit.contain,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const CircularProgressIndicator(
+                  color: Color(0xFFFF6900),
+                );
+              },
+            )
           : Image.asset(story.url, fit: BoxFit.contain);
-    } 
-    
+    }
+
     if (story.isVideo || story.isAudio) {
       if (_player != null && _videoController != null) {
         return Stack(
           alignment: Alignment.center,
           children: [
             SizedBox.expand(
-               child: FittedBox(
-                  fit: BoxFit.contain,
-                  child: SizedBox(
-                     width: _player!.state.width?.toDouble() ?? 16.0,
-                     height: _player!.state.height?.toDouble() ?? 9.0,
-                     child: Video(
-                        controller: _videoController!,
-                        controls: NoVideoControls,
-                        fill: Colors.transparent,
-                     ),
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: _player!.state.width?.toDouble() ?? 16.0,
+                  height: _player!.state.height?.toDouble() ?? 9.0,
+                  child: Video(
+                    controller: _videoController!,
+                    controls: NoVideoControls,
+                    fill: Colors.transparent,
                   ),
-               ),
+                ),
+              ),
             ),
-            if (story.isAudio) 
+            if (story.isAudio)
               const Icon(Icons.music_note, size: 100, color: Colors.white54),
+            if (_isLoading)
+              const CircularProgressIndicator(color: Color(0xFFFF6900)),
           ],
         );
       }
@@ -201,18 +228,33 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
   Widget _buildNavigationControls() {
     return Row(
       children: [
-        Expanded(child: GestureDetector(onTap: _previousStory, behavior: HitTestBehavior.translucent, child: const SizedBox.expand())),
-        Expanded(child: GestureDetector(onTap: _nextStory, behavior: HitTestBehavior.translucent, child: const SizedBox.expand())),
+        Expanded(
+          child: GestureDetector(
+            onTap: _previousStory,
+            behavior: HitTestBehavior.translucent,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            onTap: _nextStory,
+            behavior: HitTestBehavior.translucent,
+            child: const SizedBox.expand(),
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildHeader() {
-     return Row(
+    return Row(
       children: [
         const CircleAvatar(radius: 16, backgroundColor: Colors.grey),
         const SizedBox(width: 10),
-        const Text("Story Content", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+        const Text(
+          "Story Content",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+        ),
         const Spacer(),
         _buildCircularButton(
           icon: _isMuted ? Icons.volume_off : Icons.volume_up,
@@ -224,17 +266,27 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
           },
         ),
         const SizedBox(width: 12),
-        _buildCircularButton(icon: Icons.close, onTap: () => Navigator.pop(context)),
+        _buildCircularButton(
+          icon: Icons.close,
+          onTap: () => Navigator.pop(context),
+        ),
       ],
     );
   }
 
-  Widget _buildCircularButton({required IconData icon, required VoidCallback onTap}) {
+  Widget _buildCircularButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 38, width: 38,
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+        height: 38,
+        width: 38,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.15),
+          shape: BoxShape.circle,
+        ),
         child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
@@ -260,22 +312,32 @@ class VideoProgressBar extends StatelessWidget {
     return Container(
       height: 2.5,
       margin: const EdgeInsets.symmetric(horizontal: 2),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: index < currentIndex
-          ? Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)))
+          ? Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            )
           : index == currentIndex
-              ? (player != null 
-                  ? StreamBuilder<Duration>(
-                      stream: player!.stream.position,
-                      builder: (context, snapshot) {
-                        final pos = snapshot.data?.inMilliseconds.toDouble() ?? 0.0;
-                        final dur = player!.state.duration.inMilliseconds.toDouble();
-                        final vProgress = (dur > 0) ? pos / dur : 0.0;
-                        return _progressBox(vProgress);
-                      },
-                    )
-                  : _progressBox(manualProgress))
-              : const SizedBox.shrink(),
+          ? (player != null
+                ? StreamBuilder<Duration>(
+                    stream: player!.stream.position,
+                    builder: (context, snapshot) {
+                      final pos =
+                          snapshot.data?.inMilliseconds.toDouble() ?? 0.0;
+                      final dur = player!.state.duration.inMilliseconds
+                          .toDouble();
+                      final vProgress = (dur > 0) ? pos / dur : 0.0;
+                      return _progressBox(vProgress);
+                    },
+                  )
+                : _progressBox(manualProgress))
+          : const SizedBox.shrink(),
     );
   }
 
@@ -283,7 +345,12 @@ class VideoProgressBar extends StatelessWidget {
     return FractionallySizedBox(
       alignment: Alignment.centerLeft,
       widthFactor: width.clamp(0.0, 1.0),
-      child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10))),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
     );
   }
 }
