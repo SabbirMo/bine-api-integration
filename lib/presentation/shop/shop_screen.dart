@@ -341,7 +341,7 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
         selectedSubCategoryIndex = index;
       }),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFFF4500) : Colors.white,
           borderRadius: BorderRadius.circular(30),

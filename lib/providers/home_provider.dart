@@ -15,9 +15,11 @@ class HomeProvider extends ChangeNotifier {
   HomeResponseModel? get homeData => _homeData;
 
   Future<void> fetchHomeData() async {
-    _isLoading = true;
+    if (_homeData == null) {
+      _isLoading = true;
+      notifyListeners();
+    }
     _errorMessage = null;
-    notifyListeners();
 
     try {
       // Assuming home API doesn't require strict auth to view banners and products

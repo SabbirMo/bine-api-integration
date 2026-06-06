@@ -34,7 +34,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   }
 
   void _initializePlayer() {
-    _player.setPlaylistMode(PlaylistMode.loop);
+    _player.setPlaylistMode(PlaylistMode.single);
     _player.setVolume(0.0); // Default muted
     
     _player.stream.position.listen((pos) {

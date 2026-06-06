@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'dart:io';
+import 'package:dio/dio.dart';
 
 class StoryDetailScreen extends StatefulWidget {
   final List<StoryContent> stories;
@@ -9,10 +11,11 @@ class StoryDetailScreen extends StatefulWidget {
   final String userProfile;
 
   const StoryDetailScreen({
-    super.key, 
-    required this.stories, 
+    super.key,
+    required this.stories,
     this.userName = "User Name",
-    this.userProfile = "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg",
+    this.userProfile =
+        "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg",
   });
 
   @override
@@ -61,8 +64,13 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 
   void _initializeMedia(StoryContent story) {
     _player = Player();
-    _videoController = VideoController(_player!, configuration: const VideoControllerConfiguration(enableHardwareAcceleration: false));
-    
+    _videoController = VideoController(
+      _player!,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: false,
+      ),
+    );
+
     _player!.setVolume(_isMuted ? 0.0 : 100.0);
     if (story.isNetwork) {
       _player!.open(Media(story.url));
@@ -99,7 +107,9 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     const duration = Duration(seconds: 5);
     _timer = Timer.periodic(const Duration(milliseconds: 50), (t) {
       if (mounted) {
-        setState(() => _imageProgress = (t.tick * 50) / duration.inMilliseconds);
+        setState(
+          () => _imageProgress = (t.tick * 50) / duration.inMilliseconds,
+        );
         if (_imageProgress >= 1.0) _nextStory();
       }
     });
@@ -159,19 +169,17 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               _cancelTimer();
             },
             onLongPressEnd: (_) {
-              if (story.isImage) _startImageTimer(); else _player?.play();
+              if (story.isImage)
+                _startImageTimer();
+              else
+                _player?.play();
             },
             child: Center(child: _buildMedia(story)),
           ),
 
           // 2. UI Overlay (Header + Progress)
           SafeArea(
-            child: Column(
-              children: [
-                _buildProgressBars(),
-                _buildHeader(),
-              ],
-            ),
+            child: Column(children: [_buildProgressBars(), _buildHeader()]),
           ),
         ],
       ),
@@ -187,7 +195,9 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
         height: double.infinity,
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;
-          return const Center(child: CircularProgressIndicator(color: Color(0xFFFF6900)));
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+          );
         },
       );
     }
@@ -196,6 +206,17 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       return Stack(
         alignment: Alignment.center,
         children: [
+          // Background placeholder while loading to prevent black screen
+          if (_isLoading)
+            Positioned.fill(
+              child: Image.network(
+                widget.userProfile,
+                fit: BoxFit.cover,
+                color: Colors.black.withOpacity(0.7),
+                colorBlendMode: BlendMode.darken,
+              ),
+            ),
+
           SizedBox.expand(
             child: FittedBox(
               fit: BoxFit.contain,
@@ -205,9 +226,9 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                 child: Video(
                   controller: _videoController!,
                   controls: NoVideoControls,
-                )
-              )
-            )
+                ),
+              ),
+            ),
           ),
           if (_isLoading)
             const CircularProgressIndicator(color: Color(0xFFFF6900)),
@@ -218,17 +239,18 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   }
 
   Widget _buildAudioPlaceholder() {
-    return Center(child: InkWell(
-      onTap: (){
-        setState(() {
-          if (_player != null) {
-            _player!.state.playing 
-                ? _player!.pause() 
-                : _player!.play();
-          }
-        });
-      },
-      child: Image.asset("assets/images/music_logo.png")),);
+    return Center(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            if (_player != null) {
+              _player!.state.playing ? _player!.pause() : _player!.play();
+            }
+          });
+        },
+        child: Image.asset("assets/images/music_logo.png"),
+      ),
+    );
   }
 
   Widget _buildProgressBars() {
@@ -237,7 +259,8 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       child: Row(
         children: List.generate(widget.stories.length, (index) {
           double val = 0.0;
-          if (index < _currentIndex) val = 1.0;
+          if (index < _currentIndex)
+            val = 1.0;
           else if (index == _currentIndex) {
             val = (_player != null) ? _currentMediaProgress : _imageProgress;
           }
@@ -245,8 +268,15 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             child: Container(
               height: 2,
               margin: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)),
-              child: FractionallySizedBox(alignment: Alignment.centerLeft, widthFactor: val.clamp(0, 1), child: Container(color: Colors.white)),
+              decoration: BoxDecoration(
+                color: Colors.white30,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: val.clamp(0, 1),
+                child: Container(color: Colors.white),
+              ),
             ),
           );
         }),
@@ -259,14 +289,38 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 15),
       child: Row(
         children: [
-          CircleAvatar(radius: 18, backgroundImage: NetworkImage(widget.userProfile)),
+          CircleAvatar(
+            radius: 18,
+            backgroundImage: NetworkImage(widget.userProfile),
+          ),
           const SizedBox(width: 12),
-          Text(widget.userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(
+            widget.userName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(width: 8),
-          const Text("12h", style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            "12h",
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const Spacer(),
-          IconButton(icon: Icon(_isMuted ? Icons.volume_off : Icons.volume_up, color: Colors.white), onPressed: () => setState(() { _isMuted = !_isMuted; _player?.setVolume(_isMuted ? 0.0 : 100.0); })),
-          IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(context)),
+          IconButton(
+            icon: Icon(
+              _isMuted ? Icons.volume_off : Icons.volume_up,
+              color: Colors.white,
+            ),
+            onPressed: () => setState(() {
+              _isMuted = !_isMuted;
+              _player?.setVolume(_isMuted ? 0.0 : 100.0);
+            }),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
         ],
       ),
     );

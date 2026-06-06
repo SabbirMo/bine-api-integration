@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'dart:math';
+import 'dart:io';
+import 'package:dio/dio.dart';
 
 class ProductAudioItem extends StatefulWidget {
   final String audioUrl;
@@ -28,15 +30,46 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
   }
 
   Future<void> _initPlayer() async {
-    _player.setPlaylistMode(PlaylistMode.loop);
+    _player.setPlaylistMode(PlaylistMode.single);
     _player.setVolume(widget.isMuted ? 0.0 : 100.0);
-    await _player.open(Media(widget.audioUrl));
 
-    if (mounted) {
-      setState(() {
-        _isInitialized = true;
-        _isPlaying = true;
-      });
+    _player.stream.playing.listen((playing) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = playing;
+        });
+      }
+    });
+
+    _player.stream.error.listen((error) {
+      debugPrint('Audio Player Error: $error');
+    });
+
+    try {
+      // Step 1: Download the file using Dio to bypass media_kit network issues
+      final dio = Dio();
+      final tempDir = Directory.systemTemp;
+      // Create a unique filename based on the URL hash to avoid conflicts
+      final fileName = 'audio_${widget.audioUrl.hashCode}.mp3';
+      final savePath = '${tempDir.path}/$fileName';
+
+      final file = File(savePath);
+
+      // Only download if it doesn't already exist
+      if (!await file.exists()) {
+        await dio.download(widget.audioUrl, savePath);
+      }
+
+      // Step 2: Play the local file
+      await _player.open(Media('file://$savePath'));
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error downloading or opening audio: $e');
     }
   }
 

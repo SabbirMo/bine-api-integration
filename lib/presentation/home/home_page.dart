@@ -130,48 +130,55 @@ class _AccueilScreenState extends State<AccueilScreen> {
             return const Center(child: Text("No Data Available"));
           }
 
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                // Banner Video
-                if (homeData.banner != null)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: VideoPlaceholder(
-                        thumbnailUrl:
-                            homeData.banner!.thumbnailUrl ??
-                            "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
-                        link:
-                            homeData.banner!.videoUrl ??
-                            "https://www.pexels.com/download/video/36418671/",
+          return RefreshIndicator(
+            color: const Color(0xFFE8500A),
+            onRefresh: () async {
+              await context.read<HomeProvider>().fetchHomeData();
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                children: [
+                  // Banner Video
+                  if (homeData.banner != null)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: VideoPlaceholder(
+                          thumbnailUrl:
+                              homeData.banner!.thumbnailUrl ??
+                              "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
+                          link:
+                              homeData.banner!.videoUrl ??
+                              "https://www.pexels.com/download/video/36418671/",
+                        ),
                       ),
                     ),
+
+                  // Address Section
+                  if (homeData.storeAddress != null)
+                    _buildAddressBar(homeData.storeAddress!),
+
+                  _buildSectionHeader(
+                    "Clients Livrés 🏆",
+                    "assets/icon/right.svg",
+                    titelIcon: true,
+                    showMore: true,
                   ),
 
-                // Address Section
-                if (homeData.storeAddress != null)
-                  _buildAddressBar(homeData.storeAddress!),
+                  // Stories List
+                  if (homeData.storyCategories.isNotEmpty)
+                    _buildStoryListDynamic(homeData.storyCategories),
 
-                _buildSectionHeader(
-                  "Clients Livrés 🏆",
-                  "assets/icon/right.svg",
-                  titelIcon: true,
-                  showMore: true,
-                ),
+                  // Product Sections
+                  ...homeData.productSections.map((section) {
+                    return ProductSectionWidget(section: section);
+                  }),
 
-                // Stories List
-                if (homeData.storyCategories.isNotEmpty)
-                  _buildStoryListDynamic(homeData.storyCategories),
-
-                // Product Sections
-                ...homeData.productSections.map((section) {
-                  return ProductSectionWidget(section: section);
-                }),
-
-                const SizedBox(height: 20),
-              ],
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           );
         },

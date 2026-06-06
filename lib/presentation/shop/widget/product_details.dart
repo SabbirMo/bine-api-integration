@@ -169,6 +169,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     return ProductVideoItem(
                       productId: _product.id,
                       videoUrl: media.url,
+                      thumbnailUrl: _product.mainImage,
                       isMuted: widget.isMuted,
                     );
                   } else if (media.isAudio) {

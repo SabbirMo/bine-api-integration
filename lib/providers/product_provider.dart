@@ -15,23 +15,31 @@ class ProductProvider extends ChangeNotifier {
   List<ProductModel> get allProducts => _allProducts;
 
   Future<void> fetchProducts() async {
-    _isLoading = true;
+    if (_allProducts.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
     _errorMessage = null;
-    notifyListeners();
 
     try {
-      final response = await _apiServices.get('/api/mobile/products/', requireAuth: false);
-      
+      final response = await _apiServices.get(
+        '/api/mobile/products/',
+        requireAuth: false,
+      );
+
       final dynamic data = response.data;
-      
-      if (data != null && data is Map<String, dynamic> && data.containsKey('results')) {
-        _allProducts = (data['results'] as List).map((e) => ProductModel.fromJson(e)).toList();
+
+      if (data != null &&
+          data is Map<String, dynamic> &&
+          data.containsKey('results')) {
+        _allProducts = (data['results'] as List)
+            .map((e) => ProductModel.fromJson(e))
+            .toList();
       } else if (data is List) {
         _allProducts = data.map((e) => ProductModel.fromJson(e)).toList();
       } else {
         _allProducts = [];
       }
-      
     } catch (e) {
       _errorMessage = e.toString();
     } finally {
@@ -56,12 +64,27 @@ class ProductProvider extends ChangeNotifier {
     }).toList();
   }
 
+  final Map<int, ProductModel> _productDetailsCache = {};
+
   Future<ProductModel?> fetchProductDetails(int id) async {
+    if (_productDetailsCache.containsKey(id)) {
+      _fetchProductDetailsBackground(id);
+      return _productDetailsCache[id];
+    }
+    return await _fetchProductDetailsBackground(id);
+  }
+
+  Future<ProductModel?> _fetchProductDetailsBackground(int id) async {
     try {
-      final response = await _apiServices.get('/api/mobile/products/$id/', requireAuth: false);
+      final response = await _apiServices.get(
+        '/api/mobile/products/$id/',
+        requireAuth: false,
+      );
       final data = response.data;
       if (data != null && data is Map<String, dynamic>) {
-        return ProductModel.fromJson(data);
+        final product = ProductModel.fromJson(data);
+        _productDetailsCache[id] = product;
+        return product;
       }
     } catch (e) {
       debugPrint('Failed to fetch product details: $e');
@@ -71,7 +94,10 @@ class ProductProvider extends ChangeNotifier {
 
   Future<void> trackVideoView(int id) async {
     try {
-      await _apiServices.post('/api/mobile/products/$id/video-view/', requireAuth: false);
+      await _apiServices.post(
+        '/api/mobile/products/$id/video-view/',
+        requireAuth: false,
+      );
     } catch (e) {
       debugPrint('Failed to track video view: $e');
     }

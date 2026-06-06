@@ -15,9 +15,11 @@ class CategoryProvider extends ChangeNotifier {
   List<CategoryModel> get categories => _categories;
 
   Future<void> fetchCategories() async {
-    _isLoading = true;
+    if (_categories.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
     _errorMessage = null;
-    notifyListeners();
 
     try {
       final response = await _apiServices.get(

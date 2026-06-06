@@ -3,6 +3,8 @@ import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'dart:io';
+import 'package:dio/dio.dart';
 
 class VideoStoryScreen extends StatefulWidget {
   final List<StoryContent> stories;

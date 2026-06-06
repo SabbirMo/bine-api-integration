@@ -48,7 +48,7 @@ class _HomeProductCardState extends State<HomeProductCard> {
         ),
       );
 
-      _player!.setPlaylistMode(PlaylistMode.loop);
+      _player!.setPlaylistMode(PlaylistMode.single);
 
       _player!.stream.playing.listen((playing) {
         if (mounted) {
