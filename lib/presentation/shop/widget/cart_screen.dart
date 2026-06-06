@@ -1,5 +1,8 @@
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/data/models/cart_model.dart';
 
 class CartBottomSheet extends StatefulWidget {
   const CartBottomSheet({super.key});
@@ -9,131 +12,152 @@ class CartBottomSheet extends StatefulWidget {
 }
 
 class _CartBottomSheetState extends State<CartBottomSheet> {
-  // Dummy local state for demonstration
-  int quantity = 1;
-  double unitPrice = 190000;
-  bool isDeleted = false;
-
-  void _increment() => setState(() => quantity++);
-  void _decrement() {
-    if (quantity > 1) setState(() => quantity--);
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CartProvider>().fetchCart();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Calculate total based on quantity
-    String totalDisplay = (unitPrice * quantity).toStringAsFixed(0);
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-      ),
-      child: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Row(
-                children: [
-                  // 1. Left Back Arrow
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.black),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-
-                  // 2. Centered Title
-                  const Expanded(
-                    child: Text(
-                      "MON PANIER",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-
-                  // 3. Right Cancel Button
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Colors.black),
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
+    return Consumer<CartProvider>(
+      builder: (context, cartProvider, child) {
+        if (cartProvider.isLoading) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
             ),
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        }
 
-            Expanded(
-              child: isDeleted
-                  ? const Center(child: Text("Votre panier est vide"))
-                  : ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      children: [
-                        _buildCartItem(),
-                        const SizedBox(height: 30),
+        final cart = cartProvider.cart;
+        final items = cart?.items ?? [];
+        String totalDisplay = cart?.total.toStringAsFixed(2) ?? "0";
 
-                        // Total Box
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF3E6),
-                            borderRadius: BorderRadius.circular(15),
-                            border: Border.all(
-                              color: const Color(0xFFFFD1A1),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                "Total",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                "$totalDisplay FCFA",
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFFF6900),
-                                ),
-                              ),
-                            ],
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          child: SafeArea(
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Row(
+                    children: [
+                      // 1. Left Back Arrow
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.black),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+
+                      // 2. Centered Title
+                      const Expanded(
+                        child: Text(
+                          "MON PANIER",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ],
-                    ),
-            ),
+                      ),
 
-            // Bottom Buttons
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  _buildSecondaryButton("Continuer Mes Achats", Icons.add),
-                  const SizedBox(height: 12),
-                  _buildPrimaryButton("JE VALIDE"),
-                ],
-              ),
+                      // 3. Right Cancel Button
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.black,
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: items.isEmpty
+                      ? const Center(child: Text("Votre panier est vide"))
+                      : ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          children: [
+                            ...items
+                                .map((item) => _buildCartItem(item))
+                                .toList(),
+                            const SizedBox(height: 30),
+
+                            // Total Box
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF3E6),
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(
+                                  color: const Color(0xFFFFD1A1),
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    "Total",
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    "$totalDisplay FCFA",
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFFF6900),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+
+                // Bottom Buttons
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      const Divider(),
+                      const SizedBox(height: 10),
+                      _buildSecondaryButton("Continuer Mes Achats", Icons.add),
+                      const SizedBox(height: 12),
+                      _buildPrimaryButton("JE VALIDE"),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildCartItem() {
+  Widget _buildCartItem(CartItemModel item) {
     return Container(
       padding: const EdgeInsets.all(12),
+      margin: EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
@@ -145,10 +169,21 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.network(
-              "https://images.pexels.com/photos/1649771/pexels-photo-1649771.jpeg",
+              item.mainImage ?? "",
               width: 80,
               height: 80,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: 80,
+                  height: 80,
+                  color: Colors.grey[200],
+                  child: const Icon(
+                    Icons.image_not_supported,
+                    color: Colors.grey,
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(width: 15),
@@ -156,12 +191,12 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Galaxy Buds Pro",
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                Text(
+                  item.productName,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  "${unitPrice.toInt()} FCFA",
+                  "${item.priceAfterDiscount.toDouble()} FCFA",
                   style: const TextStyle(
                     color: Color(0xFFFF6900),
                     fontWeight: FontWeight.bold,
@@ -177,15 +212,25 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _counterBtn(Icons.remove, _decrement),
+                      _counterBtn(Icons.remove, () {
+                        Provider.of<CartProvider>(
+                          context,
+                          listen: false,
+                        ).decrement(item.id);
+                      }),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Text(
-                          "$quantity",
+                          "${item.quantity}",
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
-                      _counterBtn(Icons.add, _increment),
+                      _counterBtn(Icons.add, () {
+                        Provider.of<CartProvider>(
+                          context,
+                          listen: false,
+                        ).increment(item.id);
+                      }),
                     ],
                   ),
                 ),
@@ -194,7 +239,12 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: () => setState(() => isDeleted = true),
+            onPressed: () {
+              Provider.of<CartProvider>(
+                context,
+                listen: false,
+              ).remove(item.id);
+            },
           ),
         ],
       ),

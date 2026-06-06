@@ -7,6 +7,7 @@ import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
 import 'package:binetatour/presentation/shop/widget/shop_product_card.dart';
+import 'package:binetatour/providers/cart_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
@@ -101,9 +102,17 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(4.0),
-                      child: Text("1", style: TextStyle(color: Colors.white)),
+                    child: Consumer<CartProvider>(
+                      builder: (context, cartProvider, child) {
+                        final totalItems = cartProvider.cart?.items.length ?? 0;
+                        return Padding(
+                          padding: const EdgeInsets.all(4.0),
+                          child: Text(
+                            totalItems.toString(),
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),

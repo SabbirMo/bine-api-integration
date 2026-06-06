@@ -34,8 +34,19 @@ class ApiErrorHandle {
       if (data['error'] != null) {
         return data['error'].toString();
       }
+
+      if (data['detail'] != null) {
+        return data['detail'].toString();
+      }
+
+      if (data['non_field_errors'] != null) {
+        if (data['non_field_errors'] is List) {
+          return (data['non_field_errors'] as List).join('\n');
+        }
+        return data['non_field_errors'].toString();
+      }
     }
-    return 'An unexpected error occurred';
+    return data != null ? data.toString() : 'An unexpected error occurred';
   }
 
   static String? _extractValidationMessage(dynamic data) {

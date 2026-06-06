@@ -4,6 +4,7 @@ import 'package:binetatour/presentation/shop/widget/product_video_item.dart';
 import 'package:binetatour/presentation/shop/widget/product_audio_item.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
+import 'package:binetatour/providers/cart_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
@@ -249,6 +250,8 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
             children: [
               InkWell(
                 onTap: () async {
+                  context.read<CartProvider>().addToCart(_product);
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: const Text(
@@ -261,9 +264,6 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      // Using a huge bottom margin to push the SnackBar to the top causes 
-                      // layout overflow crashes because it exceeds the Scaffold's safe area.
-                      // Using a standard floating margin instead.
                       margin: const EdgeInsets.all(20),
                     ),
                   );

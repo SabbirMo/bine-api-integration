@@ -1,3 +1,4 @@
+import 'package:binetatour/core/login/login.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/feedback_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/invoice/invoice_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/my_order_screen.dart';
@@ -25,44 +26,92 @@ class ProfileView extends StatelessWidget {
               children: [
                 const CircleAvatar(
                   radius: 35,
-                  backgroundImage: AssetImage('assets/images/dp.png'), // Replace with actual user image
+                  backgroundImage: AssetImage(
+                    'assets/images/dp.png',
+                  ), // Replace with actual user image
                 ),
                 const SizedBox(width: 15),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Text("Pappu", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text("Pappyroy6393@Gmail.Com", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    Text(
+                      "Pappu",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      "Pappyroy6393@Gmail.Com",
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
                   ],
                 ),
               ],
             ),
           ),
           const SizedBox(height: 25),
-          
+
           // Menu Items
           InkWell(
-            onTap: (){
+            onTap: () {
               // Navigate to My Orders Screen
-              Navigator.push(context, MaterialPageRoute(builder: (_) => MyOrdersPage()));
-             },
-            
-            child: _buildMenuItem("assets/icon/order.svg", "Mes Commandes", Color(0xffF54900))),
-          InkWell(
-            
-            onTap: (){
-              Navigator.push(context, MaterialPageRoute(builder: (_) => InvoicesScreen( )));
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => MyOrdersPage()),
+              );
             },
-            child: _buildMenuItem("assets/icon/invoice.svg", "Mes factures", Color(0xff00C950))),
+
+            child: _buildMenuItem(
+              "assets/icon/order.svg",
+              "Mes Commandes",
+              Color(0xffF54900),
+            ),
+          ),
           InkWell(
-            onTap: (){
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => InvoicesScreen()),
+              );
+            },
+            child: _buildMenuItem(
+              "assets/icon/invoice.svg",
+              "Mes factures",
+              Color(0xff00C950),
+            ),
+          ),
+          InkWell(
+            onTap: () {
               // Navigate to Feedback Screen
-              Navigator.push(context, MaterialPageRoute(builder: (_) => GiveReviewScreen()));
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => GiveReviewScreen()),
+              );
             },
-            child: _buildMenuItem("assets/icon/fav.svg", "Mes avis", Color(0xffF0B100))),
-          
+            child: _buildMenuItem(
+              "assets/icon/fav.svg",
+              "Mes avis",
+              Color(0xffF0B100),
+            ),
+          ),
+          InkWell(
+            onTap: () {
+              // Navigate to Feedback Screen
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => Login()),
+              );
+            },
+            child: _buildMenuItem(
+              "assets/icon/fav.svg",
+              "Login",
+              Color(0xffF0B100),
+            ),
+          ),
+
           const SizedBox(height: 20),
-          
+
           // Logout Button
           GestureDetector(
             onTap: onLogout,
@@ -76,7 +125,13 @@ class ProfileView extends StatelessWidget {
                 children: const [
                   Icon(Icons.logout, color: Colors.red),
                   SizedBox(width: 15),
-                  Text("Déconnexion", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
+                  Text(
+                    "Déconnexion",
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -98,11 +153,17 @@ class ProfileView extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: iconColor, borderRadius: BorderRadius.circular(25)),
+            decoration: BoxDecoration(
+              color: iconColor,
+              borderRadius: BorderRadius.circular(25),
+            ),
             child: SvgPicture.asset(icon),
           ),
           const SizedBox(width: 15),
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );

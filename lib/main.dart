@@ -1,3 +1,4 @@
+import 'package:binetatour/core/login/login_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -7,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/product_provider.dart';
+import 'providers/cart_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +25,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => HomeProvider()),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
+        ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProvider(create: (_) => LoginProvider()),
       ],
       child: const MyApp(),
     ),
