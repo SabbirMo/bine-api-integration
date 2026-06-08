@@ -17,7 +17,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
     ),
     AppNotification(
       title: "Offre Flash ! ⚡",
-      message: "Profitez de -20% sur toute la catégorie Tech aujourd'hui seulement.",
+      message:
+          "Profitez de -20% sur toute la catégorie Tech aujourd'hui seulement.",
       time: "Il y a 1 heure",
       type: NotificationType.promo,
     ),
@@ -43,16 +44,25 @@ class _NotificationScreenState extends State<NotificationScreen> {
         ),
         title: const Text(
           "NOTIFICATIONS",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () {
               setState(() {
-                for (var n in notifications) { n.isRead = true; }
+                for (var n in notifications) {
+                  n.isRead = true;
+                }
               });
             },
-            child: const Text("Tout lire", style: TextStyle(color: Color(0xFFFF6900))),
+            child: const Text(
+              "Tout lire",
+              style: TextStyle(color: Color(0xFFFF6900)),
+            ),
           ),
         ],
       ),
@@ -61,7 +71,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
           : ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 10),
               itemCount: notifications.length,
-              separatorBuilder: (context, index) => const Divider(height: 1, indent: 70),
+              separatorBuilder: (context, index) =>
+                  const Divider(height: 1, indent: 70),
               itemBuilder: (context, index) {
                 final item = notifications[index];
                 return _buildNotificationItem(item);
@@ -72,7 +83,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Widget _buildNotificationItem(AppNotification item) {
     return Container(
-      color: item.isRead ? Colors.transparent : const Color(0xFFFFF3E6).withOpacity(0.3),
+      color: item.isRead
+          ? Colors.transparent
+          : const Color(0xFFFFF3E6).withValues(alpha: 0.3),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,18 +104,27 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     Text(
                       item.title,
                       style: TextStyle(
-                        fontWeight: item.isRead ? FontWeight.w500 : FontWeight.bold,
+                        fontWeight: item.isRead
+                            ? FontWeight.w500
+                            : FontWeight.bold,
                         fontSize: 15,
                       ),
                     ),
                     if (!item.isRead)
-                      const CircleAvatar(radius: 4, backgroundColor: Color(0xFFFF6900)),
+                      const CircleAvatar(
+                        radius: 4,
+                        backgroundColor: Color(0xFFFF6900),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 5),
                 Text(
                   item.message,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.4),
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -139,7 +161,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: iconColor.withOpacity(0.1),
+        color: iconColor.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(iconData, color: iconColor, size: 22),
@@ -151,9 +173,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_none_outlined, size: 80, color: Colors.grey.shade300),
+          Icon(
+            Icons.notifications_none_outlined,
+            size: 80,
+            color: Colors.grey.shade300,
+          ),
           const SizedBox(height: 15),
-          const Text("Aucune notification", style: TextStyle(color: Colors.grey, fontSize: 16)),
+          const Text(
+            "Aucune notification",
+            style: TextStyle(color: Colors.grey, fontSize: 16),
+          ),
         ],
       ),
     );

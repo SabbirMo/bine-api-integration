@@ -38,12 +38,12 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
   Future<void> _initPlayer() async {
     if (_isInitializing || _player != null) return;
-    
+
     setState(() {
       _isInitializing = true;
       _hasError = false;
     });
-    
+
     try {
       _player = Player();
       _controller = VideoController(
@@ -55,7 +55,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
       _player!.setPlaylistMode(PlaylistMode.single);
       _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
-      
+
       _player!.stream.playing.listen((playing) {
         if (mounted) {
           setState(() {
@@ -66,7 +66,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       });
 
       await _player!.open(Media(widget.videoUrl));
-      
+
       if (mounted) {
         context.read<ProductProvider>().trackVideoView(widget.productId);
       }
@@ -109,10 +109,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           children: [
             const Icon(Icons.error_outline, color: Colors.red, size: 50),
             const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _initPlayer,
-              child: const Text('Retry'),
-            ),
+            ElevatedButton(onPressed: _initPlayer, child: const Text('Retry')),
           ],
         ),
       );
@@ -126,9 +123,9 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
             Video(
               controller: _controller!,
               controls: NoVideoControls,
-              fill: Colors.transparent, 
+              fill: Colors.transparent,
             ),
-          
+
           if (!_isVideoReady || _isInitializing || !_isPlaying)
             Positioned.fill(
               child: Container(
@@ -137,14 +134,14 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                     ? Image.network(
                         widget.thumbnailUrl!,
                         fit: BoxFit.contain,
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         colorBlendMode: BlendMode.darken,
-                        errorBuilder: (_, __, ___) => const SizedBox(),
+                        errorBuilder: (_, _, _) => const SizedBox(),
                       )
                     : const SizedBox(),
               ),
             ),
-            
+
           if (_isInitializing)
             const Center(
               child: CircularProgressIndicator(color: Color(0xFFFF6900)),

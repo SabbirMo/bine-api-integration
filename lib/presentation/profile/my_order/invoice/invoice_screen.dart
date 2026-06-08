@@ -72,6 +72,7 @@ class InvoicesScreen extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildInvoiceCard({
     required String id,
     required String date,
@@ -88,7 +89,7 @@ class InvoicesScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -102,10 +103,16 @@ class InvoicesScreen extends StatelessWidget {
             children: [
               Text(
                 id,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: statusColor,
                   borderRadius: BorderRadius.circular(20),
@@ -122,10 +129,7 @@ class InvoicesScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            date,
-            style: const TextStyle(color: Colors.grey, fontSize: 13),
-          ),
+          Text(date, style: const TextStyle(color: Colors.grey, fontSize: 13)),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Divider(height: 1),

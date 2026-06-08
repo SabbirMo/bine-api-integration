@@ -13,7 +13,7 @@ class ShopProductCard extends StatelessWidget {
   final bool showDiscountPercentage; // Controls the red badge
   final bool showOldPrice; // Controls the strikethrough text
 
-  ShopProductCard({
+  const ShopProductCard({
     super.key,
     required this.content,
     this.assetThumbnail,
@@ -77,8 +77,8 @@ class ShopProductCard extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withOpacity(0.3),
-                  Colors.black.withOpacity(0.9),
+                  Colors.black.withValues(alpha: 0.3),
+                  Colors.black.withValues(alpha: 0.9),
                 ],
                 stops: const [0.4, 0.7, 1.0],
               ),

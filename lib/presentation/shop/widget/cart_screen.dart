@@ -91,9 +91,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                       : ListView(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           children: [
-                            ...items
-                                .map((item) => _buildCartItem(item))
-                                .toList(),
+                            ...items.map((item) => _buildCartItem(item)),
                             const SizedBox(height: 30),
 
                             // Total Box
@@ -240,10 +238,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             onPressed: () {
-              Provider.of<CartProvider>(
-                context,
-                listen: false,
-              ).remove(item.id);
+              Provider.of<CartProvider>(context, listen: false).remove(item.id);
             },
           ),
         ],

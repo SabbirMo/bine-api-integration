@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'dart:io';
-import 'package:dio/dio.dart';
 
 class StoryDetailScreen extends StatefulWidget {
   final List<StoryContent> stories;
@@ -57,7 +55,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       _initializeMedia(story);
     } else {
       _isLoading = false;
-      _startImageTimer();
+      startImageTimer();
     }
     setState(() {});
   }
@@ -103,7 +101,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     });
   }
 
-  void _startImageTimer() {
+  void startImageTimer() {
     const duration = Duration(seconds: 5);
     _timer = Timer.periodic(const Duration(milliseconds: 50), (t) {
       if (mounted) {
@@ -169,10 +167,11 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               _cancelTimer();
             },
             onLongPressEnd: (_) {
-              if (story.isImage)
-                _startImageTimer();
-              else
+              if (story.isImage) {
+                startImageTimer();
+              } else {
                 _player?.play();
+              }
             },
             child: Center(child: _buildMedia(story)),
           ),
@@ -212,7 +211,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               child: Image.network(
                 widget.userProfile,
                 fit: BoxFit.cover,
-                color: Colors.black.withOpacity(0.7),
+                color: Colors.black.withValues(alpha: 0.7),
                 colorBlendMode: BlendMode.darken,
               ),
             ),
@@ -259,9 +258,9 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       child: Row(
         children: List.generate(widget.stories.length, (index) {
           double val = 0.0;
-          if (index < _currentIndex)
+          if (index < _currentIndex) {
             val = 1.0;
-          else if (index == _currentIndex) {
+          } else if (index == _currentIndex) {
             val = (_player != null) ? _currentMediaProgress : _imageProgress;
           }
           return Expanded(

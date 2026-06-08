@@ -16,13 +16,17 @@ class VideoPlaceholder extends StatefulWidget {
 
 class _VideoPlaceholderState extends State<VideoPlaceholder> {
   late final Player _player = Player();
-  late final VideoController _videoController = VideoController(_player, configuration: const VideoControllerConfiguration(enableHardwareAcceleration: false));
-  
-  bool _isInitialized = false;
+  late final VideoController _videoController = VideoController(
+    _player,
+    configuration: const VideoControllerConfiguration(
+      enableHardwareAcceleration: false,
+    ),
+  );
+
   bool _showControls = false;
   bool _isMuted = true;
   Timer? _hideTimer;
-  
+
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isPlaying = false;
@@ -36,7 +40,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   void _initializePlayer() {
     _player.setPlaylistMode(PlaylistMode.single);
     _player.setVolume(0.0); // Default muted
-    
+
     _player.stream.position.listen((pos) {
       if (mounted) setState(() => _position = pos);
     });
@@ -102,8 +106,12 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                     fit: BoxFit.cover,
                     clipBehavior: Clip.hardEdge,
                     child: SizedBox(
-                      width: _videoController.player.state.width?.toDouble() ?? 16.0,
-                      height: _videoController.player.state.height?.toDouble() ?? 9.0,
+                      width:
+                          _videoController.player.state.width?.toDouble() ??
+                          16.0,
+                      height:
+                          _videoController.player.state.height?.toDouble() ??
+                          9.0,
                       child: Video(
                         controller: _videoController,
                         controls: NoVideoControls,
@@ -121,16 +129,26 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                           ? Image.network(
                               widget.thumbnailUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Center(
-                                child: Icon(Icons.image_not_supported, color: Colors.white38, size: 40),
+                              errorBuilder: (_, _, _) => const Center(
+                                child: Icon(
+                                  Icons.image_not_supported,
+                                  color: Colors.white38,
+                                  size: 40,
+                                ),
                               ),
                               loadingBuilder: (context, child, progress) {
                                 if (progress == null) return child;
-                                return const Center(child: CircularProgressIndicator(color: Colors.white));
+                                return const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                  ),
+                                );
                               },
                             )
                           : const Center(
-                              child: CircularProgressIndicator(color: Colors.white),
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
                             ),
                     ),
                   ),
@@ -145,9 +163,9 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(0.3),
+                          Colors.black.withValues(alpha: 0.3),
                           Colors.transparent,
-                          Colors.black.withOpacity(0.7),
+                          Colors.black.withValues(alpha: 0.7),
                         ],
                       ),
                     ),
@@ -220,9 +238,8 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => FullScreenVideoPlayer(
-                                      player: _player,
-                                    ),
+                                    builder: (context) =>
+                                        FullScreenVideoPlayer(player: _player),
                                   ),
                                 );
                               },
@@ -248,8 +265,13 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                             thumbColor: Colors.white,
                           ),
                           child: Slider(
-                            value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
-                            max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
+                            value: _position.inMilliseconds.toDouble().clamp(
+                              0.0,
+                              _duration.inMilliseconds.toDouble(),
+                            ),
+                            max: _duration.inMilliseconds.toDouble() > 0
+                                ? _duration.inMilliseconds.toDouble()
+                                : 1.0,
                             onChanged: (val) {
                               _player.seek(Duration(milliseconds: val.toInt()));
                             },

@@ -17,7 +17,11 @@ class GiveReviewScreen extends StatelessWidget {
         ),
         title: const Text(
           "Je donne mon avis",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         centerTitle: true,
       ),
@@ -32,8 +36,13 @@ class GiveReviewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             InkWell(
-              onTap: (){
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackDetailsScreen()));
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const FeedbackDetailsScreen(),
+                  ),
+                );
               },
               child: _buildReviewCard(
                 orderId: "CMD-001",
@@ -47,6 +56,7 @@ class GiveReviewScreen extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildReviewCard({
     required String orderId,
     required String deliveryDate,
@@ -60,7 +70,7 @@ class GiveReviewScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -74,10 +84,16 @@ class GiveReviewScreen extends StatelessWidget {
             children: [
               Text(
                 orderId,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF28B446), // Success Green
                   borderRadius: BorderRadius.circular(20),
@@ -125,7 +141,9 @@ class GiveReviewScreen extends StatelessWidget {
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFBE4D8), // Soft Orange
-                foregroundColor: const Color(0xFFE65100), // Dark Orange Text/Icon
+                foregroundColor: const Color(
+                  0xFFE65100,
+                ), // Dark Orange Text/Icon
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

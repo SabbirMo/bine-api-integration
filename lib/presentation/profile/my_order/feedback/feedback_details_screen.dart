@@ -53,7 +53,10 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+          ),
         ],
       ),
       child: Column(
@@ -98,7 +101,10 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+          ),
         ],
       ),
       child: Column(
@@ -118,10 +124,8 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
             itemSize: 40,
             unratedColor: Colors.grey.shade200,
             itemPadding: const EdgeInsets.only(right: 8.0),
-            itemBuilder: (context, _) => const Icon(
-              Icons.star,
-              color: Colors.orange,
-            ),
+            itemBuilder: (context, _) =>
+                const Icon(Icons.star, color: Colors.orange),
             onRatingUpdate: (rating) {
               setState(() => _currentRating = rating);
             },
@@ -140,8 +144,14 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
               hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
               filled: true,
               fillColor: const Color(0xFFF9F9F9),
-              enabledBorder: OutlineInputBorder(   borderRadius: BorderRadius.circular(12),borderSide: BorderSide(color: Color(0xffE74B08))),
-              disabledBorder:OutlineInputBorder(   borderRadius: BorderRadius.circular(12),borderSide: BorderSide(color: Color(0xffE74B08))) ,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Color(0xffE74B08)),
+              ),
+              disabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Color(0xffE74B08)),
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -197,33 +207,35 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
     );
   }
 
-Widget _buildAddMediaButton() {
-  return DottedBorder(
-
-    child: InkWell( // Added InkWell for better user feedback
-      onTap: () {
-        // Handle media picking logic here
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 70, // Fixed width to match the screenshot
-        height: 70, // Fixed height to match the screenshot
-        alignment: Alignment.center,
-        child: const Icon(Icons.add, color: Colors.grey, size: 28),
+  Widget _buildAddMediaButton() {
+    return DottedBorder(
+      child: InkWell(
+        // Added InkWell for better user feedback
+        onTap: () {
+          // Handle media picking logic here
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 70, // Fixed width to match the screenshot
+          height: 70, // Fixed height to match the screenshot
+          alignment: Alignment.center,
+          child: const Icon(Icons.add, color: Colors.grey, size: 28),
+        ),
       ),
-    ),
-  );
-}
-
+    );
+  }
 
   Widget _buildSubmitButton() {
     return SizedBox(
       width: double.infinity,
       height: 55,
       child: ElevatedButton(
-        onPressed: () { 
+        onPressed: () {
           // Logic to submit _currentRating and _commentController.text
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const SubmitReviewScreen())); // Navigate to details screen after submission
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SubmitReviewScreen()),
+          ); // Navigate to details screen after submission
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE65100),

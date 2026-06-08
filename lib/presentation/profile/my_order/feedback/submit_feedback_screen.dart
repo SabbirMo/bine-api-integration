@@ -85,7 +85,10 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
         color: const Color(0xFFF8F9FA),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(text, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 14, color: Colors.black87),
+      ),
     );
   }
 
@@ -100,18 +103,25 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Notez votre expérience", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text(
+            "Notez votre expérience",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
           RatingBar.builder(
             initialRating: _rating,
             minRating: 1,
             itemSize: 36,
             unratedColor: Colors.grey.shade200,
-            itemBuilder: (context, _) => const Icon(Icons.star, color: Colors.orange),
+            itemBuilder: (context, _) =>
+                const Icon(Icons.star, color: Colors.orange),
             onRatingUpdate: (rating) => setState(() => _rating = rating),
           ),
           const SizedBox(height: 20),
-          const Text("Votre commentaire", style: TextStyle(fontWeight: FontWeight.w500)),
+          const Text(
+            "Votre commentaire",
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _commentController,
@@ -121,16 +131,24 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
               hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFFF6D00)), // Orange border
+                borderSide: const BorderSide(
+                  color: Color(0xFFFF6D00),
+                ), // Orange border
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFFF6D00), width: 2),
+                borderSide: const BorderSide(
+                  color: Color(0xFFFF6D00),
+                  width: 2,
+                ),
               ),
             ),
           ),
           const SizedBox(height: 20),
-          const Text("Ajouter des photos/vidéos", style: TextStyle(fontWeight: FontWeight.w500)),
+          const Text(
+            "Ajouter des photos/vidéos",
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -152,7 +170,7 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade300),
         image: const DecorationImage(
-          image: NetworkImage('https://via.placeholder.com/150'), 
+          image: NetworkImage('https://via.placeholder.com/150'),
           fit: BoxFit.cover,
         ),
       ),
@@ -161,8 +179,7 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
 
   Widget _buildAddMediaButton() {
     return DottedBorder(
-    
-      child: Container(
+      child: SizedBox(
         width: 70,
         height: 70,
         child: Column(
@@ -186,7 +203,9 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
           onPressed: () {},
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF7E848C), // Greyish blue button
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
             elevation: 0,
           ),
           child: const Text(

@@ -127,7 +127,7 @@ class _HomeProductCardState extends State<HomeProductCard> {
                   child: Image.asset(
                     widget.assetThumbnail,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
+                    errorBuilder: (_, _, _) => Container(
                       color: Colors.grey.shade900,
                       child: const Icon(
                         Icons.image_not_supported,
@@ -144,7 +144,10 @@ class _HomeProductCardState extends State<HomeProductCard> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.85),
+                  ],
                   stops: const [0.5, 1.0],
                 ),
               ),
@@ -182,7 +185,7 @@ class _HomeProductCardState extends State<HomeProductCard> {
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.45),
+                      color: Colors.black.withValues(alpha: 0.45),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -257,7 +260,7 @@ class _HomeProductCardState extends State<HomeProductCard> {
                         Text(
                           widget.oldPrice!,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha: 0.6),
                             fontSize: 11,
                             decoration: TextDecoration.lineThrough,
                           ),

@@ -3,8 +3,6 @@ import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'dart:io';
-import 'package:dio/dio.dart';
 
 class VideoStoryScreen extends StatefulWidget {
   final List<StoryContent> stories;
@@ -286,7 +284,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
         height: 38,
         width: 38,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.15),
+          color: Colors.white.withValues(alpha: 0.15),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 20),
@@ -315,7 +313,7 @@ class VideoProgressBar extends StatelessWidget {
       height: 2.5,
       margin: const EdgeInsets.symmetric(horizontal: 2),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
+        color: Colors.white.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(10),
       ),
       child: index < currentIndex
