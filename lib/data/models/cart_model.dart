@@ -28,6 +28,7 @@ class CartModel {
 class CartItemModel {
   final int id;
   final int productId;
+  final int? variantId;
   final String productName;
   final double sellingPrice;
   final double priceAfterDiscount;
@@ -40,6 +41,7 @@ class CartItemModel {
   CartItemModel({
     required this.id,
     required this.productId,
+    this.variantId,
     required this.productName,
     required this.sellingPrice,
     required this.priceAfterDiscount,
@@ -54,6 +56,7 @@ class CartItemModel {
     return CartItemModel(
       id: json['id'] ?? 0,
       productId: json['product_id'] ?? 0,
+      variantId: json['variant_id'],
       productName: json['product_name'] ?? '',
       sellingPrice: CartModel._parseDouble(json['selling_price']),
       priceAfterDiscount: CartModel._parseDouble(json['price_after_discount']),

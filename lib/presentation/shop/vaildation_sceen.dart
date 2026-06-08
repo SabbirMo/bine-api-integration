@@ -1,8 +1,10 @@
 import 'package:binetatour/presentation/landing_page/main_dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/presentation/shop/widget/cart_item_validation_card.dart';
 
 class ValidationScreen extends StatefulWidget {
@@ -18,20 +20,41 @@ class _ValidationScreenState extends State<ValidationScreen> {
   bool _isAvailableNow = true;
   String _formattedDate = "dd/mm/yyyy";
 
+  /// Maps cartItemId -> selected variantId (null means not yet selected)
+  final Map<int, int?> _selectedVariantIds = {};
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _surnameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _phone2Controller = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _noteController = TextEditingController();
+  final TextEditingController _timeController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _surnameController.dispose();
+    _phoneController.dispose();
+    _phone2Controller.dispose();
+    _addressController.dispose();
+    _noteController.dispose();
+    _timeController.dispose();
+    super.dispose();
+  }
+
   Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      locale: const Locale('fr', 'FR'),
+    final picked = await showDatePicker(
       context: context,
+      locale: const Locale('fr', 'FR'),
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2030),
     );
-    if (picked != null) {
-      setState(() {
-        _formattedDate =
-            "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
-      });
-    }
+
+    if (picked == null) return;
+
+    setState(() => _formattedDate = DateFormat('dd/MM/yyyy').format(picked));
   }
 
   @override
@@ -52,7 +75,10 @@ class _ValidationScreenState extends State<ValidationScreen> {
             ),
             title: const Text(
               "Validation",
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             centerTitle: true,
           ),
@@ -60,10 +86,19 @@ class _ValidationScreenState extends State<ValidationScreen> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                ...items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: CartItemValidationCard(item: item),
-                )),
+                ...items.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: CartItemValidationCard(
+                      item: item,
+                      onVariantSelected: (variantId) {
+                        setState(() {
+                          _selectedVariantIds[item.id] = variantId;
+                        });
+                      },
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 _buildUserInfoForm(),
                 const SizedBox(height: 12),
@@ -90,23 +125,23 @@ class _ValidationScreenState extends State<ValidationScreen> {
         children: [
           Row(
             children: [
-              Expanded(child: _textField("🤴 Nom", "votre nom")),
+              Expanded(child: _textField("🤴 Nom", "votre nom", controller: _nameController)),
               const SizedBox(width: 10),
-              Expanded(child: _textField("🤴 Prénom", "votre Prénom")),
+              Expanded(child: _textField("🤴 Prénom", "votre Prénom", controller: _surnameController)),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _textField("📞 Tél. Principal", "77..")),
+              Expanded(child: _textField("📞 Tél. Principal", "77..", controller: _phoneController)),
               const SizedBox(width: 10),
               Expanded(
-                child: _textField("📞 Tél. 2 (Optionnel)", "Secondaire"),
+                child: _textField("📞 Tél. 2 (Optionnel)", "Secondaire", controller: _phone2Controller),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          _textField("📍 Adresse", "Enter votre adresse"),
+          _textField("📍 Adresse", "Enter votre adresse", controller: _addressController),
         ],
       ),
     );
@@ -152,9 +187,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
     );
   }
 
-
-
-  Widget _textField(String label, String hint) {
+  Widget _textField(String label, String hint, {TextEditingController? controller}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -164,6 +197,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
         ),
         const SizedBox(height: 5),
         TextField(
+          controller: controller,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
@@ -257,7 +291,10 @@ class _ValidationScreenState extends State<ValidationScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Total", style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  "Total",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 Text(
                   "$totalAmount FCFA",
                   style: const TextStyle(
@@ -279,24 +316,125 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Commande réussie")),
+              onPressed: () async {
+                final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+
+                // ── Validate: every item with variants must have a variant selected ──
+                final cartItems = cartProvider.cart?.items ?? [];
+                final List<String> missingVariantProducts = [];
+
+                for (final cartItem in cartItems) {
+                  final selectedVariant = _selectedVariantIds[cartItem.id];
+                  // If the map has no entry yet OR the entry is null, variant not selected
+                  if (!_selectedVariantIds.containsKey(cartItem.id) ||
+                      selectedVariant == null) {
+                    missingVariantProducts.add(cartItem.productName);
+                  }
+                }
+
+                if (missingVariantProducts.isNotEmpty && context.mounted) {
+                  final names = missingVariantProducts.join(', ');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFFFF4500),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      content: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: Colors.white, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "$names : couleur ou taille non sélectionnée",
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                  return;
+                }
+
+                String deliveryDate = "";
+                if (_selectedDate == "AUJOURD'HUI") {
+                  deliveryDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                } else if (_selectedDate == "DEMAIN") {
+                  deliveryDate = DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)));
+                } else {
+                  try {
+                    final parts = _formattedDate.split('/');
+                    deliveryDate = "${parts[2]}-${parts[1]}-${parts[0]}";
+                  } catch(e) {
+                    deliveryDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                  }
+                }
+
+                String deliveryTimeStr = "06:25:27.291Z"; // Default fallback
+                if (!_isAvailableNow && _timeController.text.isNotEmpty) {
+                  deliveryTimeStr = "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
+                }
+
+                // Build items list with selected variant_id
+                final items = cartItems.map((cartItem) {
+                  return {
+                    "variant_id": _selectedVariantIds[cartItem.id] ?? 0,
+                    "quantity": cartItem.quantity,
+                  };
+                }).toList();
+
+                final success = await orderProvider.createOrder(
+                  items: items,
+                  customerName: _nameController.text,
+                  customerSurname: _surnameController.text,
+                  customerPhone: _phoneController.text,
+                  customerPhone2: _phone2Controller.text,
+                  customerAddress: _addressController.text,
+                  deliveryDate: deliveryDate,
+                  deliveryTime: deliveryTimeStr,
+                  deliveryTimeEnd: deliveryTimeStr, 
+                  deliveryNote: _noteController.text,
+                  deliveryFee: "0.00",
+                  paymentMethod: selectedPayment.toLowerCase(),
                 );
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const MainDashboard()),
-                  (route) =>
-                      false, // This condition 'false' ensures all previous routes are removed
-                );
+
+                if (success && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Commande réussie")),
+                  );
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MainDashboard()),
+                    (route) => false,
+                  );
+                } else if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(orderProvider.errorMessage ?? "Erreur lors de la commande")),
+                  );
+                }
               },
-              child: const Text(
-                "JE VALIDE",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+              child: Consumer<OrderProvider>(
+                builder: (context, orderProvider, child) {
+                  return orderProvider.isLoading 
+                    ? const SizedBox(
+                        height: 20, 
+                        width: 20, 
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text(
+                        "JE VALIDE",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      );
+                },
               ),
             ),
           ),
@@ -399,6 +537,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
               Expanded(
                 flex: 2,
                 child: TextField(
+                  controller: _timeController,
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
                   // Apply the auto-formatter here
@@ -494,6 +633,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
           ),
           const SizedBox(height: 12),
           TextField(
+            controller: _noteController,
             maxLines: 3, // Set the height of the note area
             decoration: InputDecoration(
               hintText: "Note particulière...",

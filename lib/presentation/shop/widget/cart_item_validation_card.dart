@@ -8,7 +8,15 @@ import 'package:binetatour/data/models/product_model.dart';
 class CartItemValidationCard extends StatefulWidget {
   final CartItemModel item;
 
-  const CartItemValidationCard({super.key, required this.item});
+  /// Called whenever the selected variant changes.
+  /// [variantId] is null if no matching variant is found.
+  final ValueChanged<int?>? onVariantSelected;
+
+  const CartItemValidationCard({
+    super.key,
+    required this.item,
+    this.onVariantSelected,
+  });
 
   @override
   State<CartItemValidationCard> createState() => _CartItemValidationCardState();
@@ -34,14 +42,64 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       setState(() {
         _productDetails = details;
         _isLoading = false;
-
-        // Optionally set default selection to the first available variant
-        if (details != null && details.variants.isNotEmpty) {
-          _selectedColorCode = details.variants.first.colorCode;
-          _selectedSize = details.variants.first.size;
-        }
+        // No default selection — user must explicitly choose
+        _selectedColorCode = null;
+        _selectedSize = null;
       });
+
+      // If product has NO variants, mark as valid automatically (variant_id = 0)
+      if (details == null || details.variants.isEmpty) {
+        widget.onVariantSelected?.call(0);
+      }
     }
+  }
+
+  /// Find the variant that matches selected color + size and notify parent.
+  void _notifyVariant() {
+    if (_productDetails == null) return;
+
+    final variants = _productDetails!.variants;
+
+    // If product has no variants, nothing to select
+    if (variants.isEmpty) return;
+
+    final hasColors = variants.any((v) => v.colorCode.isNotEmpty);
+    final hasSizes = variants.any((v) => v.size.isNotEmpty);
+
+    // Try to find the best matching variant
+    ProductVariantModel? match;
+
+    if (hasColors && hasSizes) {
+      match = variants.firstWhere(
+        (v) => v.colorCode == _selectedColorCode && v.size == _selectedSize,
+        orElse: () => variants.first,
+      );
+      // Only valid if both are selected
+      if (_selectedColorCode == null || _selectedSize == null) {
+        widget.onVariantSelected?.call(null);
+        return;
+      }
+    } else if (hasColors) {
+      if (_selectedColorCode == null) {
+        widget.onVariantSelected?.call(null);
+        return;
+      }
+      match = variants.firstWhere(
+        (v) => v.colorCode == _selectedColorCode,
+        orElse: () => variants.first,
+      );
+    } else if (hasSizes) {
+      if (_selectedSize == null) {
+        widget.onVariantSelected?.call(null);
+        return;
+      }
+      match = variants.firstWhere(
+        (v) => v.size == _selectedSize,
+        orElse: () => variants.first,
+      );
+    }
+
+    widget.onVariantSelected?.call(match?.id);
   }
 
   Color _hexToColor(String code) {
@@ -181,12 +239,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               spacing: 8,
               runSpacing: 8,
               children: uniqueColors.entries.map((e) {
-                return _colorDot(
-                  _hexToColor(e.key),
-                  e.key,
-                  e.value,
-                  widget.item.quantity,
-                );
+                return _colorDot(_hexToColor(e.key), e.key, e.value);
               }).toList(),
             ),
             const SizedBox(height: 12),
@@ -201,7 +254,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               spacing: 8,
               runSpacing: 8,
               children: uniqueSizes.map((size) {
-                return _choiceChip(size, widget.item.quantity);
+                return _choiceChip(size);
               }).toList(),
             ),
           ],
@@ -210,158 +263,73 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     );
   }
 
-  Widget _colorDot(Color color, String colorCode, String name, int qty) {
-    bool isSelected = _selectedColorCode == colorCode;
+  Widget _colorDot(Color color, String colorCode, String name) {
+    final bool isSelected = _selectedColorCode == colorCode;
 
     return GestureDetector(
       onTap: () {
         setState(() {
           _selectedColorCode = colorCode;
         });
+        _notifyVariant();
       },
       child: Padding(
         padding: const EdgeInsets.only(right: 15, top: 5),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(2.5),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? color : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(2.5),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isSelected ? color : Colors.transparent,
+              width: 2.5,
+            ),
+          ),
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.black.withValues(alpha: 0.1),
+                width: 0.5,
               ),
             ),
-            if (isSelected)
-              Positioned(
-                top: -5,
-                right: -5,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF4500),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
-                  ),
-                  child: Center(
-                    child: Text(
-                      qty.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _choiceChip(String text, int qty) {
-    bool isSelected = _selectedSize == text;
+  Widget _choiceChip(String text) {
+    final bool isSelected = _selectedSize == text;
 
     return GestureDetector(
       onTap: () {
         setState(() {
           _selectedSize = text;
         });
+        _notifyVariant();
       },
-      child: Padding(
-        padding: const EdgeInsets.only(top: 6, right: 8, left: 4),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFFFEF3E7) : Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFFFF6900)
-                      : Colors.grey.shade300,
-                  width: 1.2,
-                ),
-              ),
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: isSelected ? const Color(0xFFFF6900) : Colors.black,
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                ),
-              ),
-            ),
-            if (isSelected)
-              Positioned(
-                top: -8,
-                right: -8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(
-                    minWidth: 20,
-                    minHeight: 20,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF4500),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      qty.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        height: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFEF3E7) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF6900) : Colors.grey.shade300,
+            width: isSelected ? 1.8 : 1.2,
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: isSelected ? const Color(0xFFFF6900) : Colors.black,
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          ),
         ),
       ),
     );
