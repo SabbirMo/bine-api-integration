@@ -235,7 +235,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => InprogressScreen(status: _selectedStatus.name),
+            builder: (_) => InprogressScreen(status: _selectedStatus.name, orderNumber: id),
           ),
         );
       },

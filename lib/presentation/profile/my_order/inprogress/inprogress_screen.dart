@@ -1,9 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/order_provider.dart';
+import 'package:binetatour/data/models/order_detail_model.dart';
 
-class InprogressScreen extends StatelessWidget {
+class InprogressScreen extends StatefulWidget {
   final String status;
-  const InprogressScreen({super.key, required this.status});
+  final String orderNumber;
+  const InprogressScreen({
+    super.key,
+    required this.status,
+    required this.orderNumber,
+  });
+
+  @override
+  State<InprogressScreen> createState() => _InprogressScreenState();
+}
+
+class _InprogressScreenState extends State<InprogressScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<OrderProvider>().fetchOrderDetail(widget.orderNumber);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,116 +46,46 @@ class InprogressScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildOrderHeader(status),
-            const SizedBox(height: 16),
-            status == "annulees"
-                ? _buildCancelledTracking()
-                : status == "livrees"
-                ? _buildDeliveredTracking()
-                : _buildInprogressTracking(),
-            const SizedBox(height: 16),
-            _buildOrderedItems(),
-            const SizedBox(height: 16),
-            _buildDeliveryInfo(),
-            const SizedBox(height: 16),
-            _buildPaymentInfo(),
-            const SizedBox(height: 24),
-          ],
-        ),
+      body: Consumer<OrderProvider>(
+        builder: (context, provider, child) {
+          if (provider.isLoading) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+            );
+          }
+          if (provider.errorMessage != null) {
+            return Center(child: Text("Erreur: ${provider.errorMessage}"));
+          }
+          final orderDetail = provider.orderDetail;
+          if (orderDetail == null) {
+            return const Center(child: Text("Commande introuvable"));
+          }
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _buildOrderHeader(widget.status, orderDetail),
+                const SizedBox(height: 16),
+                _buildTracking(orderDetail),
+                const SizedBox(height: 16),
+                _buildOrderedItems(orderDetail),
+                const SizedBox(height: 16),
+                _buildDeliveryInfo(orderDetail),
+                const SizedBox(height: 16),
+                _buildPaymentInfo(orderDetail),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildInprogressTracking() {
-    return _sectionCard(
-      title: "Suivi De Livraison",
-      child: Column(
-        children: [
-          // Step 1: Preparation - Completed (Green Check)
-          _trackingStep(
-            title: "En Préparation",
-            subtitle: "Nous préparons votre commande",
-            date: "15 Avril 2026, 14:30",
-            isCancelled: false,
-            isDone: true,
-            hasNext: true,
-            icon: Icons.check, // Matches image_015f4d.png
-          ),
-          // Step 2: Shipping - Completed (Green Truck/Car)
-          _trackingStep(
-            title: "Expédiée",
-            subtitle: "Votre commande est en route",
-            date: "15 Avril 2026, 14:30",
-            isCancelled: false,
-            isDone: true,
-            hasNext: true,
-            icon: Icons
-                .local_shipping, // Replaces check with the car icon from your image
-          ),
-          // Step 3: Delivered - Pending (Grey Location)
-          _trackingStep(
-            title: "Livrée",
-            subtitle: "Commande livrée avec succès",
-            date: "",
-            isCancelled: false,
-            isDone: false, // Remains grey
-            hasNext: false,
-            icon: Icons
-                .location_on_outlined, // Uses the location icon from your image
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDeliveredTracking() {
-    return _sectionCard(
-      title: "Suivi De Livraison",
-      child: Column(
-        children: [
-          // Step 1: Preparation - Completed
-          _trackingStep(
-            title: "En Préparation",
-            subtitle: "Nous préparons votre commande",
-            date: "15 Avril 2026, 14:30",
-            isDone: true,
-            icon: Icons.check,
-            isCancelled: false,
-            hasNext: true,
-          ),
-          // Step 2: Shipping - Completed (Shows Green Car)
-          _trackingStep(
-            title: "Expédiée",
-            subtitle: "Votre commande est en route",
-            date: "16 Avril 2026, 09:00",
-            isDone: true,
-            hasNext: true,
-            icon: Icons.check,
-            isCancelled: false,
-          ),
-          // Step 3: Delivered - Completed (Shows Green Location)
-          _trackingStep(
-            title: "Livrée",
-            subtitle: "Commande livrée avec succès",
-            date: "",
-            isDone: true,
-            hasNext: false,
-            icon: Icons.check,
-            isCancelled: false,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 1. Orange Header with Order ID and Clock
-  Widget _buildOrderHeader(String status) {
+  Widget _buildOrderHeader(String status, OrderDetailModel orderDetail) {
     return Container(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: status == "enCours"
             ? const LinearGradient(
@@ -158,25 +109,25 @@ class InprogressScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "CMD-001",
-                style: TextStyle(
+                orderDetail.orderNumber,
+                style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 20,
                 ),
               ),
-              SizedBox(height: 4),
-              Text(
+              const SizedBox(height: 4),
+              const Text(
                 "Date de commande",
                 style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
               Text(
-                "15 Avril 2026",
-                style: TextStyle(
+                orderDetail.createdAt,
+                style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -194,24 +145,68 @@ class InprogressScreen extends StatelessWidget {
     );
   }
 
-  // 2. Vertical Delivery Tracking Timeline
-
-  // 3. Ordered Items Section
-  Widget _buildOrderedItems() {
+  Widget _buildTracking(OrderDetailModel orderDetail) {
     return _sectionCard(
-      title: "Articles commandés (2 articles)",
+      title: "Suivi De Livraison",
       child: Column(
-        children: [
-          _itemRow("assets/images/lounge.jpg", "Coffee", "20 000 FCFA"),
-          const Divider(height: 24),
-          _itemRow("assets/images/laptop.jpg", "Laptop Pro", "125 000 FCFA"),
-        ],
+        children: List.generate(orderDetail.trackingSteps.length, (index) {
+          final step = orderDetail.trackingSteps[index];
+          final isDone = step.state == "active" || step.state == "completed";
+          final isCancelled = step.state == "cancelled";
+          final hasNext = index < orderDetail.trackingSteps.length - 1;
+
+          IconData icon;
+          if (isCancelled) {
+            icon = Icons.close;
+          } else if (isDone) {
+            icon = Icons.check;
+          } else {
+            icon = _getStepIcon(index);
+          }
+
+          String formattedDate = "";
+          if (step.timestamp != null && step.timestamp!.isNotEmpty) {
+            try {
+              final date = DateTime.parse(step.timestamp!);
+              formattedDate =
+                  "${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}, ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+            } catch (e) {
+              formattedDate = step.timestamp!;
+            }
+          }
+
+          return _trackingStep(
+            title: step.label,
+            subtitle: step.description,
+            date: formattedDate,
+            isCancelled: isCancelled,
+            isDone: isDone,
+            hasNext: hasNext,
+            icon: icon,
+          );
+        }),
       ),
     );
   }
 
-  // 4. Delivery Info Section
-  Widget _buildDeliveryInfo() {
+  Widget _buildOrderedItems(OrderDetailModel orderDetail) {
+    return _sectionCard(
+      title:
+          "Articles commandés (${orderDetail.items.length} article${orderDetail.items.length > 1 ? 's' : ''})",
+      child: Column(
+        children: orderDetail.items.map((item) {
+          return Column(
+            children: [
+              _itemRow(item),
+              if (item != orderDetail.items.last) const Divider(height: 24),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDeliveryInfo(OrderDetailModel orderDetail) {
     return _sectionCard(
       title: "Informations de livraison",
       child: Column(
@@ -219,55 +214,59 @@ class InprogressScreen extends StatelessWidget {
           _infoRow(
             Icons.phone_outlined,
             "Contact",
-            "+221 77 123 45 67\n+221 77 987 65 43",
+            orderDetail.customerPhone +
+                (orderDetail.customerPhone2.isNotEmpty
+                    ? "\n${orderDetail.customerPhone2}"
+                    : ""),
           ),
           const SizedBox(height: 16),
           _infoRow(
             Icons.location_on_outlined,
             "Adresse de livraison",
-            "Sicap Mermoz, Villa 123, près de la pharmacie centrale, Dakar",
+            orderDetail.customerAddress,
           ),
           const SizedBox(height: 16),
           _infoRow(
             Icons.calendar_today_outlined,
             "Date de livraison prévue",
-            "18 Avril 2026",
+            orderDetail.deliveryDate,
           ),
           const SizedBox(height: 16),
           _infoRow(
             Icons.access_time_outlined,
             "Heure de livraison",
-            "14:00 - 16:00",
+            "${orderDetail.deliveryTime} - ${orderDetail.deliveryTimeEnd}",
           ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF1EB),
-              borderRadius: BorderRadius.circular(10),
+          if (orderDetail.deliveryNote.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1EB),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Note spéciale",
+                    style: TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                  Text(
+                    orderDetail.deliveryNote,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
             ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Note spéciale",
-                  style: TextStyle(color: Colors.grey, fontSize: 11),
-                ),
-                Text(
-                  "Sonner à la porte principale",
-                  style: TextStyle(fontSize: 13),
-                ),
-              ],
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  // 5. Payment Info Section
-  Widget _buildPaymentInfo() {
+  Widget _buildPaymentInfo(OrderDetailModel orderDetail) {
     return _sectionCard(
       title: "Informations de paiement",
       child: Column(
@@ -282,9 +281,9 @@ class InprogressScreen extends StatelessWidget {
               children: [
                 Image.asset("assets/images/money.png", height: 25, width: 25),
                 const SizedBox(width: 12),
-                const Text(
-                  "Orange Money",
-                  style: TextStyle(fontWeight: FontWeight.w500),
+                Text(
+                  orderDetail.paymentMethod.toUpperCase(),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 const Spacer(),
                 Container(
@@ -293,13 +292,17 @@ class InprogressScreen extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.green[50],
+                    color: orderDetail.paymentStatus.toLowerCase() == "paid"
+                        ? Colors.green[50]
+                        : Colors.orange[50],
                     borderRadius: BorderRadius.circular(5),
                   ),
-                  child: const Text(
-                    "Payé",
+                  child: Text(
+                    orderDetail.paymentStatus.toUpperCase(),
                     style: TextStyle(
-                      color: Colors.green,
+                      color: orderDetail.paymentStatus.toLowerCase() == "paid"
+                          ? Colors.green
+                          : Colors.orange,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
@@ -309,9 +312,9 @@ class InprogressScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _priceRow("Sous-total", "120,000 FCFA"),
+          _priceRow("Sous-total", "${orderDetail.subtotalAmount} FCFA"),
           const SizedBox(height: 8),
-          _priceRow("Frais de livraison", "5,000 FCFA"),
+          _priceRow("Frais de livraison", "${orderDetail.deliveryFee} FCFA"),
           const Divider(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -320,9 +323,9 @@ class InprogressScreen extends StatelessWidget {
                 "Total payé",
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
-              const Text(
-                "125,000 FCFA",
-                style: TextStyle(
+              Text(
+                "${orderDetail.totalAmount} FCFA",
+                style: const TextStyle(
                   color: Color(0xFFFF6900),
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -352,7 +355,6 @@ class InprogressScreen extends StatelessWidget {
     );
   }
 
-  // Helper Widgets
   Widget _sectionCard({required String title, required Widget child}) {
     return Container(
       width: double.infinity,
@@ -360,7 +362,7 @@ class InprogressScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: Color(0x19000000),
             blurRadius: 23.44,
@@ -383,22 +385,20 @@ class InprogressScreen extends StatelessWidget {
     );
   }
 
-  // Helper to return specific icons for each step when NOT done
-  Widget _getStepIcon(int index) {
-    Color iconColor = Colors.grey.shade600;
+  IconData _getStepIcon(int index) {
     switch (index) {
-      case 0: // Preparation
-        return Icon(Icons.inventory_2_outlined, size: 16, color: iconColor);
-      case 1: // Shipping (Car/Truck)
-        return Icon(Icons.local_shipping_outlined, size: 16, color: iconColor);
-      case 2: // Delivery (Location)
-        return Icon(Icons.location_on_outlined, size: 16, color: iconColor);
+      case 0:
+        return Icons.inventory_2_outlined;
+      case 1:
+        return Icons.local_shipping_outlined;
+      case 2:
+        return Icons.location_on_outlined;
       default:
-        return Icon(Icons.circle, size: 8, color: iconColor);
+        return Icons.circle;
     }
   }
 
-  Widget _itemRow(String img, String title, String price) {
+  Widget _itemRow(OrderItemModel item) {
     return Row(
       children: [
         Container(
@@ -407,7 +407,10 @@ class InprogressScreen extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(15),
             color: Colors.grey[100],
-            image: DecorationImage(image: AssetImage(img), fit: BoxFit.cover),
+            image: DecorationImage(
+              image: NetworkImage(item.mainImage),
+              fit: BoxFit.cover,
+            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -415,26 +418,29 @@ class InprogressScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
               Text(
-                price,
+                item.productName,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                "${item.unitPrice} FCFA",
                 style: const TextStyle(
                   color: Color(0xFFFF6900),
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
               ),
-              const Text(
-                "Livraison: 10 000",
-                style: TextStyle(color: Colors.grey, fontSize: 10),
-              ),
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.circle, size: 8, color: Colors.red),
-                  SizedBox(width: 4),
+                  Icon(
+                    Icons.circle,
+                    size: 8,
+                    color: _hexToColor(item.colorCode),
+                  ),
+                  const SizedBox(width: 4),
                   Text(
-                    "Rouge  Taille: 2m  Qté: 1",
-                    style: TextStyle(fontSize: 10, color: Colors.grey),
+                    "${item.colorName}  Taille: ${item.size}  Qté: ${item.quantity}",
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
                   ),
                 ],
               ),
@@ -443,6 +449,19 @@ class InprogressScreen extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Color _hexToColor(String hexString) {
+    if (hexString.isEmpty) return Colors.transparent;
+    try {
+      var hexColor = hexString.replaceAll("#", "");
+      if (hexColor.length == 6) {
+        hexColor = "FF$hexColor";
+      }
+      return Color(int.parse("0x$hexColor"));
+    } catch (e) {
+      return Colors.transparent;
+    }
   }
 
   Widget _infoRow(IconData icon, String label, String value) {
@@ -486,36 +505,6 @@ class InprogressScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildCancelledTracking() {
-    return _sectionCard(
-      title: "Suivi De Livraison",
-      child: Column(
-        children: [
-          // Completed first step (shown in red to match the cancellation theme)
-          _trackingStep(
-            title: "En Préparation",
-            subtitle: "Nous préparons votre commande",
-            date: "15 Avril 2026, 14:30",
-            isCancelled: false, // This step itself isn't the cancellation
-            isDone: true,
-            hasNext: true,
-            icon: Icons.check,
-          ),
-          // Final Cancellation step
-          _trackingStep(
-            title: "Annulée",
-            subtitle: "Annulée à la demande du client",
-            date: "",
-            isCancelled: true,
-            isDone: true,
-            hasNext: false,
-            icon: Icons.close,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _trackingStep({
     required String title,
     required String subtitle,
@@ -525,7 +514,6 @@ class InprogressScreen extends StatelessWidget {
     required bool hasNext,
     required IconData icon,
   }) {
-    // Use Red for cancellation or Grey for pending
     final Color statusColor = isCancelled
         ? const Color(0xFFFF3D00)
         : (isDone ? const Color(0xFF0EB205) : Colors.grey.shade300);

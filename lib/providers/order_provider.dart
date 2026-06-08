@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
 import 'package:binetatour/data/models/order_history_model.dart';
+import 'package:binetatour/data/models/order_detail_model.dart';
 
 class OrderProvider extends ChangeNotifier {
   final ApiServices _apiServices = ApiServices();
@@ -37,6 +38,34 @@ class OrderProvider extends ChangeNotifier {
     } catch (e) {
       _errorMessage = e.toString();
       log("Error fetching order history: ${e.toString()}");
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  OrderDetailModel? _orderDetail;
+  OrderDetailModel? get orderDetail => _orderDetail;
+
+  Future<void> fetchOrderDetail(String orderNumber) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _apiServices.get(
+        '/api/mobile/orders/$orderNumber/',
+        requireAuth: true,
+      );
+
+      if (response.data != null) {
+        _orderDetail = OrderDetailModel.fromJson(response.data);
+      }
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      log("Error fetching order detail: ${e.toString()}");
       _isLoading = false;
       notifyListeners();
     }
