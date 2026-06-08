@@ -33,6 +33,9 @@ class CartItemModel {
   final double priceAfterDiscount;
   final String? mainImage;
   int quantity;
+  final String? colorName;
+  final String? colorCode;
+  final String? size;
 
   CartItemModel({
     required this.id,
@@ -42,6 +45,9 @@ class CartItemModel {
     required this.priceAfterDiscount,
     this.mainImage,
     required this.quantity,
+    this.colorName,
+    this.colorCode,
+    this.size,
   });
 
   factory CartItemModel.fromJson(Map<String, dynamic> json) {
@@ -53,6 +59,9 @@ class CartItemModel {
       priceAfterDiscount: CartModel._parseDouble(json['price_after_discount']),
       mainImage: json['main_image'],
       quantity: json['quantity'] ?? 0,
+      colorName: json['color_name'],
+      colorCode: json['color_code'],
+      size: json['size'],
     );
   }
 }

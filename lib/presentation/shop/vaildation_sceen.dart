@@ -1,6 +1,9 @@
 import 'package:binetatour/presentation/landing_page/main_dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/presentation/shop/widget/cart_item_validation_card.dart';
 
 class ValidationScreen extends StatefulWidget {
   const ValidationScreen({super.key});
@@ -11,10 +14,6 @@ class ValidationScreen extends StatefulWidget {
 
 class _ValidationScreenState extends State<ValidationScreen> {
   String selectedPayment = "Orange Money";
-  int _quantity = 1;
-  String _selectedColorName = "Noir"; // Default selection
-  final Color _activeOrange = const Color(0xFFFD8C2C);
-  String _selectedDimension = "Standard"; // Default selection
   String _selectedDate = "AUJOURD'HUI";
   bool _isAvailableNow = true;
   String _formattedDate = "dd/mm/yyyy";
@@ -37,126 +36,50 @@ class _ValidationScreenState extends State<ValidationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: InkWell(
-          onTap: () {
-            Navigator.pop(context);
-          },
-          child: const Icon(Icons.arrow_back, color: Colors.black),
-        ),
-        title: const Text(
-          "Validation",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _buildArticleCard(),
-            const SizedBox(height: 12),
-            _buildSelectionCard(),
-            const SizedBox(height: 12),
-            _buildUserInfoForm(),
-            const SizedBox(height: 12),
-            _buildDeliverySchedule(),
-            const SizedBox(height: 12),
-            _buildNoteField(),
-            const SizedBox(height: 12),
-            _buildPaymentMethods(),
-            const SizedBox(height: 20),
-            _buildFooterInfo(),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildBottomCTA(),
-    );
-  }
-
-  // 1. Article & Quantity Section
-  Widget _buildArticleCard() {
-    return _sectionWrapper(
-      title: "Articles & Quantité",
-      child: Row(
-        children: [
-          Container(
-            height: 50,
-            width: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              image: const DecorationImage(
-                image: AssetImage('assets/images/vaildation.png'),
-                fit: BoxFit.cover,
-              ),
+    return Consumer<CartProvider>(
+      builder: (context, cartProvider, child) {
+        final items = cartProvider.cart?.items ?? [];
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: InkWell(
+              onTap: () {
+                Navigator.pop(context);
+              },
+              child: const Icon(Icons.arrow_back, color: Colors.black),
             ),
+            title: const Text(
+              "Validation",
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+            ),
+            centerTitle: true,
           ),
-          const SizedBox(width: 12),
-          const Expanded(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Galaxy Buds Pro",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  "190 000 FCFA",
-                  style: TextStyle(
-                    color: Color(0xFFFF6900),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                ...items.map((item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: CartItemValidationCard(item: item),
+                )),
+                const SizedBox(height: 12),
+                _buildUserInfoForm(),
+                const SizedBox(height: 12),
+                _buildDeliverySchedule(),
+                const SizedBox(height: 12),
+                _buildNoteField(),
+                const SizedBox(height: 12),
+                _buildPaymentMethods(),
+                const SizedBox(height: 20),
+                _buildFooterInfo(),
               ],
             ),
           ),
-          _quantityStepper(),
-        ],
-      ),
-    );
-  }
-
-  // 2. Color & Dimensions Selection
-  Widget _buildSelectionCard() {
-    return _sectionWrapper(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "🎨 Couleur",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _colorDot(Colors.black, "Noir", _quantity),
-              _colorDot(Colors.white, "Blanc", _quantity),
-              _colorDot(Colors.blueGrey, "Gris", _quantity),
-              _colorDot(const Color(0xFFC69C6D), "Beige", _quantity),
-            ],
-          ),
-          const SizedBox(height: 15),
-          const Text(
-            "Dimensions",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            children: [
-              _choiceChip("Standard", _quantity),
-              _choiceChip("1m20", _quantity),
-              _choiceChip("2m", _quantity),
-              _choiceChip("3m", _quantity),
-              _choiceChip("Sur-mesure", _quantity),
-            ],
-          ),
-        ],
-      ),
+          bottomNavigationBar: _buildBottomCTA(cartProvider),
+        );
+      },
     );
   }
 
@@ -229,55 +152,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
     );
   }
 
-  Widget _quantityStepper() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min, // Keep the stepper compact
-        children: [
-          // Decrement Button
-          IconButton(
-            onPressed: () {
-              if (_quantity > 1) {
-                setState(() {
-                  _quantity--;
-                });
-              }
-            },
-            icon: Icon(
-              Icons.remove_circle_outline,
-              size: 22,
-              // Visually disable the button if quantity is 1
-              color: _quantity > 1 ? Colors.black : Colors.grey.shade400,
-            ),
-          ),
 
-          // Display Current Quantity
-          Text(
-            "$_quantity",
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-
-          // Increment Button
-          IconButton(
-            onPressed: () {
-              setState(() {
-                _quantity++;
-              });
-            },
-            icon: const Icon(
-              Icons.add_circle_outline,
-              size: 22,
-              color: Colors.black,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _textField(String label, String hint) {
     return Column(
@@ -362,7 +237,8 @@ class _ValidationScreenState extends State<ValidationScreen> {
     );
   }
 
-  Widget _buildBottomCTA() {
+  Widget _buildBottomCTA(CartProvider cartProvider) {
+    String totalAmount = cartProvider.cart?.total.toStringAsFixed(2) ?? "0.00";
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -378,13 +254,13 @@ class _ValidationScreenState extends State<ValidationScreen> {
               color: const Color(0xFFFEF3E7),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Total", style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text("Total", style: TextStyle(fontWeight: FontWeight.bold)),
                 Text(
-                  "105 000 FCFA",
-                  style: TextStyle(
+                  "$totalAmount FCFA",
+                  style: const TextStyle(
                     color: Color(0xFFFF6900),
                     fontWeight: FontWeight.bold,
                   ),
@@ -425,180 +301,6 @@ class _ValidationScreenState extends State<ValidationScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // Placeholder helpers for UI consistency
-  Widget _colorDot(Color color, String name, int qty) {
-    bool isSelected = _selectedColorName == name;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedColorName = name;
-        });
-      },
-      child: Padding(
-        padding: const EdgeInsets.only(
-          right: 15,
-          top: 5,
-        ), // Added top padding for the badge
-        child: Stack(
-          clipBehavior:
-              Clip.none, // Allows the quantity badge to hang off the edge
-          children: [
-            // 1. The Main Color Circle with Selection Ring
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(2.5), // Space between ring and dot
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  // Keep border always present but change color for stability
-                  color: isSelected ? color : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  // Subtle inner shadow/border to make light colors pop
-                  border: Border.all(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    width: 0.5,
-                  ),
-                ),
-              ),
-            ),
-
-            // 2. The Quantity Badge (Only shows when selected)
-            if (isSelected)
-              Positioned(
-                top: -5,
-                right: -5,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF4500), // Your _activeOrange
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white,
-                      width: 1.5,
-                    ), // White ring around badge
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
-                  ),
-                  child: Center(
-                    child: Text(
-                      qty.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _choiceChip(String text, int qty) {
-    bool isSelected = _selectedDimension == text;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedDimension = text;
-        });
-      },
-      child: Padding(
-        // Padding ensures the badge doesn't get cut off by parent widgets
-        padding: const EdgeInsets.only(top: 6, right: 8, left: 4),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // 1. The Main Chip Body
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFFFEF3E7) : Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFFFF6900)
-                      : Colors.grey.shade300,
-                  width: 1.2,
-                ),
-              ),
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: isSelected ? const Color(0xFFFF6900) : Colors.black,
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                ),
-              ),
-            ),
-
-            // 2. The Quantity Badge
-            if (isSelected)
-              Positioned(
-                top: -8, // Adjusted for the rectangular chip shape
-                right: -8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(
-                    minWidth: 20,
-                    minHeight: 20,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF4500),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      qty.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        height: 1, // Ensures text stays centered
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }

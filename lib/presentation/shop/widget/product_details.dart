@@ -1,3 +1,5 @@
+// ignore_for_file: must_be_immutable
+
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_video_item.dart';
@@ -29,7 +31,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   late PageController _verticalController;
   bool _isMuted = false;
 
-  bool _isExpanded = false;
+  bool isExpanded = false;
 
   @override
   void initState() {
@@ -60,7 +62,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               product: product,
               isMuted: _isMuted,
               onMuteToggle: () => setState(() => _isMuted = !_isMuted),
-              isExpanded: _isExpanded,
+              isExpanded: isExpanded,
             );
           },
         ),
@@ -284,7 +286,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                   Container(
                     padding: EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.6),
+                      color: Colors.grey.withValues(alpha: 0.6),
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white),
                     ),
@@ -305,6 +307,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
               SvgPicture.asset(
                 "assets/icon/mdi_share.svg",
+                // ignore: deprecated_member_use
                 color: Colors.white,
                 height: 25,
                 width: 25,
@@ -323,7 +326,10 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.9)],
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.9),
+                ],
               ),
             ),
             child: Column(
@@ -332,7 +338,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(right: 25.0),
-                  child: Container(
+                  child: SizedBox(
                     height: 50,
                     child: ElevatedButton.icon(
                       onPressed: () {
@@ -389,12 +395,14 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                             "${_product.sellingPrice} FCFA",
                             style: TextStyle(
                               // Use a light grey/white that matches the image exactly
-                              color: Colors.white.withOpacity(0.7),
+                              color: Colors.white.withValues(alpha: 0.7),
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
                               decoration: TextDecoration.lineThrough,
                               // Ensure the line is the same color as the text
-                              decorationColor: Colors.white.withOpacity(0.7),
+                              decorationColor: Colors.white.withValues(
+                                alpha: 0.7,
+                              ),
                               decorationThickness: 1.5,
                             ),
                             maxLines: 1,
