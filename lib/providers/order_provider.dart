@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
+import 'package:binetatour/data/models/order_history_model.dart';
 
 class OrderProvider extends ChangeNotifier {
   final ApiServices _apiServices = ApiServices();
@@ -11,6 +12,35 @@ class OrderProvider extends ChangeNotifier {
 
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
+
+  List<OrderHistoryModel> _orderHistory = [];
+  List<OrderHistoryModel> get orderHistory => _orderHistory;
+
+  Future<void> fetchOrderHistory() async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _apiServices.get(
+        '/api/mobile/orders/history/',
+        requireAuth: true,
+      );
+
+      if (response.data != null) {
+        final List<dynamic> data = response.data;
+        _orderHistory = data.map((json) => OrderHistoryModel.fromJson(json)).toList();
+      }
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      log("Error fetching order history: ${e.toString()}");
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<bool> createOrder({
     required List<Map<String, dynamic>> items,

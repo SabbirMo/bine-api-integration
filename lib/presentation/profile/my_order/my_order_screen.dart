@@ -1,10 +1,13 @@
+import 'dart:developer';
+
 import 'package:binetatour/presentation/profile/my_order/inprogress/inprogress_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/order_provider.dart';
+import 'package:binetatour/data/models/order_history_model.dart';
 
 enum OrderStatus { enCours, livrees, annulees }
-
-OrderStatus _selectedStatus = OrderStatus.enCours;
 
 class MyOrdersPage extends StatefulWidget {
   const MyOrdersPage({super.key});
@@ -17,13 +20,21 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
   OrderStatus _selectedStatus = OrderStatus.enCours;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<OrderProvider>().fetchOrderHistory();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-       leading: IconButton(
+        leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
@@ -86,7 +97,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
     return GestureDetector(
       onTap: () {
         setState(() => _selectedStatus = status);
-        print(_selectedStatus.name);
+        log(_selectedStatus.name);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
@@ -100,7 +111,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: activeColor.withOpacity(0.3),
+                    color: activeColor.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -114,7 +125,10 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                     icon,
                     width: 16,
                     height: 16,
-                    color: isSelected ? Colors.white : activeColor,
+                    colorFilter: ColorFilter.mode(
+                      isSelected ? Colors.white : activeColor,
+                      BlendMode.srcIn,
+                    ),
                   )
                 : Image.asset(icon, width: 16, height: 16),
             const SizedBox(width: 6),
@@ -134,17 +148,52 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
 
   // 2. Order List
   Widget _buildOrderList() {
-    // Filter logic would go here based on _selectedStatus
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      itemCount: 2, // Example count
-      itemBuilder: (context, index) {
-        return _orderCard(
-          id: "CMD-001",
-          date: "15 Avril 2026",
-          items: index == 0 ? "2 articles" : "1 article",
-          price: "125,000 FCFA",
-          status: _selectedStatus,
+    return Consumer<OrderProvider>(
+      builder: (context, orderProvider, child) {
+        if (orderProvider.isLoading) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+          );
+        }
+
+        if (orderProvider.errorMessage != null) {
+          return Center(child: Text("Erreur: ${orderProvider.errorMessage}"));
+        }
+
+        // Filter logic
+        final List<OrderHistoryModel> allOrders = orderProvider.orderHistory;
+        final List<OrderHistoryModel> filteredOrders = allOrders.where((order) {
+          final statusStr = order.status.toLowerCase();
+          switch (_selectedStatus) {
+            case OrderStatus.enCours:
+              return statusStr == 'pending' ||
+                  statusStr == 'confirmed' ||
+                  statusStr == 'in_delivery';
+            case OrderStatus.livrees:
+              return statusStr == 'delivered';
+            case OrderStatus.annulees:
+              return statusStr == 'cancelled';
+          }
+        }).toList();
+
+        if (filteredOrders.isEmpty) {
+          return const Center(child: Text("Aucune commande trouvée."));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: filteredOrders.length,
+          itemBuilder: (context, index) {
+            final order = filteredOrders[index];
+            return _orderCard(
+              id: order.orderNumber,
+              date: order.createdAt,
+              items: "${order.itemCount} article(s)",
+              price: "${order.totalAmount} FCFA",
+              productNames: order.productNames.join(", "),
+              status: _selectedStatus,
+            );
+          },
         );
       },
     );
@@ -156,37 +205,39 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
     required String date,
     required String items,
     required String price,
+    required String productNames,
     required OrderStatus status,
   }) {
     Color themeColor;
     Color bgColor;
     String statusText;
-    Color textColor;
 
     switch (status) {
       case OrderStatus.livrees:
         themeColor = const Color(0xFF00C853);
         bgColor = const Color(0xFFE8F5E9);
         statusText = "Livrées";
-        textColor = Colors.white;
         break;
       case OrderStatus.annulees:
         themeColor = const Color(0xFFFF3D00);
         bgColor = const Color(0xFFFFEBEE);
         statusText = "Annulées";
-        textColor = Colors.white;
         break;
       default:
         themeColor = const Color(0xFFFF6900);
         bgColor = Colors.white;
-        statusText = "En cours";  
-        textColor = Color(0xffCA3500);
+        statusText = "En cours";
     }
 
     return InkWell(
-      onTap: (){
-        print(_selectedStatus.name);
-        Navigator.push(context, MaterialPageRoute(builder: (_) => InprogressScreen(status: _selectedStatus.name,)));
+      onTap: () {
+        log(_selectedStatus.name);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InprogressScreen(status: _selectedStatus.name),
+          ),
+        );
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
@@ -228,15 +279,22 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                     _statusBadge(statusText, themeColor, Colors.white),
                   ],
                 ),
-                const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: Colors.grey,
+                ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(date, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            Text(
+              date,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
             const SizedBox(height: 4),
-            const Text(
-              "Coffee Fort Blend   Coffee Fort Blend",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+            Text(
+              productNames.isEmpty ? "Aucun produit" : productNames,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -261,7 +319,6 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(20),
-        
       ),
       child: Text(
         text,
@@ -269,7 +326,6 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           color: textColor,
           fontSize: 10,
           fontWeight: FontWeight.bold,
-          
         ),
       ),
     );
