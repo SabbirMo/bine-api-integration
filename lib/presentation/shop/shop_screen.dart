@@ -165,91 +165,112 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
           ),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Horizontal Category Selector
-          SizedBox(
-            height: 100,
-            child: isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Colors.orange),
-                  )
-                : ListView.builder(
-                    controller: _categoryScrollController,
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: categories.length,
-                    itemBuilder: (context, index) =>
-                        _buildCategoryItem(categories[index], index),
+      body: RefreshIndicator(
+        color: Colors.orange,
+        onRefresh: () async {
+          context.read<CategoryProvider>().fetchCategories();
+          context.read<ProductProvider>().fetchProducts();
+          // Wait briefly to allow loading indicators to show.
+          await Future.delayed(const Duration(milliseconds: 800));
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Horizontal Category Selector
+                  SizedBox(
+                    height: 100,
+                    child: isLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.orange,
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _categoryScrollController,
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: categories.length,
+                            itemBuilder: (context, index) =>
+                                _buildCategoryItem(categories[index], index),
+                          ),
                   ),
-          ),
 
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment
-                  .spaceBetween, // Pushes text to left and icon to right
-              children: [
-                Text(
-                  "$selectedCategoryName catégori",
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      isSubcategoryShow = !isSubcategoryShow;
-                    });
-                  },
-                  constraints:
-                      const BoxConstraints(), // Removes default padding to keep it clean
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(
-                    Icons.close_rounded, // Rounded cross icon
-                    color: Colors.black, // Clean dark grey/black color
-                    size: 24,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          //sub category show here
-          if (currentSubCategories.isNotEmpty)
-            isSubcategoryShow
-                ? Padding(
+                  Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    child: Wrap(
-                      spacing: 10.0, // Horizontal gap between chips
-                      runSpacing: 10.0, // Vertical gap between lines
-                      children: List.generate(
-                        currentSubCategories.length,
-                        (index) => _buildSubCategoryItem(
-                          currentSubCategories[index],
-                          index,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "$selectedCategoryName catégori",
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              isSubcategoryShow = !isSubcategoryShow;
+                            });
+                          },
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.black,
+                            size: 24,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  //sub category show here
+                  if (currentSubCategories.isNotEmpty)
+                    isSubcategoryShow
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            child: Wrap(
+                              spacing: 10.0,
+                              runSpacing: 10.0,
+                              children: List.generate(
+                                currentSubCategories.length,
+                                (index) => _buildSubCategoryItem(
+                                  currentSubCategories[index],
+                                  index,
+                                ),
+                              ),
+                            ),
+                          )
+                        : const SizedBox(),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+            // Product Grid
+            isProductsLoading
+                ? const SliverFillRemaining(
+                    child: Center(
+                      child: CircularProgressIndicator(color: Colors.orange),
                     ),
                   )
-                : SizedBox(),
-          SizedBox(height: 10),
-          // Product Grid
-          Expanded(
-            child: isProductsLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Colors.orange),
-                  )
                 : filteredProductCards.isEmpty
-                ? const Center(child: Text("Aucun produit trouvé"))
-                : Padding(
+                ? const SliverFillRemaining(
+                    child: Center(child: Text("Aucun produit trouvé")),
+                  )
+                : SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: GridView.builder(
+                    sliver: SliverGrid(
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
@@ -257,8 +278,7 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                             crossAxisSpacing: 10,
                             mainAxisSpacing: 10,
                           ),
-                      itemCount: filteredProductCards.length,
-                      itemBuilder: (context, index) {
+                      delegate: SliverChildBuilderDelegate((context, index) {
                         return InkWell(
                           onTap: () {
                             Navigator.push(
@@ -273,11 +293,11 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                           },
                           child: filteredProductCards[index],
                         );
-                      },
+                      }, childCount: filteredProductCards.length),
                     ),
                   ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -385,157 +405,3 @@ class ProductContent {
     this.isNetwork = false,
   });
 }
-
-final List<ShopProductCard> sportsProductList = [
-  ShopProductCard(
-    title: "Ballon de Football",
-    price: "185 000 FCFA",
-    assetThumbnail: "assets/images/balonde.jpg",
-    showDiscountPercentage: true,
-    showOldPrice: true,
-    content: [
-      ProductContent(
-        url: "https://www.pexels.com/download/video/6573622/",
-        isVideo: true,
-        isImage: false,
-      ),
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/46798/the-ball-stadion-football-the-pitch-46798.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/34247678/pexels-photo-34247678.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-    ],
-  ),
-  ShopProductCard(
-    title: "iPhone 15 Pro",
-    price: "850 000 FCFA",
-    assetThumbnail: "assets/icon/teenis.jpg",
-    showDiscountPercentage: false,
-    showOldPrice: false,
-    content: [
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/18525574/pexels-photo-18525574.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-      ProductContent(
-        url: "https://www.pexels.com/download/video/6217343/",
-        isVideo: true,
-        isImage: false,
-      ),
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/16479766/pexels-photo-16479766.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-    ],
-  ),
-  ShopProductCard(
-    title: "Canapé Moderne",
-    price: "450 000 FCFA",
-    assetThumbnail: "assets/icon/teenis.jpg",
-    showDiscountPercentage: false,
-    showOldPrice: false,
-    content: [
-      ProductContent(
-        url: "https://www.pexels.com/download/video/36108265/",
-        isVideo: true,
-        isImage: false,
-      ),
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/1866149/pexels-photo-1866149.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-      ProductContent(
-        url: "https://www.pexels.com/download/video/36108280/",
-        isVideo: true,
-        isImage: false,
-      ),
-    ],
-  ),
-  ShopProductCard(
-    title: "Canapé Lounge",
-    price: "185 000 FCFA",
-    discount: "-11%",
-    oldPrice: "210 000 FCFA",
-    showDiscountPercentage: true,
-    showOldPrice: true,
-    assetThumbnail: "assets/images/lounge.jpg",
-    content: [
-      ProductContent(
-        url: "https://images.pexels.com/photos/276583/pexels-photo-276583.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-      ProductContent(
-        url: "https://www.pexels.com/download/video/36108265/",
-        isVideo: true,
-        isImage: false,
-      ),
-    ],
-  ),
-  ShopProductCard(
-    title: "Coffee Fort Blend",
-    price: "850 000 FCFA",
-    showDiscountPercentage: false,
-    showOldPrice: false,
-    assetThumbnail: "assets/images/fort_blend.jpg",
-    content: [
-      ProductContent(
-        url: "https://www.pexels.com/download/video/17422066/",
-        isVideo: true,
-        isImage: false,
-      ),
-      ProductContent(
-        url: "https://images.pexels.com/photos/312418/pexels-photo-312418.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-    ],
-  ),
-  ShopProductCard(
-    title: "Canapé Moderne",
-    price: "450 000 FCFA",
-    discount: "-11%",
-    oldPrice: "500 000 FCFA",
-    showDiscountPercentage: true,
-    showOldPrice: true,
-    assetThumbnail: "assets/images/lounge.jpg",
-    content: [
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/15491800/pexels-photo-15491800.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-      ProductContent(
-        url: "https://www.pexels.com/download/video/11429925/",
-        isVideo: true,
-        isImage: false,
-      ),
-      ProductContent(
-        url:
-            "https://images.pexels.com/photos/6489121/pexels-photo-6489121.jpeg",
-        isVideo: false,
-        isImage: true,
-      ),
-    ],
-  ),
-];

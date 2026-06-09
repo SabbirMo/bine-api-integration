@@ -28,6 +28,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<HomeProvider>().fetchHomeData();
+      context.read<CartProvider>().fetchCart();
     });
   }
 

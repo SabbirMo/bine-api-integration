@@ -1,4 +1,5 @@
 import 'package:binetatour/core/login/login_provider.dart';
+import 'package:binetatour/providers/cart_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -53,6 +54,8 @@ class _LoginState extends State<Login> {
                         passwordController.text.trim(),
                       );
                       if (!mounted) return;
+                      // Fetch cart data after successful login to update badge
+                      context.read<CartProvider>().fetchCart();
                       Navigator.pop(context);
                     },
                     child: Text("Login"),
