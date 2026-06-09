@@ -1,6 +1,7 @@
 import 'package:binetatour/core/login/login_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:media_kit/media_kit.dart';
 import 'routing/app_routing.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -16,6 +17,8 @@ import 'providers/feedback_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+
+  await dotenv.load(fileName: ".env");
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

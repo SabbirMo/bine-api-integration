@@ -1,3 +1,6 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class BaseUrl {
-  static const String baseUrl = 'http://103.186.20.235:8002';
+  static String get baseUrl =>
+      dotenv.env['API_URL'] ?? '';
 }
