@@ -1,3 +1,5 @@
+import 'package:binetatour/data/models/order_detail_model.dart';
+
 class OrderHistoryModel {
   final int id;
   final String orderNumber;
@@ -7,6 +9,7 @@ class OrderHistoryModel {
   final String totalAmount;
   final int itemCount;
   final List<String> productNames;
+  final List<OrderItemModel>? items;
   final String createdAt;
 
   OrderHistoryModel({
@@ -18,6 +21,7 @@ class OrderHistoryModel {
     required this.totalAmount,
     required this.itemCount,
     required this.productNames,
+    this.items,
     required this.createdAt,
   });
 
@@ -33,6 +37,11 @@ class OrderHistoryModel {
       productNames: json['product_names'] != null
           ? List<String>.from(json['product_names'])
           : [],
+      items: json['items'] != null
+          ? (json['items'] as List)
+                .map((i) => OrderItemModel.fromJson(i))
+                .toList()
+          : null,
       createdAt: json['created_at'] ?? '',
     );
   }

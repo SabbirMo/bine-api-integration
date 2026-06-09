@@ -41,6 +41,7 @@ class FeedbackProvider extends ChangeNotifier {
 
   Future<bool> submitFeedback({
     required String orderNumber,
+    required int orderItemId,
     required double rating,
     required String comment,
   }) async {
@@ -50,6 +51,7 @@ class FeedbackProvider extends ChangeNotifier {
 
     try {
       final formData = FormData.fromMap({
+        'order_item_id': orderItemId,
         'rating': rating.toInt(),
         'comment': comment,
       });

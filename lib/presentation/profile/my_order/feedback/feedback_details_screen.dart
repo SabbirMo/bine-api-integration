@@ -4,17 +4,18 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/feedback_provider.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:binetatour/data/models/order_detail_model.dart';
 
 class FeedbackDetailsScreen extends StatefulWidget {
   final String orderId;
   final String date;
-  final List<String> items;
+  final OrderItemModel item;
 
   const FeedbackDetailsScreen({
     super.key,
     required this.orderId,
     required this.date,
-    required this.items,
+    required this.item,
   });
 
   @override
@@ -82,28 +83,48 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
             style: const TextStyle(color: Colors.grey, fontSize: 13),
           ),
           const SizedBox(height: 16),
-          ...widget.items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: _itemRow(item),
-            ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: _itemRowWithImage(widget.item),
           ),
         ],
       ),
     );
   }
 
-  Widget _itemRow(String text) {
+  Widget _itemRowWithImage(OrderItemModel item) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: Colors.grey[200],
+              image: DecorationImage(
+                image: NetworkImage(item.mainImage),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              item.productName,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -285,6 +306,7 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
 
                       await provider.submitFeedback(
                         orderNumber: widget.orderId,
+                        orderItemId: widget.item.id,
                         rating: _currentRating,
                         comment: _commentController.text,
                       );

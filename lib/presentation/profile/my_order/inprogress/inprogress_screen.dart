@@ -3,7 +3,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
-import 'package:binetatour/presentation/profile/my_order/feedback/feedback_details_screen.dart';
+import 'package:binetatour/presentation/profile/my_order/feedback/order_items_screen.dart';
 
 class InprogressScreen extends StatefulWidget {
   final String status;
@@ -360,17 +360,12 @@ class _InprogressScreenState extends State<InprogressScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      final itemNames = orderDetail.items
-                          .map((item) => item.productName)
-                          .toList();
-
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => FeedbackDetailsScreen(
-                            orderId: orderDetail.orderNumber,
-                            date: orderDetail.createdAt,
-                            items: itemNames,
+                          builder: (_) => OrderItemsScreen(
+                            orderNumber: orderDetail.orderNumber,
+                            createdAt: orderDetail.createdAt,
                           ),
                         ),
                       );

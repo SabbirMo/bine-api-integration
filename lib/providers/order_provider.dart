@@ -30,7 +30,9 @@ class OrderProvider extends ChangeNotifier {
 
       if (response.data != null) {
         final List<dynamic> data = response.data;
-        _orderHistory = data.map((json) => OrderHistoryModel.fromJson(json)).toList();
+        _orderHistory = data
+            .map((json) => OrderHistoryModel.fromJson(json))
+            .toList();
       }
 
       _isLoading = false;
@@ -67,6 +69,55 @@ class OrderProvider extends ChangeNotifier {
       _errorMessage = e.toString();
       log("Error fetching order detail: ${e.toString()}");
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<OrderDetailModel?> getOrderDetailData(String orderNumber) async {
+    try {
+      final response = await _apiServices.get(
+        '/api/mobile/orders/$orderNumber/',
+        requireAuth: true,
+      );
+
+      if (response.data != null) {
+        return OrderDetailModel.fromJson(response.data);
+      }
+      return null;
+    } catch (e) {
+      log("Error fetching order detail data: ${e.toString()}");
+      return null;
+    }
+  }
+
+  final Map<String, OrderDetailModel> _orderDetailsMap = {};
+  Map<String, OrderDetailModel> get orderDetailsMap => _orderDetailsMap;
+
+  final Map<String, bool> _orderLoadingMap = {};
+  bool isOrderLoading(String orderNumber) =>
+      _orderLoadingMap[orderNumber] ?? true;
+
+  Future<void> fetchOrderDetailForCard(String orderNumber) async {
+    if (_orderDetailsMap.containsKey(orderNumber)) return;
+
+    _orderLoadingMap[orderNumber] = true;
+    notifyListeners();
+
+    try {
+      final response = await _apiServices.get(
+        '/api/mobile/orders/$orderNumber/',
+        requireAuth: true,
+      );
+
+      if (response.data != null) {
+        _orderDetailsMap[orderNumber] = OrderDetailModel.fromJson(
+          response.data,
+        );
+      }
+    } catch (e) {
+      log("Error fetching order detail data for card: ${e.toString()}");
+    } finally {
+      _orderLoadingMap[orderNumber] = false;
       notifyListeners();
     }
   }

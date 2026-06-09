@@ -367,6 +367,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                   }
 
                   if (shareText.isNotEmpty) {
+                    // ignore: deprecated_member_use
                     Share.share(shareText);
                   }
                 },
