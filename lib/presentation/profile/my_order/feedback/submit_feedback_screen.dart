@@ -1,17 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:dotted_border/dotted_border.dart';
+
+import 'dart:io';
 
 class SubmitReviewScreen extends StatefulWidget {
-  const SubmitReviewScreen({super.key});
+  final String orderId;
+  final String date;
+  final List<String> items;
+  final double rating;
+  final String comment;
+  final List<String> imagePaths;
+
+  const SubmitReviewScreen({
+    super.key,
+    required this.orderId,
+    required this.date,
+    required this.items,
+    required this.rating,
+    required this.comment,
+    required this.imagePaths,
+  });
 
   @override
   State<SubmitReviewScreen> createState() => _SubmitReviewScreenState();
 }
 
 class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
-  double _rating = 1.0;
-  final TextEditingController _commentController = TextEditingController();
+  late double _rating;
+  late TextEditingController _commentController;
+
+  @override
+  void initState() {
+    super.initState();
+    _rating = widget.rating;
+    _commentController = TextEditingController(text: widget.comment);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +48,7 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          "Donner mon avis",
+          "Avis soumis",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
@@ -60,18 +83,21 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Commande CMD-2023-001",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Text(
+            "Commande ${widget.orderId}",
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
-          const Text(
-            "Livrée le 12 Oct 2023",
-            style: TextStyle(color: Colors.grey, fontSize: 13),
+          Text(
+            "Livrée le ${widget.date}",
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
           ),
           const SizedBox(height: 12),
-          _itemBadge("1x Canapé 3 places"),
-          const SizedBox(height: 8),
-          _itemBadge("1x Table basse"),
+          ...widget.items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: _itemBadge(item),
+            ),
+          ),
         ],
       ),
     );
@@ -112,10 +138,11 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
             initialRating: _rating,
             minRating: 1,
             itemSize: 36,
+            ignoreGestures: true,
             unratedColor: Colors.grey.shade200,
             itemBuilder: (context, _) =>
                 const Icon(Icons.star, color: Colors.orange),
-            onRatingUpdate: (rating) => setState(() => _rating = rating),
+            onRatingUpdate: (rating) {},
           ),
           const SizedBox(height: 20),
           const Text(
@@ -126,69 +153,54 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
           TextField(
             controller: _commentController,
             maxLines: 4,
+            readOnly: true,
             decoration: InputDecoration(
-              hintText: "Partagez votre expérience avec ces produits...",
+              hintText: "Aucun commentaire",
               hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(
-                  color: Color(0xFFFF6D00),
-                ), // Orange border
+                borderSide: BorderSide(color: Colors.grey.shade300),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(
-                  color: Color(0xFFFF6D00),
-                  width: 2,
-                ),
+                borderSide: BorderSide(color: Colors.grey.shade300),
               ),
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            "Ajouter des photos/vidéos",
-            style: TextStyle(fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildImagePreview(),
-              const SizedBox(width: 12),
-              _buildAddMediaButton(),
-            ],
-          ),
+          if (widget.imagePaths.isNotEmpty) ...[
+            const Text(
+              "Photos/vidéos ajoutées",
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: widget.imagePaths
+                    .map(
+                      (path) => Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: _buildImagePreview(path),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildImagePreview() {
+  Widget _buildImagePreview(String path) {
     return Container(
       width: 70,
       height: 70,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade300),
-        image: const DecorationImage(
-          image: NetworkImage('https://via.placeholder.com/150'),
-          fit: BoxFit.cover,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAddMediaButton() {
-    return DottedBorder(
-      child: SizedBox(
-        width: 70,
-        height: 70,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.upload, color: Colors.grey, size: 20),
-            Text("Ajouter", style: TextStyle(fontSize: 10, color: Colors.grey)),
-          ],
-        ),
+        image: DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover),
       ),
     );
   }
@@ -200,7 +212,9 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
         width: double.infinity,
         height: 50,
         child: ElevatedButton(
-          onPressed: () {},
+          onPressed: () {
+            Navigator.pop(context);
+          },
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF7E848C), // Greyish blue button
             shape: RoundedRectangleBorder(
@@ -209,7 +223,7 @@ class _SubmitReviewScreenState extends State<SubmitReviewScreen> {
             elevation: 0,
           ),
           child: const Text(
-            "Publier mon avis",
+            "Retour",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),

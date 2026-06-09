@@ -3,6 +3,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
+import 'package:binetatour/presentation/profile/my_order/feedback/feedback_details_screen.dart';
 
 class InprogressScreen extends StatefulWidget {
   final String status;
@@ -267,6 +268,19 @@ class _InprogressScreenState extends State<InprogressScreen> {
   }
 
   Widget _buildPaymentInfo(OrderDetailModel orderDetail) {
+    String paymentImage = "assets/images/money.png";
+    final method = orderDetail.paymentMethod.toLowerCase();
+    if (method.contains("wave")) {
+      paymentImage = "assets/images/wave.png";
+    } else if (method.contains("cash") ||
+        method.contains("liquide") ||
+        method.contains("case") ||
+        method.contains("delivery")) {
+      paymentImage = "assets/images/truck.png";
+    } else {
+      paymentImage = "assets/images/money.png";
+    }
+
     return _sectionCard(
       title: "Informations de paiement",
       child: Column(
@@ -279,7 +293,13 @@ class _InprogressScreenState extends State<InprogressScreen> {
             ),
             child: Row(
               children: [
-                Image.asset("assets/images/money.png", height: 25, width: 25),
+                Image.asset(
+                  paymentImage,
+                  height: 25,
+                  width: 25,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Icon(Icons.payment, color: Colors.grey),
+                ),
                 const SizedBox(width: 12),
                 Text(
                   orderDetail.paymentMethod.toUpperCase(),
@@ -334,22 +354,76 @@ class _InprogressScreenState extends State<InprogressScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.file_download_outlined, size: 20),
-              label: const Text("Facture"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6900),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          if (widget.status == 'livrees')
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      final itemNames = orderDetail.items
+                          .map((item) => item.productName)
+                          .toList();
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => FeedbackDetailsScreen(
+                            orderId: orderDetail.orderNumber,
+                            date: orderDetail.createdAt,
+                            items: itemNames,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.star_border, size: 20),
+                    label: const Text("Votre avis"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFEAA61F),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.file_download_outlined, size: 20),
+                    label: const Text("Facture"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD44C23),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {},
+                icon: const Icon(Icons.file_download_outlined, size: 20),
+                label: const Text("Facture"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6900),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

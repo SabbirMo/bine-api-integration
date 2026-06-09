@@ -40,7 +40,11 @@ class GiveReviewScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const FeedbackDetailsScreen(),
+                    builder: (_) => const FeedbackDetailsScreen(
+                      orderId: "CMD-001",
+                      date: "12 Oct 2023",
+                      items: ["Canapé 3 places", "Table basse"],
+                    ),
                   ),
                 );
               },

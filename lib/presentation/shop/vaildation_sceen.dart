@@ -125,23 +125,49 @@ class _ValidationScreenState extends State<ValidationScreen> {
         children: [
           Row(
             children: [
-              Expanded(child: _textField("🤴 Nom", "votre nom", controller: _nameController)),
+              Expanded(
+                child: _textField(
+                  "🤴 Nom",
+                  "votre nom",
+                  controller: _nameController,
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _textField("🤴 Prénom", "votre Prénom", controller: _surnameController)),
+              Expanded(
+                child: _textField(
+                  "🤴 Prénom",
+                  "votre Prénom",
+                  controller: _surnameController,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _textField("📞 Tél. Principal", "77..", controller: _phoneController)),
+              Expanded(
+                child: _textField(
+                  "📞 Tél. Principal",
+                  "77..",
+                  controller: _phoneController,
+                ),
+              ),
               const SizedBox(width: 10),
               Expanded(
-                child: _textField("📞 Tél. 2 (Optionnel)", "Secondaire", controller: _phone2Controller),
+                child: _textField(
+                  "📞 Tél. 2 (Optionnel)",
+                  "Secondaire",
+                  controller: _phone2Controller,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          _textField("📍 Adresse", "Enter votre adresse", controller: _addressController),
+          _textField(
+            "📍 Adresse",
+            "Enter votre adresse",
+            controller: _addressController,
+          ),
         ],
       ),
     );
@@ -187,7 +213,11 @@ class _ValidationScreenState extends State<ValidationScreen> {
     );
   }
 
-  Widget _textField(String label, String hint, {TextEditingController? controller}) {
+  Widget _textField(
+    String label,
+    String hint, {
+    TextEditingController? controller,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -317,7 +347,10 @@ class _ValidationScreenState extends State<ValidationScreen> {
                 ),
               ),
               onPressed: () async {
-                final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+                final orderProvider = Provider.of<OrderProvider>(
+                  context,
+                  listen: false,
+                );
 
                 // ── Validate: every item with variants must have a variant selected ──
                 final cartItems = cartProvider.cart?.items ?? [];
@@ -343,14 +376,19 @@ class _ValidationScreenState extends State<ValidationScreen> {
                       ),
                       content: Row(
                         children: [
-                          const Icon(Icons.warning_amber_rounded,
-                              color: Colors.white, size: 20),
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               "$names : couleur ou taille non sélectionnée",
                               style: const TextStyle(
-                                  color: Colors.white, fontSize: 13),
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ],
@@ -363,21 +401,28 @@ class _ValidationScreenState extends State<ValidationScreen> {
 
                 String deliveryDate = "";
                 if (_selectedDate == "AUJOURD'HUI") {
-                  deliveryDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                  deliveryDate = DateFormat(
+                    'yyyy-MM-dd',
+                  ).format(DateTime.now());
                 } else if (_selectedDate == "DEMAIN") {
-                  deliveryDate = DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)));
+                  deliveryDate = DateFormat(
+                    'yyyy-MM-dd',
+                  ).format(DateTime.now().add(const Duration(days: 1)));
                 } else {
                   try {
                     final parts = _formattedDate.split('/');
                     deliveryDate = "${parts[2]}-${parts[1]}-${parts[0]}";
-                  } catch(e) {
-                    deliveryDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                  } catch (e) {
+                    deliveryDate = DateFormat(
+                      'yyyy-MM-dd',
+                    ).format(DateTime.now());
                   }
                 }
 
                 String deliveryTimeStr = "06:25:27.291Z"; // Default fallback
                 if (!_isAvailableNow && _timeController.text.isNotEmpty) {
-                  deliveryTimeStr = "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
+                  deliveryTimeStr =
+                      "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
                 }
 
                 // Build items list with selected variant_id
@@ -388,6 +433,15 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   };
                 }).toList();
 
+                String apiPaymentMethod = "orange_money";
+                if (selectedPayment == "Wave") {
+                  apiPaymentMethod = "wave";
+                } else if (selectedPayment == "Liquide") {
+                  apiPaymentMethod = "cash_on_delivery";
+                } else if (selectedPayment == "Orange Money") {
+                  apiPaymentMethod = "orange_money";
+                }
+
                 final success = await orderProvider.createOrder(
                   items: items,
                   customerName: _nameController.text,
@@ -397,10 +451,10 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   customerAddress: _addressController.text,
                   deliveryDate: deliveryDate,
                   deliveryTime: deliveryTimeStr,
-                  deliveryTimeEnd: deliveryTimeStr, 
+                  deliveryTimeEnd: deliveryTimeStr,
                   deliveryNote: _noteController.text,
                   deliveryFee: "0.00",
-                  paymentMethod: selectedPayment.toLowerCase(),
+                  paymentMethod: apiPaymentMethod,
                 );
 
                 if (success && context.mounted) {
@@ -414,26 +468,34 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   );
                 } else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(orderProvider.errorMessage ?? "Erreur lors de la commande")),
+                    SnackBar(
+                      content: Text(
+                        orderProvider.errorMessage ??
+                            "Erreur lors de la commande",
+                      ),
+                    ),
                   );
                 }
               },
               child: Consumer<OrderProvider>(
                 builder: (context, orderProvider, child) {
-                  return orderProvider.isLoading 
-                    ? const SizedBox(
-                        height: 20, 
-                        width: 20, 
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Text(
-                        "JE VALIDE",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      );
+                  return orderProvider.isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          "JE VALIDE",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        );
                 },
               ),
             ),

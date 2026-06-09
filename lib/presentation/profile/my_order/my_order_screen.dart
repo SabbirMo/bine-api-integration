@@ -180,20 +180,26 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           return const Center(child: Text("Aucune commande trouvée."));
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: filteredOrders.length,
-          itemBuilder: (context, index) {
-            final order = filteredOrders[index];
-            return _orderCard(
-              id: order.orderNumber,
-              date: order.createdAt,
-              items: "${order.itemCount} article(s)",
-              price: "${order.totalAmount} FCFA",
-              productNames: order.productNames.join(", "),
-              status: _selectedStatus,
-            );
+        return RefreshIndicator(
+          color: const Color(0xFFFF6900),
+          onRefresh: () async {
+            await context.read<OrderProvider>().fetchOrderHistory();
           },
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: filteredOrders.length,
+            itemBuilder: (context, index) {
+              final order = filteredOrders[index];
+              return _orderCard(
+                id: order.orderNumber,
+                date: order.createdAt,
+                items: "${order.itemCount} article(s)",
+                price: "${order.totalAmount} FCFA",
+                productNames: order.productNames.join(", "),
+                status: _selectedStatus,
+              );
+            },
+          ),
         );
       },
     );
@@ -235,7 +241,8 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => InprogressScreen(status: _selectedStatus.name, orderNumber: id),
+            builder: (_) =>
+                InprogressScreen(status: _selectedStatus.name, orderNumber: id),
           ),
         );
       },

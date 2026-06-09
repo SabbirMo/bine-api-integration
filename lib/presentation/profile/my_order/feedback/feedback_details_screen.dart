@@ -1,17 +1,29 @@
 import 'package:binetatour/presentation/profile/my_order/feedback/submit_feedback_screen.dart';
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/feedback_provider.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart'; // Add to pubspec.yaml
-import 'package:dotted_border/dotted_border.dart'; // Add to pubspec.yaml
 
 class FeedbackDetailsScreen extends StatefulWidget {
-  const FeedbackDetailsScreen({super.key});
+  final String orderId;
+  final String date;
+  final List<String> items;
+
+  const FeedbackDetailsScreen({
+    super.key,
+    required this.orderId,
+    required this.date,
+    required this.items,
+  });
 
   @override
   State<FeedbackDetailsScreen> createState() => _FeedbackDetailsScreenState();
 }
 
 class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
-  double _currentRating = 1.0;
+  double _currentRating = 0.0;
   final TextEditingController _commentController = TextEditingController();
 
   @override
@@ -62,18 +74,21 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Commande CMD-2023-001",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Text(
+            "Commande ${widget.orderId}",
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
-          const Text(
-            "Livré le 12 Oct 2023",
-            style: TextStyle(color: Colors.grey, fontSize: 13),
+          Text(
+            "Livré le ${widget.date}",
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
           ),
           const SizedBox(height: 16),
-          _itemRow("1x Canapé 3 places"),
-          const SizedBox(height: 8),
-          _itemRow("1x Table basse"),
+          ...widget.items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: _itemRow(item),
+            ),
+          ),
         ],
       ),
     );
@@ -144,9 +159,13 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
               hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
               filled: true,
               fillColor: const Color(0xFFF9F9F9),
-              enabledBorder: OutlineInputBorder(
+              focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Color(0xffE74B08)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
               disabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -164,19 +183,34 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildMediaPreview(),
-              const SizedBox(width: 12),
-              _buildAddMediaButton(),
-            ],
+          Consumer<FeedbackProvider>(
+            builder: (context, provider, child) {
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ...provider.selectedImages.asMap().entries.map((entry) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: _buildMediaPreview(
+                          entry.value,
+                          entry.key,
+                          provider,
+                        ),
+                      );
+                    }),
+                    _buildAddMediaButton(provider),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMediaPreview() {
+  Widget _buildMediaPreview(XFile file, int index, FeedbackProvider provider) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -185,8 +219,8 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
           height: 75,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            image: const DecorationImage(
-              image: NetworkImage('https://via.placeholder.com/150'),
+            image: DecorationImage(
+              image: FileImage(File(file.path)),
               fit: BoxFit.cover,
             ),
           ),
@@ -195,10 +229,12 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
           top: -6,
           right: -6,
           child: GestureDetector(
-            onTap: () {},
+            onTap: () {
+              provider.removeImage(index);
+            },
             child: CircleAvatar(
               radius: 11,
-              backgroundColor: Colors.grey.shade300,
+              backgroundColor: Colors.red.shade300,
               child: const Icon(Icons.close, size: 14, color: Colors.white),
             ),
           ),
@@ -207,12 +243,15 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
     );
   }
 
-  Widget _buildAddMediaButton() {
-    return DottedBorder(
+  Widget _buildAddMediaButton(FeedbackProvider provider) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey),
+      ),
       child: InkWell(
-        // Added InkWell for better user feedback
-        onTap: () {
-          // Handle media picking logic here
+        onTap: () async {
+          await provider.pickImage();
         },
         borderRadius: BorderRadius.circular(12),
         child: Container(
@@ -226,30 +265,71 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
   }
 
   Widget _buildSubmitButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 55,
-      child: ElevatedButton(
-        onPressed: () {
-          // Logic to submit _currentRating and _commentController.text
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SubmitReviewScreen()),
-          ); // Navigate to details screen after submission
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFE65100),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+    return Consumer<FeedbackProvider>(
+      builder: (context, provider, child) {
+        return SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton(
+            onPressed: provider.isLoading
+                ? null
+                : () async {
+                    if (_currentRating == 0.0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Veuillez donner une note."),
+                        ),
+                      );
+                      return;
+                    }
+
+                    await provider.submitFeedback(
+                      orderNumber: widget.orderId,
+                      rating: _currentRating,
+                      comment: _commentController.text,
+                    );
+
+                    // if (success && mounted) {
+                    //   final paths = provider.selectedImages.map((e) => e.path).toList();
+                    //   provider.clearImages();
+                    //   Navigator.pushReplacement(
+                    //     context,
+                    //     MaterialPageRoute(
+                    //       builder: (_) => SubmitReviewScreen(
+                    //         orderId: widget.orderId,
+                    //         date: widget.date,
+                    //         items: widget.items,
+                    //         rating: _currentRating,
+                    //         comment: _commentController.text,
+                    //         imagePaths: paths,
+                    //       ),
+                    //     ),
+                    //   );
+                    // } else if (mounted) {
+                    //   ScaffoldMessenger.of(context).showSnackBar(
+                    //     SnackBar(
+                    //       content: Text(provider.errorMessage ?? "Erreur d'envoi"),
+                    //     ),
+                    //   );
+                    // }
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE65100),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 0,
+            ),
+            child: provider.isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text(
+                    "Envoyer l'avis",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
           ),
-          elevation: 0,
-        ),
-        child: const Text(
-          "Envoyer l'avis",
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ),
+        );
+      },
     );
   }
 }
