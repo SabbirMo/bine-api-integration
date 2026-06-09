@@ -1,13 +1,43 @@
 import 'package:binetatour/core/login/login.dart';
+import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/feedback_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/invoice/invoice_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/my_order_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
-class ProfileView extends StatelessWidget {
+class ProfileView extends StatefulWidget {
   final VoidCallback onLogout;
   const ProfileView({super.key, required this.onLogout});
+
+  @override
+  State<ProfileView> createState() => _ProfileViewState();
+}
+
+class _ProfileViewState extends State<ProfileView> {
+  String name = "Loading...";
+  String email = "Loading...";
+  String? profileImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+  }
+
+  Future<void> _loadProfileData() async {
+    final storedName = await TokenStorage.getName();
+    final storedEmail = await TokenStorage.getEmail();
+    final storedImage = await TokenStorage.getProfileImage();
+
+    setState(() {
+      name = (storedName == null || storedName == "null" || storedName.isEmpty)
+          ? "Utilisateur"
+          : storedName;
+      email = (storedEmail == null || storedEmail == "null") ? "" : storedEmail;
+      profileImage = (storedImage == "null") ? null : storedImage;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,28 +54,38 @@ class ProfileView extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 35,
-                  backgroundImage: AssetImage(
-                    'assets/images/dp.png',
-                  ), // Replace with actual user image
+                  backgroundColor: Colors.grey[200],
+                  backgroundImage:
+                      profileImage != null &&
+                          profileImage!.isNotEmpty &&
+                          profileImage != "null"
+                      ? NetworkImage(profileImage!) as ImageProvider
+                      : const AssetImage('assets/images/dp.png'),
                 ),
                 const SizedBox(width: 15),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      "Pappu",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    Text(
-                      "Pappyroy6393@Gmail.Com",
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                    ),
-                  ],
+                      if (email.isNotEmpty)
+                        Text(
+                          email,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 13,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -65,7 +105,7 @@ class ProfileView extends StatelessWidget {
             child: _buildMenuItem(
               "assets/icon/order.svg",
               "Mes Commandes",
-              Color(0xffF54900),
+              const Color(0xffF54900),
             ),
           ),
           InkWell(
@@ -78,7 +118,7 @@ class ProfileView extends StatelessWidget {
             child: _buildMenuItem(
               "assets/icon/invoice.svg",
               "Mes factures",
-              Color(0xff00C950),
+              const Color(0xff00C950),
             ),
           ),
           InkWell(
@@ -92,7 +132,7 @@ class ProfileView extends StatelessWidget {
             child: _buildMenuItem(
               "assets/icon/fav.svg",
               "Mes avis",
-              Color(0xffF0B100),
+              const Color(0xffF0B100),
             ),
           ),
           InkWell(
@@ -106,7 +146,7 @@ class ProfileView extends StatelessWidget {
             child: _buildMenuItem(
               "assets/icon/fav.svg",
               "Login",
-              Color(0xffF0B100),
+              const Color(0xffF0B100),
             ),
           ),
 
@@ -114,7 +154,7 @@ class ProfileView extends StatelessWidget {
 
           // Logout Button
           GestureDetector(
-            onTap: onLogout,
+            onTap: widget.onLogout,
             child: Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(

@@ -22,9 +22,16 @@ class LoginProvider extends ChangeNotifier {
 
       final data = response.data;
 
+      final name = data['user']['name'];
+      final userEmail = data['user']['email'];
+      final profileImage = data['user']['profile_photo_url'];
+
       await TokenStorage.saveAccessToken(data['access']);
 
       await TokenStorage.saveRefreshToken(data['refresh']);
+      await TokenStorage.saveName(name.toString());
+      await TokenStorage.saveEmail(userEmail.toString());
+      await TokenStorage.saveProfileImage(profileImage.toString());
 
       log("Login Successfull $response");
     } catch (e) {
