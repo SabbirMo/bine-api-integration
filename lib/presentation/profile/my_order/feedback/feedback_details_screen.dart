@@ -266,66 +266,71 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
   Widget _buildSubmitButton() {
     return Consumer<FeedbackProvider>(
       builder: (context, provider, child) {
-        return SizedBox(
-          width: double.infinity,
-          height: 55,
-          child: ElevatedButton(
-            onPressed: provider.isLoading
-                ? null
-                : () async {
-                    if (_currentRating == 0.0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Veuillez donner une note."),
-                        ),
+        return SafeArea(
+          child: SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton(
+              onPressed: provider.isLoading
+                  ? null
+                  : () async {
+                      if (_currentRating == 0.0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Veuillez donner une note."),
+                          ),
+                        );
+                        return;
+                      }
+
+                      await provider.submitFeedback(
+                        orderNumber: widget.orderId,
+                        rating: _currentRating,
+                        comment: _commentController.text,
                       );
-                      return;
-                    }
 
-                    await provider.submitFeedback(
-                      orderNumber: widget.orderId,
-                      rating: _currentRating,
-                      comment: _commentController.text,
-                    );
-
-                    // if (success && mounted) {
-                    //   final paths = provider.selectedImages.map((e) => e.path).toList();
-                    //   provider.clearImages();
-                    //   Navigator.pushReplacement(
-                    //     context,
-                    //     MaterialPageRoute(
-                    //       builder: (_) => SubmitReviewScreen(
-                    //         orderId: widget.orderId,
-                    //         date: widget.date,
-                    //         items: widget.items,
-                    //         rating: _currentRating,
-                    //         comment: _commentController.text,
-                    //         imagePaths: paths,
-                    //       ),
-                    //     ),
-                    //   );
-                    // } else if (mounted) {
-                    //   ScaffoldMessenger.of(context).showSnackBar(
-                    //     SnackBar(
-                    //       content: Text(provider.errorMessage ?? "Erreur d'envoi"),
-                    //     ),
-                    //   );
-                    // }
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE65100),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                      // if (success && mounted) {
+                      //   final paths = provider.selectedImages.map((e) => e.path).toList();
+                      //   provider.clearImages();
+                      //   Navigator.pushReplacement(
+                      //     context,
+                      //     MaterialPageRoute(
+                      //       builder: (_) => SubmitReviewScreen(
+                      //         orderId: widget.orderId,
+                      //         date: widget.date,
+                      //         items: widget.items,
+                      //         rating: _currentRating,
+                      //         comment: _commentController.text,
+                      //         imagePaths: paths,
+                      //       ),
+                      //     ),
+                      //   );
+                      // } else if (mounted) {
+                      //   ScaffoldMessenger.of(context).showSnackBar(
+                      //     SnackBar(
+                      //       content: Text(provider.errorMessage ?? "Erreur d'envoi"),
+                      //     ),
+                      //   );
+                      // }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE65100),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
               ),
-              elevation: 0,
+              child: provider.isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                      "Envoyer l'avis",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
-            child: provider.isLoading
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Text(
-                    "Envoyer l'avis",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
           ),
         );
       },

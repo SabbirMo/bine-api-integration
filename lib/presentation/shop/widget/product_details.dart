@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final List<ProductModel>
@@ -281,36 +283,109 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                 child: _buildActionIcon(Icons.add, "Panier"),
               ),
               const SizedBox(height: 20),
-              Column(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.6),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white),
+              InkWell(
+                onTap: () async {
+                  String shareText = '';
+
+                  if (_mediaContent.isNotEmpty) {
+                    shareText = _mediaContent[_currentMediaIndex].url;
+                  } else if (_product.mainImage != null) {
+                    shareText = _product.mainImage!;
+                  }
+
+                  if (shareText.isNotEmpty) {
+                    final whatsappAppUrl = Uri.parse(
+                      "whatsapp://send?text=${Uri.encodeComponent(shareText)}",
+                    );
+                    final whatsappWebUrl = Uri.parse(
+                      "https://wa.me/?text=${Uri.encodeComponent(shareText)}",
+                    );
+
+                    bool launched = false;
+
+                    if (await canLaunchUrl(whatsappAppUrl)) {
+                      launched = await launchUrl(
+                        whatsappAppUrl,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+
+                    if (!launched) {
+                      launched = await launchUrl(
+                        whatsappWebUrl,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+
+                    if (!launched) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "WhatsApp n'est pas installé sur cet appareil.",
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  }
+                },
+                child: Column(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.6),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white),
+                      ),
+                      child: SvgPicture.asset(
+                        "assets/icon/ic_baseline-whatsapp.svg",
+                        height: 25,
+                        width: 25,
+                      ),
                     ),
-                    child: SvgPicture.asset(
-                      "assets/icon/ic_baseline-whatsapp.svg",
-                      height: 25,
-                      width: 25,
+                    const SizedBox(height: 4),
+                    Text(
+                      "Whatsapp",
+                      style: const TextStyle(color: Colors.white, fontSize: 11),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Whatsapp",
-                    style: const TextStyle(color: Colors.white, fontSize: 11),
-                  ),
-                ],
+                  ],
+                ),
               ),
               SizedBox(height: 20),
 
-              SvgPicture.asset(
-                "assets/icon/mdi_share.svg",
-                // ignore: deprecated_member_use
-                color: Colors.white,
-                height: 25,
-                width: 25,
+              InkWell(
+                onTap: () {
+                  String shareText = '';
+
+                  if (_mediaContent.isNotEmpty) {
+                    shareText = _mediaContent[_currentMediaIndex].url;
+                  } else if (_product.mainImage != null) {
+                    shareText = _product.mainImage!;
+                  }
+
+                  if (shareText.isNotEmpty) {
+                    Share.share(shareText);
+                  }
+                },
+                child: Column(
+                  children: [
+                    SvgPicture.asset(
+                      "assets/icon/mdi_share.svg",
+                      // ignore: deprecated_member_use
+                      color: Colors.white,
+                      height: 25,
+                      width: 25,
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Partager",
+                      style: TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
             ],

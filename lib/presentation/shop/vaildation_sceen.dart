@@ -336,167 +336,169 @@ class _ValidationScreenState extends State<ValidationScreen> {
             ),
           ),
           const SizedBox(height: 5),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6900),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          SafeArea(
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6900),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-              ),
-              onPressed: () async {
-                final orderProvider = Provider.of<OrderProvider>(
-                  context,
-                  listen: false,
-                );
+                onPressed: () async {
+                  final orderProvider = Provider.of<OrderProvider>(
+                    context,
+                    listen: false,
+                  );
 
-                // ── Validate: every item with variants must have a variant selected ──
-                final cartItems = cartProvider.cart?.items ?? [];
-                final List<String> missingVariantProducts = [];
+                  // ── Validate: every item with variants must have a variant selected ──
+                  final cartItems = cartProvider.cart?.items ?? [];
+                  final List<String> missingVariantProducts = [];
 
-                for (final cartItem in cartItems) {
-                  final selectedVariant = _selectedVariantIds[cartItem.id];
-                  // If the map has no entry yet OR the entry is null, variant not selected
-                  if (!_selectedVariantIds.containsKey(cartItem.id) ||
-                      selectedVariant == null) {
-                    missingVariantProducts.add(cartItem.productName);
+                  for (final cartItem in cartItems) {
+                    final selectedVariant = _selectedVariantIds[cartItem.id];
+                    // If the map has no entry yet OR the entry is null, variant not selected
+                    if (!_selectedVariantIds.containsKey(cartItem.id) ||
+                        selectedVariant == null) {
+                      missingVariantProducts.add(cartItem.productName);
+                    }
                   }
-                }
 
-                if (missingVariantProducts.isNotEmpty && context.mounted) {
-                  final names = missingVariantProducts.join(', ');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: const Color(0xFFFF4500),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      content: Row(
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              "$names : couleur ou taille non sélectionnée",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
+                  if (missingVariantProducts.isNotEmpty && context.mounted) {
+                    final names = missingVariantProducts.join(', ');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: const Color(0xFFFF4500),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        content: Row(
+                          children: [
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "$names : couleur ou taille non sélectionnée",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                        duration: const Duration(seconds: 3),
                       ),
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                  return;
-                }
+                    );
+                    return;
+                  }
 
-                String deliveryDate = "";
-                if (_selectedDate == "AUJOURD'HUI") {
-                  deliveryDate = DateFormat(
-                    'yyyy-MM-dd',
-                  ).format(DateTime.now());
-                } else if (_selectedDate == "DEMAIN") {
-                  deliveryDate = DateFormat(
-                    'yyyy-MM-dd',
-                  ).format(DateTime.now().add(const Duration(days: 1)));
-                } else {
-                  try {
-                    final parts = _formattedDate.split('/');
-                    deliveryDate = "${parts[2]}-${parts[1]}-${parts[0]}";
-                  } catch (e) {
+                  String deliveryDate = "";
+                  if (_selectedDate == "AUJOURD'HUI") {
                     deliveryDate = DateFormat(
                       'yyyy-MM-dd',
                     ).format(DateTime.now());
+                  } else if (_selectedDate == "DEMAIN") {
+                    deliveryDate = DateFormat(
+                      'yyyy-MM-dd',
+                    ).format(DateTime.now().add(const Duration(days: 1)));
+                  } else {
+                    try {
+                      final parts = _formattedDate.split('/');
+                      deliveryDate = "${parts[2]}-${parts[1]}-${parts[0]}";
+                    } catch (e) {
+                      deliveryDate = DateFormat(
+                        'yyyy-MM-dd',
+                      ).format(DateTime.now());
+                    }
                   }
-                }
 
-                String deliveryTimeStr = "06:25:27.291Z"; // Default fallback
-                if (!_isAvailableNow && _timeController.text.isNotEmpty) {
-                  deliveryTimeStr =
-                      "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
-                }
+                  String deliveryTimeStr = "06:25:27.291Z"; // Default fallback
+                  if (!_isAvailableNow && _timeController.text.isNotEmpty) {
+                    deliveryTimeStr =
+                        "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
+                  }
 
-                // Build items list with selected variant_id
-                final items = cartItems.map((cartItem) {
-                  return {
-                    "variant_id": _selectedVariantIds[cartItem.id] ?? 0,
-                    "quantity": cartItem.quantity,
-                  };
-                }).toList();
+                  // Build items list with selected variant_id
+                  final items = cartItems.map((cartItem) {
+                    return {
+                      "variant_id": _selectedVariantIds[cartItem.id] ?? 0,
+                      "quantity": cartItem.quantity,
+                    };
+                  }).toList();
 
-                String apiPaymentMethod = "orange_money";
-                if (selectedPayment == "Wave") {
-                  apiPaymentMethod = "wave";
-                } else if (selectedPayment == "Liquide") {
-                  apiPaymentMethod = "cash_on_delivery";
-                } else if (selectedPayment == "Orange Money") {
-                  apiPaymentMethod = "orange_money";
-                }
+                  String apiPaymentMethod = "orange_money";
+                  if (selectedPayment == "Wave") {
+                    apiPaymentMethod = "wave";
+                  } else if (selectedPayment == "Liquide") {
+                    apiPaymentMethod = "cash_on_delivery";
+                  } else if (selectedPayment == "Orange Money") {
+                    apiPaymentMethod = "orange_money";
+                  }
 
-                final success = await orderProvider.createOrder(
-                  items: items,
-                  customerName: _nameController.text,
-                  customerSurname: _surnameController.text,
-                  customerPhone: _phoneController.text,
-                  customerPhone2: _phone2Controller.text,
-                  customerAddress: _addressController.text,
-                  deliveryDate: deliveryDate,
-                  deliveryTime: deliveryTimeStr,
-                  deliveryTimeEnd: deliveryTimeStr,
-                  deliveryNote: _noteController.text,
-                  deliveryFee: "0.00",
-                  paymentMethod: apiPaymentMethod,
-                );
-
-                if (success && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Commande réussie")),
+                  final success = await orderProvider.createOrder(
+                    items: items,
+                    customerName: _nameController.text,
+                    customerSurname: _surnameController.text,
+                    customerPhone: _phoneController.text,
+                    customerPhone2: _phone2Controller.text,
+                    customerAddress: _addressController.text,
+                    deliveryDate: deliveryDate,
+                    deliveryTime: deliveryTimeStr,
+                    deliveryTimeEnd: deliveryTimeStr,
+                    deliveryNote: _noteController.text,
+                    deliveryFee: "0.00",
+                    paymentMethod: apiPaymentMethod,
                   );
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const MainDashboard()),
-                    (route) => false,
-                  );
-                } else if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        orderProvider.errorMessage ??
-                            "Erreur lors de la commande",
+
+                  if (success && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Commande réussie")),
+                    );
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MainDashboard()),
+                      (route) => false,
+                    );
+                  } else if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          orderProvider.errorMessage ??
+                              "Erreur lors de la commande",
+                        ),
                       ),
-                    ),
-                  );
-                }
-              },
-              child: Consumer<OrderProvider>(
-                builder: (context, orderProvider, child) {
-                  return orderProvider.isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          "JE VALIDE",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        );
+                    );
+                  }
                 },
+                child: Consumer<OrderProvider>(
+                  builder: (context, orderProvider, child) {
+                    return orderProvider.isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            "JE VALIDE",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          );
+                  },
+                ),
               ),
             ),
           ),

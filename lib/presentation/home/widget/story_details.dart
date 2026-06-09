@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/story_provider.dart';
 
 class StoryDetailScreen extends StatefulWidget {
   final List<StoryContent> stories;
@@ -50,6 +52,15 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     _isLoading = true;
 
     final story = widget.stories[index];
+
+    // Call API to mark story as viewed
+    if (story.id != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<StoryProvider>().viewStory(story.id!);
+        }
+      });
+    }
 
     if (story.isVideo || story.isAudio) {
       _initializeMedia(story);
@@ -327,6 +338,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 }
 
 class StoryContent {
+  final int? id;
   final String url;
   final bool isVideo;
   final bool isAudio;
@@ -334,6 +346,7 @@ class StoryContent {
   final bool isNetwork;
 
   StoryContent({
+    this.id,
     required this.url,
     required this.isVideo,
     required this.isAudio,

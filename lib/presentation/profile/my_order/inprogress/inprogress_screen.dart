@@ -512,9 +512,13 @@ class _InprogressScreenState extends State<InprogressScreen> {
                     color: _hexToColor(item.colorCode),
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    "${item.colorName}  Taille: ${item.size}  Qté: ${item.quantity}",
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  Expanded(
+                    child: Text(
+                      "${item.colorName}  Taille: ${item.size}  Qté: ${item.quantity}",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
                   ),
                 ],
               ),

@@ -3,6 +3,8 @@ import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/story_provider.dart';
 
 class VideoStoryScreen extends StatefulWidget {
   final List<StoryContent> stories;
@@ -44,6 +46,15 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
     _isLoading = true;
 
     final story = widget.stories[index];
+
+    // Call API to mark story as viewed
+    if (story.id != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<StoryProvider>().viewStory(story.id!);
+        }
+      });
+    }
 
     if (story.isVideo) {
       _initializeVideo(story);

@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/home_provider.dart';
 import 'package:binetatour/data/models/home_response_model.dart';
 import 'package:binetatour/data/models/product_model.dart' as shop_model;
+import 'package:url_launcher/url_launcher.dart';
 
 class AccueilScreen extends StatefulWidget {
   const AccueilScreen({super.key});
@@ -68,7 +69,43 @@ class _AccueilScreenState extends State<AccueilScreen> {
           ],
         ),
         actions: [
-          SvgPicture.asset("assets/icon/whatsapp.svg"),
+          GestureDetector(
+            onTap: () async {
+              final Uri whatsappAppUrl = Uri.parse('whatsapp://send');
+              final Uri whatsappWebUrl = Uri.parse(
+                'https://wa.me/',
+              ); // You can append a phone number here
+
+              bool launched = false;
+
+              // 1. Try launching the WhatsApp app directly
+              if (await canLaunchUrl(whatsappAppUrl)) {
+                launched = await launchUrl(
+                  whatsappAppUrl,
+                  mode: LaunchMode.externalApplication,
+                );
+              }
+
+              // 2. If app fails, try web/fallback URL
+              if (!launched) {
+                // Even if canLaunchUrl is false, we try to launch because of Android 11+ intent query restrictions
+                launched = await launchUrl(
+                  whatsappWebUrl,
+                  mode: LaunchMode.externalApplication,
+                );
+              }
+
+              if (!launched && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Could not launch WhatsApp')),
+                );
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: SvgPicture.asset("assets/icon/whatsapp.svg"),
+            ),
+          ),
           IconButton(
             onPressed: () {
               Navigator.push(
@@ -159,9 +196,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                           thumbnailUrl:
                               homeData.banner!.thumbnailUrl ??
                               "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
-                          link:
-                              homeData.banner!.videoUrl ??
-                              "https://www.pexels.com/download/video/36418671/",
+                          link: homeData.banner!.videoUrl ?? "",
                         ),
                       ),
                     ),
@@ -288,6 +323,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
             bool isImg = s.contentType == 'image';
             bool isAud = s.contentType == 'audio';
             return StoryContent(
+              id: s.id,
               url: s.mediaUrl ?? '',
               isVideo: isVid,
               isAudio: isAud,
