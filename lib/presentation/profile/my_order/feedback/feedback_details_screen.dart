@@ -1,10 +1,9 @@
-import 'package:binetatour/presentation/profile/my_order/feedback/submit_feedback_screen.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/feedback_provider.dart';
-import 'package:flutter_rating_bar/flutter_rating_bar.dart'; // Add to pubspec.yaml
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 
 class FeedbackDetailsScreen extends StatefulWidget {
   final String orderId;

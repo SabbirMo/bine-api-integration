@@ -58,6 +58,7 @@ class MyApp extends StatelessWidget {
 
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Color(0xffFF8A00)),
+        appBarTheme: AppBarTheme(scrolledUnderElevation: 0, elevation: 0),
       ),
     );
   }
