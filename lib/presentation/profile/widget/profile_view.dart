@@ -136,12 +136,14 @@ class _ProfileViewState extends State<ProfileView> {
             ),
           ),
           InkWell(
-            onTap: () {
+            onTap: () async {
               // Navigate to Feedback Screen
-              Navigator.push(
+              await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => Login()),
               );
+              if (!mounted) return;
+              await _loadProfileData();
             },
             child: _buildMenuItem(
               "assets/icon/fav.svg",
