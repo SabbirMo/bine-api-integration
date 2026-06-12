@@ -1,4 +1,9 @@
+import 'package:binetatour/core/fcm_notification/notification_service.dart';
+import 'package:binetatour/core/fcm_notification/firebase_service.dart';
 import 'package:binetatour/core/login/login_provider.dart';
+import 'package:binetatour/firebase_options.dart';
+import 'package:firebase_core/firebase_core.dart' hide FirebaseService;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -11,15 +16,27 @@ import 'providers/category_provider.dart';
 import 'providers/product_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/order_provider.dart';
-
 import 'providers/feedback_provider.dart';
 import 'providers/story_provider.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
 
   await dotenv.load(fileName: ".env");
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  await NotificationService.instance.init();
+
+  await FirebaseService.instance.init();
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

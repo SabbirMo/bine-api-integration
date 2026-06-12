@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "74471662195",
+    "project_id": "bine-tatour",
+    "storage_bucket": "bine-tatour.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:74471662195:android:880e33db4c22622ed3c006",
+        "android_client_info": {
+          "package_name": "com.example.binetatour"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaeF7YavqynPlEyCs1hf5CnZWaWTMk7L8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
