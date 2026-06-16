@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/data/models/notification_model.dart';
+import 'package:binetatour/providers/notification_provider.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -8,80 +11,101 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
-  final List<AppNotification> notifications = [
-    AppNotification(
-      title: "Commande Confirmée",
-      message: "Votre commande pour le Ballon de Football a été validée.",
-      time: "Il y a 2 min",
-      type: NotificationType.order,
-    ),
-    AppNotification(
-      title: "Offre Flash ! ⚡",
-      message:
-          "Profitez de -20% sur toute la catégorie Tech aujourd'hui seulement.",
-      time: "Il y a 1 heure",
-      type: NotificationType.promo,
-    ),
-    AppNotification(
-      title: "Mise à jour du système",
-      message: "Une nouvelle version de Binetatour est disponible.",
-      time: "Hier",
-      type: NotificationType.system,
-      isRead: true,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<NotificationProvider>().fetchNotifications();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          "NOTIFICATIONS",
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                for (var n in notifications) {
-                  n.isRead = true;
-                }
-              });
-            },
-            child: const Text(
-              "Tout lire",
-              style: TextStyle(color: Color(0xFFFF6900)),
+    return Consumer<NotificationProvider>(
+      builder: (context, provider, child) {
+        Future<void> refreshAction() => context
+            .read<NotificationProvider>()
+            .fetchNotifications(forceRefresh: true);
+
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              onPressed: () => Navigator.pop(context),
             ),
+            title: const Text(
+              "NOTIFICATIONS",
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: provider.notifications.isEmpty
+                    ? null
+                    : provider.markAllAsRead,
+                child: const Text(
+                  "Tout lire",
+                  style: TextStyle(color: Color(0xFFFF6900)),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: notifications.isEmpty
-          ? _buildEmptyState()
-          : ListView.separated(
+          body: RefreshIndicator(
+            color: const Color(0xFFFF6900),
+            onRefresh: refreshAction,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(vertical: 10),
-              itemCount: notifications.length,
-              separatorBuilder: (context, index) =>
-                  const Divider(height: 1, indent: 70),
-              itemBuilder: (context, index) {
-                final item = notifications[index];
-                return _buildNotificationItem(item);
-              },
+              children: [
+                if (provider.isLoading && provider.notifications.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 220),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFF6900),
+                      ),
+                    ),
+                  )
+                else if (provider.errorMessage != null &&
+                    provider.notifications.isEmpty)
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: _buildErrorState(
+                      provider.errorMessage!,
+                      onRetry: refreshAction,
+                    ),
+                  )
+                else if (provider.notifications.isEmpty)
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: _buildEmptyState(),
+                  )
+                else
+                  ...List.generate(provider.notifications.length, (index) {
+                    final item = provider.notifications[index];
+                    final widgets = <Widget>[_buildNotificationItem(item)];
+                    if (index < provider.notifications.length - 1) {
+                      widgets.add(const Divider(height: 1, indent: 70));
+                    }
+                    return Column(children: widgets);
+                  }),
+              ],
             ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildNotificationItem(AppNotification item) {
+  Widget _buildNotificationItem(NotificationModel item) {
     return Container(
       color: item.isRead
           ? Colors.transparent
@@ -91,7 +115,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Dynamic Icon based on type
-          _buildIcon(item.type),
+          _buildIcon(item.notificationType),
           const SizedBox(width: 15),
           // Content
           Expanded(
@@ -119,7 +143,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  item.message,
+                  item.body,
                   style: TextStyle(
                     color: Colors.grey.shade600,
                     fontSize: 13,
@@ -128,7 +152,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  item.time,
+                  _formatNotificationTime(item),
                   style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
                 ),
               ],
@@ -139,23 +163,26 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Widget _buildIcon(NotificationType type) {
+  Widget _buildIcon(String notificationType) {
     IconData iconData;
     Color iconColor;
 
-    switch (type) {
-      case NotificationType.order:
+    switch (notificationType.toLowerCase()) {
+      case 'order':
         iconData = Icons.shopping_bag_outlined;
         iconColor = const Color(0xFFFF6900);
         break;
-      case NotificationType.promo:
+      case 'promo':
         iconData = Icons.local_offer_outlined;
         iconColor = Colors.blue;
         break;
-      case NotificationType.system:
+      case 'system':
         iconData = Icons.settings_outlined;
         iconColor = Colors.grey;
         break;
+      default:
+        iconData = Icons.notifications_none_outlined;
+        iconColor = const Color(0xFFFF6900);
     }
 
     return Container(
@@ -187,22 +214,47 @@ class _NotificationScreenState extends State<NotificationScreen> {
       ),
     );
   }
-}
 
-enum NotificationType { order, promo, system }
+  Widget _buildErrorState(String message, {required VoidCallback onRetry}) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 72, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(onPressed: onRetry, child: const Text('Réessayer')),
+          ],
+        ),
+      ),
+    );
+  }
 
-class AppNotification {
-  final String title;
-  final String message;
-  final String time;
-  final NotificationType type;
-  bool isRead;
+  String _formatNotificationTime(NotificationModel item) {
+    final date = item.readAt ?? item.createdAt;
+    if (date == null) {
+      return '';
+    }
 
-  AppNotification({
-    required this.title,
-    required this.message,
-    required this.time,
-    required this.type,
-    this.isRead = false,
-  });
+    final difference = DateTime.now().difference(date);
+    if (difference.inDays > 0) {
+      return 'Il y a ${difference.inDays} j';
+    }
+    if (difference.inHours > 0) {
+      return 'Il y a ${difference.inHours} h';
+    }
+    if (difference.inMinutes > 0) {
+      return 'Il y a ${difference.inMinutes} min';
+    }
+
+    return 'A l\'instant';
+  }
 }

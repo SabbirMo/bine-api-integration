@@ -8,6 +8,7 @@ import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
 import 'package:binetatour/presentation/shop/widget/shop_product_card.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/providers/notification_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
@@ -24,12 +25,21 @@ class AccueilScreen extends StatefulWidget {
 }
 
 class _AccueilScreenState extends State<AccueilScreen> {
+  Future<void> _refreshHomeData() async {
+    await Future.wait([
+      context.read<HomeProvider>().fetchHomeData(),
+      context.read<CartProvider>().fetchCart(),
+      context.read<NotificationProvider>().fetchNotifications(
+        forceRefresh: true,
+      ),
+    ]);
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<HomeProvider>().fetchHomeData();
-      context.read<CartProvider>().fetchCart();
+      _refreshHomeData();
     });
   }
 
@@ -106,14 +116,53 @@ class _AccueilScreenState extends State<AccueilScreen> {
               child: SvgPicture.asset("assets/icon/whatsapp.svg"),
             ),
           ),
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => NotificationScreen()),
+          Consumer<NotificationProvider>(
+            builder: (context, notificationProvider, child) {
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => NotificationScreen()),
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.notifications_none,
+                      color: Colors.black,
+                    ),
+                  ),
+                  if (notificationProvider.unreadCount > 0)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 18),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF6900),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          notificationProvider.unreadCount > 99
+                              ? '99+'
+                              : notificationProvider.unreadCount.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               );
             },
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
           ),
           Stack(
             children: [
@@ -179,9 +228,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
 
           return RefreshIndicator(
             color: const Color(0xFFE8500A),
-            onRefresh: () async {
-              await context.read<HomeProvider>().fetchHomeData();
-            },
+            onRefresh: _refreshHomeData,
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               child: Column(

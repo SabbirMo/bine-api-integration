@@ -2,6 +2,8 @@ import 'dart:developer';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import 'package:binetatour/core/network/api_services/api_services.dart';
+
 import 'notification_service.dart';
 
 class FirebaseService {
@@ -10,6 +12,7 @@ class FirebaseService {
   static final instance = FirebaseService._();
 
   final FirebaseMessaging messaging = FirebaseMessaging.instance;
+  final ApiServices apiServices = ApiServices();
 
   Future<void> init() async {
     await messaging.requestPermission(
@@ -21,6 +24,9 @@ class FirebaseService {
 
     final token = await messaging.getToken();
 
+    if (token != null) {
+      await _registerDeviceToken(token);
+    }
     log("FCM TOKEN => $token");
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -46,6 +52,19 @@ class FirebaseService {
       log("Opened From Terminated State");
 
       log(initialMessage.data.toString());
+    }
+  }
+
+  Future<void> _registerDeviceToken(String token) async {
+    try {
+      await apiServices.post(
+        '/api/notifications/devices/',
+        data: {'registration_token': token},
+        requireAuth: true,
+      );
+      log('FCM Token registered successfully');
+    } catch (e) {
+      log('Failed to register FCM token: $e');
     }
   }
 }
