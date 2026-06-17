@@ -78,10 +78,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     provider.notifications.isEmpty)
                   SizedBox(
                     height: MediaQuery.of(context).size.height * 0.7,
-                    child: _buildErrorState(
-                      provider.errorMessage!,
-                      onRetry: refreshAction,
-                    ),
+                    child: _buildErrorState(provider.errorMessage!),
                   )
                 else if (provider.notifications.isEmpty)
                   SizedBox(
@@ -215,7 +212,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Widget _buildErrorState(String message, {required VoidCallback onRetry}) {
+  Widget _buildErrorState(String message) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -230,8 +227,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
-            const SizedBox(height: 16),
-            OutlinedButton(onPressed: onRetry, child: const Text('Réessayer')),
           ],
         ),
       ),

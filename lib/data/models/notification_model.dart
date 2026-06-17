@@ -3,7 +3,7 @@ class NotificationModel {
   final String title;
   final String body;
   final String notificationType;
-  final String data;
+  final dynamic data;
   final bool isRead;
   final DateTime? readAt;
   final String pushStatus;
@@ -23,14 +23,14 @@ class NotificationModel {
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
     return NotificationModel(
-      id: json['id'] ?? 0,
-      title: json['title'] ?? '',
-      body: json['body'] ?? '',
-      notificationType: json['notification_type'] ?? 'general',
-      data: json['data'] ?? '',
-      isRead: json['is_read'] ?? false,
+      id: _asInt(json['id']),
+      title: _asString(json['title']),
+      body: _asString(json['body']),
+      notificationType: _asString(json['notification_type'], 'general'),
+      data: json['data'],
+      isRead: json['is_read'] == true,
       readAt: _parseDateTime(json['read_at']),
-      pushStatus: json['push_status'] ?? '',
+      pushStatus: _asString(json['push_status']),
       createdAt: _parseDateTime(json['created_at']),
     );
   }
@@ -55,5 +55,25 @@ class NotificationModel {
     }
 
     return DateTime.tryParse(value.toString())?.toLocal();
+  }
+
+  static String _asString(dynamic value, [String fallback = '']) {
+    if (value == null) {
+      return fallback;
+    }
+
+    if (value is String) {
+      return value;
+    }
+
+    return value.toString();
+  }
+
+  static int _asInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 }

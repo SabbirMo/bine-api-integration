@@ -55,6 +55,15 @@ class FirebaseService {
     }
   }
 
+  Future<void> registerCurrentToken() async {
+    final token = await messaging.getToken();
+
+    if (token != null) {
+      await _registerDeviceToken(token);
+      log('FCM token registered after login');
+    }
+  }
+
   Future<void> _registerDeviceToken(String token) async {
     try {
       await apiServices.post(

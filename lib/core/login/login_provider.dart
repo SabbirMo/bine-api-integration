@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:binetatour/core/fcm_notification/firebase_service.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
 import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -32,6 +33,8 @@ class LoginProvider extends ChangeNotifier {
       await TokenStorage.saveName(name.toString());
       await TokenStorage.saveEmail(userEmail.toString());
       await TokenStorage.saveProfileImage(profileImage.toString());
+
+      await FirebaseService.instance.registerCurrentToken();
 
       log("Login Successfull $response");
     } catch (e) {

@@ -138,11 +138,15 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       top: 4,
                       right: 4,
                       child: Container(
-                        constraints: const BoxConstraints(minWidth: 18),
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 18,
+                        ),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
+                          horizontal: 6,
                           vertical: 2,
                         ),
+                        alignment: Alignment.center,
                         decoration: const BoxDecoration(
                           color: Color(0xFFFF6900),
                           shape: BoxShape.circle,
