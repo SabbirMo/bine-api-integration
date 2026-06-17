@@ -74,7 +74,11 @@ class _InprogressScreenState extends State<InprogressScreen> {
                 const SizedBox(height: 16),
                 _buildDeliveryInfo(orderDetail),
                 const SizedBox(height: 16),
-                _buildPaymentInfo(orderDetail),
+                _buildPaymentInfo(
+                  context,
+                  orderDetail,
+                  provider.isDownloadingInvoice(orderDetail.id.toString()),
+                ),
                 const SizedBox(height: 24),
               ],
             ),
@@ -267,7 +271,11 @@ class _InprogressScreenState extends State<InprogressScreen> {
     );
   }
 
-  Widget _buildPaymentInfo(OrderDetailModel orderDetail) {
+  Widget _buildPaymentInfo(
+    BuildContext context,
+    OrderDetailModel orderDetail,
+    bool isDownloading,
+  ) {
     String paymentImage = "assets/images/money.png";
     final method = orderDetail.paymentMethod.toLowerCase();
     if (method.contains("wave")) {
@@ -386,9 +394,48 @@ class _InprogressScreenState extends State<InprogressScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.file_download_outlined, size: 20),
-                    label: const Text("Facture"),
+                    onPressed: isDownloading
+                        ? () {}
+                        : () async {
+                            final path = await context
+                                .read<OrderProvider>()
+                                .downloadInvoice(orderDetail.id.toString());
+                            if (context.mounted) {
+                              if (path != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "Facture téléchargée avec succès !\nEmplacement : $path",
+                                    ),
+                                    duration: const Duration(seconds: 4),
+                                  ),
+                                );
+                              } else {
+                                final errorMsg =
+                                    context
+                                        .read<OrderProvider>()
+                                        .errorMessage ??
+                                    "Erreur lors du téléchargement";
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(errorMsg)),
+                                );
+                              }
+                            }
+                          },
+                    icon: isDownloading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.file_download_outlined, size: 20),
+                    label: Text(
+                      isDownloading ? "Téléchargement..." : "Facture",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFD44C23),
                       foregroundColor: Colors.white,
@@ -406,9 +453,51 @@ class _InprogressScreenState extends State<InprogressScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.file_download_outlined, size: 20),
-                label: const Text("Facture"),
+                onPressed: isDownloading
+                    ? () {}
+                    : () async {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Téléchargement en cours..."),
+                          ),
+                        );
+                        final path = await context
+                            .read<OrderProvider>()
+                            .downloadInvoice(orderDetail.id.toString());
+                        if (context.mounted) {
+                          if (path != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  "Facture téléchargée avec succès !\nEmplacement : $path",
+                                ),
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          } else {
+                            final errorMsg =
+                                context.read<OrderProvider>().errorMessage ??
+                                "Erreur lors du téléchargement";
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text(errorMsg)));
+                          }
+                        }
+                      },
+                icon: isDownloading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.file_download_outlined, size: 20),
+                label: Text(
+                  isDownloading ? "Téléchargement..." : "Facture",
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF6900),
                   foregroundColor: Colors.white,

@@ -1,7 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:binetatour/providers/order_provider.dart';
 
-class InvoicesScreen extends StatelessWidget {
+class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
+
+  @override
+  State<InvoicesScreen> createState() => _InvoicesScreenState();
+}
+
+class _InvoicesScreenState extends State<InvoicesScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<OrderProvider>().fetchOrderHistory();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +48,12 @@ class InvoicesScreen extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
               decoration: InputDecoration(
                 hintText: "Recherche de facture...",
                 prefixIcon: const Icon(Icons.search),
@@ -38,49 +68,92 @@ class InvoicesScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildInvoiceCard(
-            id: "CMD-001",
-            date: "15 Avril 2026",
-            total: "125,000 FCFA",
-            status: "Livrée",
-            statusColor: const Color(0xFF28B446),
-            isDone: true,
-          ),
-          const SizedBox(height: 16),
-          _buildInvoiceCard(
-            id: "CMD-001",
-            date: "15 Avril 2026",
-            total: "125,000 FCFA",
-            status: "Livrée",
-            statusColor: const Color(0xFF28B446),
-            isDone: true,
-          ),
-          const SizedBox(height: 16),
-          _buildInvoiceCard(
-            id: "CMD-001",
-            date: "15 Avril 2026",
-            total: "125,000 FCFA",
-            status: "En cours",
-            statusColor: const Color(0xFFFDEBD0),
-            textColor: const Color(0xFFD35400),
-            isDone: false,
-          ),
-        ],
+      body: Consumer<OrderProvider>(
+        builder: (context, orderProvider, child) {
+          if (orderProvider.isLoading) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+            );
+          }
+
+          if (orderProvider.errorMessage != null) {
+            return Center(child: Text("Erreur: ${orderProvider.errorMessage}"));
+          }
+
+          final allOrders = orderProvider.orderHistory;
+
+          // Filter if needed (e.g., exclude cancelled). Currently showing all.
+          final displayOrders = allOrders.where((order) {
+            final statusStr = order.status.toLowerCase();
+            final matchesStatus = statusStr != 'cancelled'; // Often invoices are only for non-cancelled
+            final matchesSearch = order.orderNumber.toLowerCase().contains(_searchQuery.toLowerCase());
+            return matchesStatus && matchesSearch;
+          }).toList();
+
+          if (displayOrders.isEmpty) {
+            return const Center(child: Text("Aucune facture trouvée."));
+          }
+
+          return RefreshIndicator(
+            color: const Color(0xFFFF6900),
+            onRefresh: () async {
+              await context.read<OrderProvider>().fetchOrderHistory();
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: displayOrders.length,
+              itemBuilder: (context, index) {
+                final order = displayOrders[index];
+
+                final statusStr = order.status.toLowerCase();
+                String statusText = "En cours";
+                Color statusColor = const Color(0xFFFDEBD0);
+                Color textColor = const Color(0xFFD35400);
+                bool isDone = false;
+
+                if (statusStr == 'delivered') {
+                  statusText = "Livrée";
+                  statusColor = const Color(0xFF28B446);
+                  textColor = Colors.white;
+                  isDone = true;
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildInvoiceCard(
+                    context,
+                    displayId: order.orderNumber,
+                    orderId: order.id.toString(),
+                    date: order.createdAt,
+                    total: "${order.totalAmount} FCFA",
+                    status: statusText,
+                    statusColor: statusColor,
+                    textColor: textColor,
+                    isDone: isDone,
+                    isDownloading: orderProvider.isDownloadingInvoice(
+                      order.id.toString(),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildInvoiceCard({
-    required String id,
+  Widget _buildInvoiceCard(
+    BuildContext context, {
+    required String displayId,
+    required String orderId,
     required String date,
     required String total,
     required String status,
     required Color statusColor,
     Color textColor = Colors.white,
     required bool isDone,
+    required bool isDownloading,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -102,7 +175,7 @@ class InvoicesScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                id,
+                displayId,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -156,11 +229,47 @@ class InvoicesScreen extends StatelessWidget {
             width: double.infinity,
             height: 50,
             child: ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.download, size: 20),
-              label: const Text(
-                "Télécharger La Facture (PDF)",
-                style: TextStyle(fontWeight: FontWeight.bold),
+              onPressed: isDownloading
+                  ? () {}
+                  : () async {
+                      final path = await context
+                          .read<OrderProvider>()
+                          .downloadInvoice(orderId);
+                      if (context.mounted) {
+                        if (path != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                "Facture téléchargée avec succès !\nEmplacement : $path",
+                              ),
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        } else {
+                          final errorMsg =
+                              context.read<OrderProvider>().errorMessage ??
+                              "Erreur lors du téléchargement";
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(errorMsg)));
+                        }
+                      }
+                    },
+              icon: isDownloading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.download, size: 20),
+              label: Text(
+                isDownloading
+                    ? "Téléchargement..."
+                    : "Télécharger La Facture (PDF)",
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE65100),

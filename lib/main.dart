@@ -35,9 +35,9 @@ void main() async {
 
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  await NotificationService.instance.init();
+  NotificationService.instance.init();
 
-  await FirebaseService.instance.init();
+  FirebaseService.instance.init();
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

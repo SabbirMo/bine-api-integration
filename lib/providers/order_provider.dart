@@ -1,6 +1,9 @@
 import 'dart:developer';
+import 'dart:io';
+import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
 import 'package:binetatour/data/models/order_history_model.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
@@ -171,8 +174,67 @@ class OrderProvider extends ChangeNotifier {
       _errorMessage = e.toString();
       log("Error: ${e.toString()}");
       _isLoading = false;
+      _isLoading = false;
       notifyListeners();
       return false;
+    }
+  }
+
+  final Set<String> _downloadingInvoices = {};
+  bool isDownloadingInvoice(String orderId) =>
+      _downloadingInvoices.contains(orderId);
+
+  Future<String?> downloadInvoice(String orderId) async {
+    _downloadingInvoices.add(orderId);
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      Directory? directory;
+      if (Platform.isIOS) {
+        directory = await getApplicationDocumentsDirectory();
+      } else {
+        directory = Directory('/storage/emulated/0/Download');
+        bool hasAccess = false;
+        try {
+          if (!await directory.exists()) {
+            await directory.create(recursive: true);
+          }
+          final testFile = File('${directory.path}/.test_access');
+          await testFile.writeAsString('test');
+          await testFile.delete();
+          hasAccess = true;
+        } catch (e) {
+          log("No access to public Download folder: $e");
+          hasAccess = false;
+        }
+
+        if (!hasAccess) {
+          directory = await getExternalStorageDirectory();
+        }
+      }
+
+      if (directory == null) {
+        throw Exception("Impossible de trouver le dossier de destination");
+      }
+
+      final savePath = '${directory.path}/Facture_$orderId.pdf';
+      final dio = _apiServices.dio(true);
+      await dio.download(
+        '/api/orders/$orderId/invoice/',
+        savePath,
+        options: Options(method: 'GET'),
+      );
+
+      _downloadingInvoices.remove(orderId);
+      notifyListeners();
+      return savePath;
+    } catch (e) {
+      _errorMessage = "Erreur de téléchargement de la facture";
+      log("Error downloading invoice: $e");
+      _downloadingInvoices.remove(orderId);
+      notifyListeners();
+      return null;
     }
   }
 }
