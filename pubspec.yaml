@@ -55,6 +55,8 @@ dependencies:
   firebase_messaging: ^16.3.0
   flutter_local_notifications: ^22.0.0
   path_provider: ^2.1.6
+  firebase_auth: ^6.5.2
+  google_sign_in: ^6.2.1
 
 dev_dependencies:
   flutter_test:

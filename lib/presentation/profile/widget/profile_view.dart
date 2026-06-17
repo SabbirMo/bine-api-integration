@@ -3,6 +3,7 @@ import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/feedback_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/invoice/invoice_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/my_order_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
@@ -41,6 +42,7 @@ class _ProfileViewState extends State<ProfileView> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -57,12 +59,12 @@ class _ProfileViewState extends State<ProfileView> {
                 CircleAvatar(
                   radius: 35,
                   backgroundColor: Colors.grey[200],
-                  backgroundImage:
-                      profileImage != null &&
-                          profileImage!.isNotEmpty &&
-                          profileImage != "null"
-                      ? NetworkImage(profileImage!) as ImageProvider
-                      : const AssetImage('assets/images/dp.png'),
+                  backgroundImage: user?.photoURL != null
+                      ? NetworkImage(user!.photoURL!)
+                      : profileImage != null
+                      ? NetworkImage(profileImage!)
+                      : const AssetImage("assets/images/dp.png")
+                            as ImageProvider,
                 ),
                 const SizedBox(width: 15),
                 Expanded(
@@ -70,20 +72,20 @@ class _ProfileViewState extends State<ProfileView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        name,
+                        user?.displayName ?? name,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (email.isNotEmpty)
-                        Text(
-                          email,
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 13,
-                          ),
+
+                      Text(
+                        user?.email ?? email,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
                         ),
+                      ),
                     ],
                   ),
                 ),

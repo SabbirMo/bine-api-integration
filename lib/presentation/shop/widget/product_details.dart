@@ -1,5 +1,8 @@
 // ignore_for_file: must_be_immutable
 
+import 'package:binetatour/core/token_storage/token_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_video_item.dart';
@@ -254,6 +257,41 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
             children: [
               InkWell(
                 onTap: () async {
+                  final user = FirebaseAuth.instance.currentUser;
+                  final token = await TokenStorage.getAccessToken();
+
+                  if (user == null && token == null) {
+                    if (!mounted) return;
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (ctx) => Scaffold(
+                          backgroundColor: Colors.white,
+                          appBar: AppBar(
+                            backgroundColor: Colors.white,
+                            elevation: 0,
+                            iconTheme: const IconThemeData(color: Colors.black),
+                          ),
+                          body: LoginView(
+                            onLogin: () {
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+
+                    // Check again after login attempt
+                    final userAfter = FirebaseAuth.instance.currentUser;
+                    final tokenAfter = await TokenStorage.getAccessToken();
+
+                    if (userAfter == null && tokenAfter == null) {
+                      return; // Still not logged in
+                    }
+                  }
+
+                  if (!mounted) return;
+
                   context.read<CartProvider>().addToCart(_product);
 
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -417,7 +455,40 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                   child: SizedBox(
                     height: 50,
                     child: ElevatedButton.icon(
-                      onPressed: () {
+                      onPressed: () async {
+                        final token = await TokenStorage.getAccessToken();
+                        if (token == null || token.isEmpty) {
+                          if (!context.mounted) return;
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) => Scaffold(
+                                backgroundColor: Colors.white,
+                                appBar: AppBar(
+                                  backgroundColor: Colors.white,
+                                  elevation: 0,
+                                  iconTheme: const IconThemeData(
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                body: LoginView(
+                                  onLogin: () {
+                                    Navigator.pop(ctx);
+                                  },
+                                ),
+                              ),
+                            ),
+                          );
+
+                          // Check again after login attempt
+                          final tokenAfter =
+                              await TokenStorage.getAccessToken();
+                          if (tokenAfter == null || tokenAfter.isEmpty) {
+                            return; // Still not logged in
+                          }
+                        }
+
+                        if (!context.mounted) return;
                         Navigator.push(
                           context,
                           MaterialPageRoute(

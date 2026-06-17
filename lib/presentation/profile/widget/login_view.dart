@@ -1,5 +1,7 @@
+import 'package:binetatour/core/login/login_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:provider/provider.dart';
 
 class LoginView extends StatelessWidget {
   final VoidCallback onLogin;
@@ -7,6 +9,8 @@ class LoginView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loginProvider = Provider.of<LoginProvider>(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 30),
       child: Column(
@@ -30,7 +34,14 @@ class LoginView extends StatelessWidget {
           ),
           const SizedBox(height: 40),
           OutlinedButton(
-            onPressed: onLogin,
+            onPressed: loginProvider.isGoogleLoading
+                ? null
+                : () async {
+                    final success = await loginProvider.loginWithGoogle();
+                    if (success) {
+                      onLogin();
+                    }
+                  },
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
               shape: RoundedRectangleBorder(
@@ -38,19 +49,28 @@ class LoginView extends StatelessWidget {
               ),
               side: BorderSide(color: Colors.grey[300]!),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SvgPicture.asset(
-                  "assets/icon/google.svg",
-                ), // Use a local asset in production
-                const SizedBox(width: 12),
-                const Text(
-                  "Se Continuer avec Google",
-                  style: TextStyle(color: Colors.black, fontSize: 16),
-                ),
-              ],
-            ),
+            child: loginProvider.isGoogleLoading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.black,
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SvgPicture.asset(
+                        "assets/icon/google.svg",
+                      ), // Use a local asset in production
+                      const SizedBox(width: 12),
+                      const Text(
+                        "Se Continuer avec Google",
+                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      ),
+                    ],
+                  ),
           ),
           SizedBox(height: 10),
           OutlinedButton(

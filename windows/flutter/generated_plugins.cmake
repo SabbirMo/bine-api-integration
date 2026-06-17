@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_windows
+  firebase_auth
   firebase_core
   media_kit_libs_windows_video
   media_kit_video
