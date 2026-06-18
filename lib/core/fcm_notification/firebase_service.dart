@@ -22,12 +22,16 @@ class FirebaseService {
       provisional: false,
     );
 
-    final token = await messaging.getToken();
-
-    if (token != null) {
-      await _registerDeviceToken(token);
+    String? token;
+    try {
+      token = await messaging.getToken();
+      if (token != null) {
+        await _registerDeviceToken(token);
+      }
+      log("FCM TOKEN => $token");
+    } catch (e) {
+      log("FCM getToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e");
     }
-    log("FCM TOKEN => $token");
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
@@ -56,11 +60,14 @@ class FirebaseService {
   }
 
   Future<void> registerCurrentToken() async {
-    final token = await messaging.getToken();
-
-    if (token != null) {
-      await _registerDeviceToken(token);
-      log('FCM token registered after login');
+    try {
+      final token = await messaging.getToken();
+      if (token != null) {
+        await _registerDeviceToken(token);
+        log('FCM token registered after login');
+      }
+    } catch (e) {
+      log('FCM registerCurrentToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e');
     }
   }
 

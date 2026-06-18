@@ -8,6 +8,10 @@ class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     serverClientId:
         '74471662195-5ac9tsnhgn8emgkjpj3j94lek2a4cdgj.apps.googleusercontent.com',
+    scopes: [
+      'email',
+      'profile',
+    ],
   );
 
   Future<String?> signInWithGoogle() async {
@@ -28,6 +32,7 @@ class AuthService {
       //create firebase crenditial
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
+        accessToken: googleAuth.accessToken,
       );
 
       //firebase login

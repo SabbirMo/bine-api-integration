@@ -125,7 +125,7 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> createOrder({
+  Future<int?> createOrder({
     required List<Map<String, dynamic>> items,
     required String customerName,
     required String customerSurname,
@@ -165,18 +165,43 @@ class OrderProvider extends ChangeNotifier {
         requireAuth: true,
       );
 
-      log("Response: ${response.data}");
+      log("Create order response: ${response.data}");
+
+      // Extract the numeric order id from the response
+      final int? orderId = response.data?['id'] as int?;
 
       _isLoading = false;
       notifyListeners();
-      return true;
+      return orderId;
     } catch (e) {
       _errorMessage = e.toString();
-      log("Error: ${e.toString()}");
-      _isLoading = false;
+      log("Error creating order: ${e.toString()}");
       _isLoading = false;
       notifyListeners();
-      return false;
+      return null;
+    }
+  }
+
+  /// Calls POST /api/mobile/pay/{orderId}/ with the given provider.
+  /// Returns the raw response map on success, or null on failure.
+  Future<Map<String, dynamic>?> payOrder({
+    required int orderId,
+    required String provider,
+  }) async {
+    try {
+      final response = await _apiServices.post(
+        '/api/mobile/pay/$orderId/',
+        data: {"provider": provider},
+        requireAuth: true,
+      );
+
+      log("Pay order response: ${response.data}");
+      return response.data as Map<String, dynamic>?;
+    } catch (e) {
+      _errorMessage = e.toString();
+      log("Error paying order: ${e.toString()}");
+      notifyListeners();
+      return null;
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/presentation/shop/widget/cart_item_validation_card.dart';
@@ -434,16 +435,25 @@ class _ValidationScreenState extends State<ValidationScreen> {
                     };
                   }).toList();
 
-                  String apiPaymentMethod = "orange_money";
+                  // Map UI selection → two separate slugs:
+                  // orderPaymentMethod  → used in POST /orders/ (payment_method field)
+                  // payProvider         → used in POST /pay/{id}/ (provider field)
+                  String orderPaymentMethod;
+                  String payProvider;
                   if (selectedPayment == "Wave") {
-                    apiPaymentMethod = "wave";
+                    orderPaymentMethod = "wave";
+                    payProvider = "wave";
                   } else if (selectedPayment == "Liquide") {
-                    apiPaymentMethod = "cash_on_delivery";
-                  } else if (selectedPayment == "Orange Money") {
-                    apiPaymentMethod = "orange_money";
+                    orderPaymentMethod = "cash_on_delivery";
+                    payProvider = "cash_on_delivery";
+                  } else {
+                    // Orange Money
+                    orderPaymentMethod = "orange_money";
+                    payProvider = "orange";
                   }
 
-                  final success = await orderProvider.createOrder(
+                  // Step 1 – Create the order
+                  final int? orderId = await orderProvider.createOrder(
                     items: items,
                     customerName: _nameController.text,
                     customerSurname: _surnameController.text,
@@ -455,26 +465,98 @@ class _ValidationScreenState extends State<ValidationScreen> {
                     deliveryTimeEnd: deliveryTimeStr,
                     deliveryNote: _noteController.text,
                     deliveryFee: "0.00",
-                    paymentMethod: apiPaymentMethod,
+                    paymentMethod: orderPaymentMethod,
                   );
 
-                  if (success && context.mounted) {
+                  if (orderId == null) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            orderProvider.errorMessage ??
+                                "Erreur lors de la commande",
+                          ),
+                        ),
+                      );
+                    }
+                    return;
+                  }
+
+                  // Step 2 – Initiate payment
+                  final payResponse = await orderProvider.payOrder(
+                    orderId: orderId,
+                    provider: payProvider,
+                  );
+
+                  if (!context.mounted) return;
+
+                  if (payResponse == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Commande réussie")),
+                      SnackBar(
+                        content: Text(
+                          orderProvider.errorMessage ??
+                              "Erreur lors du paiement",
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  final String payStatus =
+                      payResponse['status']?.toString() ?? '';
+
+                  if (payStatus == 'qrcode') {
+                    // Orange Money or Wave – launch deep link
+                    final qrData = payResponse['qr'] as Map<String, dynamic>?;
+                    final String? deepLink = qrData?['deepLink']?.toString();
+
+                    if (deepLink != null && deepLink.isNotEmpty) {
+                      final uri = Uri.parse(deepLink);
+                      bool launched = false;
+
+                      // 1️⃣ App installed → open directly (Wave / Orange Money app)
+                      try {
+                        launched = await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalNonBrowserApplication,
+                        );
+                      } catch (_) {
+                        launched = false;
+                      }
+
+                      // 2️⃣ Fallback → open in browser / Play Store
+                      if (!launched) {
+                        try {
+                          launched = await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        } catch (_) {
+                          launched = false;
+                        }
+                      }
+
+                      // 3️⃣ Nothing worked
+                      if (!launched && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Impossible d'ouvrir l'application de paiement.",
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                    // Stay on this page so the user can come back after paying
+                  } else {
+                    // cash_on_delivery or other confirmed status
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Commande confirmée")),
                     );
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (_) => const MainDashboard()),
                       (route) => false,
-                    );
-                  } else if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          orderProvider.errorMessage ??
-                              "Erreur lors de la commande",
-                        ),
-                      ),
                     );
                   }
                 },
