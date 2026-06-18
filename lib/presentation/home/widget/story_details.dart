@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:math';
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -34,6 +37,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   StreamSubscription? _positionSub;
   double _currentMediaProgress = 0.0;
   bool _isLoading = false;
+  bool _isPlaying = false;
 
   @override
   void initState() {
@@ -50,6 +54,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     _imageProgress = 0.0;
     _currentMediaProgress = 0.0;
     _isLoading = true;
+    _isPlaying = false;
 
     final story = widget.stories[index];
 
@@ -81,11 +86,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     );
 
     _player!.setVolume(_isMuted ? 0.0 : 100.0);
-    if (story.isNetwork) {
-      _player!.open(Media(story.url));
-    } else {
-      _player!.open(Media('asset://${story.url}'));
-    }
 
     _positionSub = _player!.stream.position.listen((pos) {
       if (!mounted) return;
@@ -108,8 +108,43 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     });
 
     _player!.stream.playing.listen((playing) {
-      if (mounted && playing) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isPlaying = playing;
+          if (playing) _isLoading = false;
+        });
+      }
     });
+
+    if (story.isAudio && story.isNetwork) {
+      // Audio: download first via Dio then play local file (same fix as ProductAudioItem)
+      _downloadAndPlayAudio(story.url);
+    } else if (story.isNetwork) {
+      _player!.open(Media(story.url));
+    } else {
+      _player!.open(Media('asset://${story.url}'));
+    }
+  }
+
+  Future<void> _downloadAndPlayAudio(String url) async {
+    try {
+      final dio = Dio();
+      final tempDir = Directory.systemTemp;
+      final fileName = 'story_audio_${url.hashCode}.mp3';
+      final savePath = '${tempDir.path}/$fileName';
+      final file = File(savePath);
+
+      if (!await file.exists()) {
+        await dio.download(url, savePath);
+      }
+
+      if (!mounted) return;
+      await _player?.open(Media('file://$savePath'));
+      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      debugPrint('Story audio download error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void startImageTimer() {
@@ -163,36 +198,82 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. Media Content
-          GestureDetector(
-            onTapDown: (details) {
-              final screenWidth = MediaQuery.of(context).size.width;
-              if (details.globalPosition.dx < screenWidth / 3) {
-                _previousStory();
-              } else {
-                _nextStory();
-              }
-            },
-            onLongPressStart: (_) {
-              _player?.pause();
-              _cancelTimer();
-            },
-            onLongPressEnd: (_) {
-              if (story.isImage) {
-                startImageTimer();
-              } else {
-                _player?.play();
-              }
-            },
-            child: Center(child: _buildMedia(story)),
-          ),
+          // 1. Media Content (no gesture here)
+          Center(child: _buildMedia(story)),
 
-          // 2. UI Overlay (Header + Progress)
+          // 2. Navigation zones (long press + tap left/right)
+          //    For audio: center 40% is excluded so play button works freely
+          _buildNavigationLayer(story),
+
+          // 3. UI Overlay (Header + Progress)
           SafeArea(
             child: Column(children: [_buildProgressBars(), _buildHeader()]),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildNavigationLayer(StoryContent story) {
+    // For audio stories, skip the center 30% so the play button isn't blocked
+    if (story.isAudio) {
+      return Row(
+        children: [
+          // Left zone → previous story
+          Expanded(
+            flex: 3,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _previousStory,
+              onLongPressStart: (_) {
+                _player?.pause();
+              },
+              onLongPressEnd: (_) => _player?.play(),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          // Center gap → play button handles this
+          const Expanded(flex: 4, child: SizedBox.expand()),
+          // Right zone → next story
+          Expanded(
+            flex: 3,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _nextStory,
+              onLongPressStart: (_) {
+                _player?.pause();
+              },
+              onLongPressEnd: (_) => _player?.play(),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // For image/video stories: full screen navigation
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapDown: (details) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        if (details.globalPosition.dx < screenWidth / 3) {
+          _previousStory();
+        } else {
+          _nextStory();
+        }
+      },
+      onLongPressStart: (_) {
+        _player?.pause();
+        _cancelTimer();
+      },
+      onLongPressEnd: (_) {
+        if (story.isImage) {
+          startImageTimer();
+        } else {
+          _player?.play();
+        }
+      },
+      child: const SizedBox.expand(),
     );
   }
 
@@ -249,16 +330,59 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   }
 
   Widget _buildAudioPlaceholder() {
-    return Center(
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            if (_player != null) {
-              _player!.state.playing ? _player!.pause() : _player!.play();
-            }
-          });
-        },
-        child: Image.asset("assets/images/music_logo.png"),
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+      );
+    }
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _StoryAudioWave(isPlaying: _isPlaying, isReversed: true),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: () {
+                if (_player != null) {
+                  _isPlaying ? _player!.pause() : _player!.play();
+                }
+              },
+              child: Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFFFF6900).withValues(alpha: 0.4),
+                    width: 2,
+                  ),
+                  color: Colors.transparent,
+                ),
+                child: Center(
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFFFF6900),
+                    ),
+                    child: Icon(
+                      _isPlaying
+                          ? Icons.volume_up_rounded
+                          : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            _StoryAudioWave(isPlaying: _isPlaying, isReversed: false),
+          ],
+        ),
       ),
     );
   }
@@ -353,4 +477,101 @@ class StoryContent {
     required this.isImage,
     this.isNetwork = false,
   });
+}
+
+class _StoryAudioWave extends StatefulWidget {
+  final bool isPlaying;
+  final bool isReversed;
+
+  const _StoryAudioWave({required this.isPlaying, required this.isReversed});
+
+  @override
+  State<_StoryAudioWave> createState() => _StoryAudioWaveState();
+}
+
+class _StoryAudioWaveState extends State<_StoryAudioWave>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    if (widget.isPlaying) _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(_StoryAudioWave oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      if (widget.isPlaying) {
+        _controller.repeat(reverse: true);
+      } else {
+        _controller.stop();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<double> sideHeights = [
+      4,
+      6,
+      8,
+      12,
+      10,
+      16,
+      20,
+      14,
+      24,
+      30,
+      22,
+      36,
+      44,
+      32,
+      50,
+      40,
+    ];
+    final List<double> actualHeights = widget.isReversed
+        ? sideHeights
+        : sideHeights.reversed.toList();
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(actualHeights.length, (index) {
+            final double factor = sin(_controller.value * pi * 2 + index);
+            final double baseH = actualHeights[index];
+            double currentHeight = widget.isPlaying
+                ? baseH + (factor * (baseH * 0.3))
+                : baseH * 0.3;
+            currentHeight = currentHeight.clamp(2.0, 80.0);
+            final double opacity = (baseH / 50).clamp(0.2, 1.0);
+
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 1.5),
+              width: 3,
+              height: currentHeight,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6900).withValues(alpha: opacity),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
 }
