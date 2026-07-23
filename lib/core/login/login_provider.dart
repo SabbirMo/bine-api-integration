@@ -18,19 +18,31 @@ class LoginProvider extends ChangeNotifier {
       isGoogleLoading = true;
       notifyListeners();
 
-      final idToken = await _authService.signInWithGoogle();
+      final googleAuthData = await _authService.signInWithGoogle();
 
-      if (idToken != null) {
+      if (googleAuthData != null) {
+        final idToken = googleAuthData['idToken'];
+        
         final response = await apiServices.post(
           '/api/auth/auth/google/',
           data: {"id_token": idToken},
           requireAuth: false,
         );
 
+        log("Google Login Response $response");
+
         final data = response.data;
+
+        // Fallback to google profile data if backend doesn't return user info
+        final name = data['user']?['name'] ?? googleAuthData['name'] ?? '';
+        final userEmail = data['user']?['email'] ?? googleAuthData['email'] ?? '';
+        final profileImage = data['user']?['profile_photo_url'] ?? googleAuthData['photoUrl'] ?? '';
 
         await TokenStorage.saveAccessToken(data['access']);
         await TokenStorage.saveRefreshToken(data['refresh']);
+        await TokenStorage.saveName(name.toString());
+        await TokenStorage.saveEmail(userEmail.toString());
+        await TokenStorage.saveProfileImage(profileImage.toString());
 
         await FirebaseService.instance.registerCurrentToken();
 

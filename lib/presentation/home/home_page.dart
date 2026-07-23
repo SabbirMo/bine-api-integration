@@ -89,20 +89,25 @@ class _AccueilScreenState extends State<AccueilScreen> {
               bool launched = false;
 
               // 1. Try launching the WhatsApp app directly
-              if (await canLaunchUrl(whatsappAppUrl)) {
+              try {
                 launched = await launchUrl(
                   whatsappAppUrl,
                   mode: LaunchMode.externalApplication,
                 );
+              } catch (e) {
+                launched = false;
               }
 
               // 2. If app fails, try web/fallback URL
               if (!launched) {
-                // Even if canLaunchUrl is false, we try to launch because of Android 11+ intent query restrictions
-                launched = await launchUrl(
-                  whatsappWebUrl,
-                  mode: LaunchMode.externalApplication,
-                );
+                try {
+                  launched = await launchUrl(
+                    whatsappWebUrl,
+                    mode: LaunchMode.externalApplication,
+                  );
+                } catch (e) {
+                  launched = false;
+                }
               }
 
               if (!launched && context.mounted) {

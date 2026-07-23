@@ -14,7 +14,7 @@ class AuthService {
     ],
   );
 
-  Future<String?> signInWithGoogle() async {
+  Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
       //google login
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
@@ -38,7 +38,12 @@ class AuthService {
       //firebase login
       await _firebaseAuth.signInWithCredential(credential);
 
-      return googleAuth.idToken;
+      return {
+        'idToken': googleAuth.idToken,
+        'name': googleUser.displayName,
+        'email': googleUser.email,
+        'photoUrl': googleUser.photoUrl,
+      };
     } catch (e) {
       log("Error signing in with Google: $e");
       return null;

@@ -38,7 +38,11 @@ class CategorySectionHeader extends StatelessWidget {
                       : null,
                 ),
                 child: imagePath == null || imagePath!.isEmpty
-                    ? const Icon(Icons.image_not_supported, size: 24, color: Colors.grey)
+                    ? const Icon(
+                        Icons.image_not_supported,
+                        size: 24,
+                        color: Colors.grey,
+                      )
                     : null,
               ),
               const SizedBox(width: 8),

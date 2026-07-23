@@ -341,18 +341,24 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
                     bool launched = false;
 
-                    if (await canLaunchUrl(whatsappAppUrl)) {
+                    try {
                       launched = await launchUrl(
                         whatsappAppUrl,
                         mode: LaunchMode.externalApplication,
                       );
+                    } catch (e) {
+                      launched = false;
                     }
 
                     if (!launched) {
-                      launched = await launchUrl(
-                        whatsappWebUrl,
-                        mode: LaunchMode.externalApplication,
-                      );
+                      try {
+                        launched = await launchUrl(
+                          whatsappWebUrl,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      } catch (e) {
+                        launched = false;
+                      }
                     }
 
                     if (!launched) {
@@ -360,7 +366,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                              "WhatsApp n'est pas installé sur cet appareil.",
+                              "WhatsApp n'est pas installé sur cet appareil et impossible d'ouvrir le navigateur.",
                             ),
                             backgroundColor: Colors.red,
                           ),
