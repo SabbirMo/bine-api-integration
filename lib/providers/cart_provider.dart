@@ -127,4 +127,10 @@ class CartProvider extends ChangeNotifier {
       _errorMessage = e.toString();
     }
   }
+
+  void clearCart() {
+    _cart = null;
+    _errorMessage = null;
+    notifyListeners();
+  }
 }

@@ -1,4 +1,3 @@
-import 'package:binetatour/core/login/login.dart';
 import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/feedback_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/invoice/invoice_screen.dart';
@@ -137,28 +136,47 @@ class _ProfileViewState extends State<ProfileView> {
               const Color(0xffF0B100),
             ),
           ),
-          InkWell(
-            onTap: () async {
-              // Navigate to Feedback Screen
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => Login()),
-              );
-              if (!mounted) return;
-              await _loadProfileData();
-            },
-            child: _buildMenuItem(
-              "assets/icon/fav.svg",
-              "Login",
-              const Color(0xffF0B100),
-            ),
-          ),
-
           const SizedBox(height: 20),
 
           // Logout Button
           GestureDetector(
-            onTap: widget.onLogout,
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return AlertDialog(
+                    title: const Text("Déconnexion"),
+                    content: const Text(
+                      "Êtes-vous sûr de vouloir vous déconnecter ?",
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        child: const Text(
+                          "Annuler",
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          widget.onLogout();
+                        },
+                        child: const Text(
+                          "Se déconnecter",
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
             child: Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(

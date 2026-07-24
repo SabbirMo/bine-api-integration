@@ -262,4 +262,11 @@ class OrderProvider extends ChangeNotifier {
       return null;
     }
   }
+
+  void clearOrders() {
+    _orderHistory = [];
+    _orderDetail = null;
+    _errorMessage = null;
+    notifyListeners();
+  }
 }

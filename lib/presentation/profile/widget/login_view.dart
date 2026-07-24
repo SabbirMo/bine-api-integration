@@ -1,4 +1,7 @@
 import 'package:binetatour/core/login/login_provider.dart';
+import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/providers/notification_provider.dart';
+import 'package:binetatour/providers/order_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
@@ -39,6 +42,27 @@ class LoginView extends StatelessWidget {
                 : () async {
                     final success = await loginProvider.loginWithGoogle();
                     if (success) {
+                      if (context.mounted) {
+                        await Future.wait([
+                          context.read<CartProvider>().fetchCart().catchError((
+                            e,
+                          ) {
+                            debugPrint("Error fetching cart: $e");
+                          }),
+                          context
+                              .read<NotificationProvider>()
+                              .fetchNotifications()
+                              .catchError((e) {
+                                debugPrint("Error fetching notifications: $e");
+                              }),
+                          context
+                              .read<OrderProvider>()
+                              .fetchOrderHistory()
+                              .catchError((e) {
+                                debugPrint("Error fetching order history: $e");
+                              }),
+                        ]);
+                      }
                       onLogin();
                     }
                   },
@@ -72,7 +96,7 @@ class LoginView extends StatelessWidget {
                     ],
                   ),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           OutlinedButton(
             onPressed: onLogin,
             style: OutlinedButton.styleFrom(

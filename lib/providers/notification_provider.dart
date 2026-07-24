@@ -57,4 +57,10 @@ class NotificationProvider extends ChangeNotifier {
   }
 
   int get unreadCount => _notifications.where((item) => !item.isRead).length;
+
+  void clearNotifications() {
+    _notifications = [];
+    _errorMessage = null;
+    notifyListeners();
+  }
 }
