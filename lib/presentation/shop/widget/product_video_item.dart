@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -65,6 +66,14 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         }
       });
 
+      _player!.stream.width.listen((width) {
+        if (mounted) setState(() {});
+      });
+
+      _player!.stream.height.listen((height) {
+        if (mounted) setState(() {});
+      });
+
       await _player!.open(Media(widget.videoUrl));
 
       if (mounted) {
@@ -115,15 +124,60 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       );
     }
 
+    final double videoWidth = _player?.state.width?.toDouble() ?? 16.0;
+    final double videoHeight = _player?.state.height?.toDouble() ?? 9.0;
+
     return Center(
       child: Stack(
         fit: StackFit.expand,
         children: [
           if (_isVideoReady)
-            Video(
-              controller: _controller!,
-              controls: NoVideoControls,
-              fill: Colors.transparent,
+            Stack(
+              fit: StackFit.expand,
+              children: [
+                // Blurred Background Video
+                Positioned.fill(
+                  child: ClipRect(
+                    child: ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: videoWidth,
+                          height: videoHeight,
+                          child: Video(
+                            controller: _controller!,
+                            controls: NoVideoControls,
+                            fill: Colors.transparent,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Dark overlay to dim the background
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.25),
+                  ),
+                ),
+                // Foreground Clear Video
+                Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: videoWidth,
+                      height: videoHeight,
+                      child: Video(
+                        controller: _controller!,
+                        controls: NoVideoControls,
+                        fill: Colors.transparent,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
 
           if (!_isVideoReady || _isInitializing || !_isPlaying)
@@ -131,12 +185,33 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
               child: Container(
                 color: Colors.black,
                 child: widget.thumbnailUrl != null
-                    ? Image.network(
-                        widget.thumbnailUrl!,
-                        fit: BoxFit.contain,
-                        color: Colors.black.withValues(alpha: 0.5),
-                        colorBlendMode: BlendMode.darken,
-                        errorBuilder: (_, _, _) => const SizedBox(),
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Blurred background thumbnail
+                          Positioned.fill(
+                            child: ClipRect(
+                              child: ImageFiltered(
+                                imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                                child: Image.network(
+                                  widget.thumbnailUrl!,
+                                  fit: BoxFit.cover,
+                                  color: Colors.black.withValues(alpha: 0.35),
+                                  colorBlendMode: BlendMode.darken,
+                                  errorBuilder: (_, _, _) => const SizedBox(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Clear foreground thumbnail
+                          Center(
+                            child: Image.network(
+                              widget.thumbnailUrl!,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => const SizedBox(),
+                            ),
+                          ),
+                        ],
                       )
                     : const SizedBox(),
               ),

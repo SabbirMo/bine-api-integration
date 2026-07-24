@@ -1,5 +1,6 @@
 // ignore_for_file: must_be_immutable
 
+import 'dart:ui';
 import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
@@ -187,18 +188,41 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     );
                   } else {
                     return InteractiveViewer(
-                      child: Image.network(
-                        media.url,
-                        fit: BoxFit.contain,
-                        width: double.infinity,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                              child: Icon(
-                                Icons.broken_image,
-                                size: 100,
-                                color: Colors.white54,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Blurred background image
+                          Positioned.fill(
+                            child: ClipRect(
+                              child: ImageFiltered(
+                                imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                                child: Image.network(
+                                  media.url,
+                                  fit: BoxFit.cover,
+                                  color: Colors.black.withValues(alpha: 0.35),
+                                  colorBlendMode: BlendMode.darken,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const SizedBox(),
+                                ),
                               ),
                             ),
+                          ),
+                          // Clear foreground image
+                          Center(
+                            child: Image.network(
+                              media.url,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      size: 100,
+                                      color: Colors.white54,
+                                    ),
+                                  ),
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   }

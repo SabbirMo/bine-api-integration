@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -97,6 +98,14 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
       if (mounted && playing) setState(() => _isLoading = false);
     });
 
+    _player!.stream.width.listen((width) {
+      if (mounted) setState(() {});
+    });
+
+    _player!.stream.height.listen((height) {
+      if (mounted) setState(() {});
+    });
+
     setState(() {});
   }
 
@@ -192,31 +201,82 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
 
   Widget _buildContent(StoryContent story) {
     if (story.isImage) {
-      return story.isNetwork
-          ? Image.network(
-              story.url,
+      final imageProvider = story.isNetwork
+          ? NetworkImage(story.url)
+          : AssetImage(story.url) as ImageProvider;
+
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Blurred background image
+          Positioned.fill(
+            child: ClipRect(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                child: Image(
+                  image: imageProvider,
+                  fit: BoxFit.cover,
+                  color: Colors.black.withValues(alpha: 0.35),
+                  colorBlendMode: BlendMode.darken,
+                ),
+              ),
+            ),
+          ),
+          // Clear foreground image
+          Center(
+            child: Image(
+              image: imageProvider,
               fit: BoxFit.contain,
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) return child;
-                return const CircularProgressIndicator(
-                  color: Color(0xFFFF6900),
-                );
-              },
-            )
-          : Image.asset(story.url, fit: BoxFit.contain);
+            ),
+          ),
+        ],
+      );
     }
 
     if (story.isVideo || story.isAudio) {
       if (_player != null && _videoController != null) {
+        final videoWidth = _player!.state.width?.toDouble() ?? 16.0;
+        final videoHeight = _player!.state.height?.toDouble() ?? 9.0;
+
         return Stack(
           alignment: Alignment.center,
           children: [
+            if (!story.isAudio) ...[
+              // Blurred Background Video
+              Positioned.fill(
+                child: ClipRect(
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: videoWidth,
+                        height: videoHeight,
+                        child: Video(
+                          controller: _videoController!,
+                          controls: NoVideoControls,
+                          fill: Colors.transparent,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Dark overlay to dim the background
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.25),
+                ),
+              ),
+            ],
+            // Foreground Clear Video
             SizedBox.expand(
               child: FittedBox(
                 fit: BoxFit.contain,
                 child: SizedBox(
-                  width: _player!.state.width?.toDouble() ?? 16.0,
-                  height: _player!.state.height?.toDouble() ?? 9.0,
+                  width: videoWidth,
+                  height: videoHeight,
                   child: Video(
                     controller: _videoController!,
                     controls: NoVideoControls,

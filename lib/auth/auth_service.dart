@@ -8,14 +8,18 @@ class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     serverClientId:
         '74471662195-5ac9tsnhgn8emgkjpj3j94lek2a4cdgj.apps.googleusercontent.com',
-    scopes: [
-      'email',
-      'profile',
-    ],
+    scopes: ['email', 'profile'],
   );
 
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
+      // Force sign-out before signing in, so the user is prompted with the account chooser list
+      try {
+        await _googleSignIn.signOut();
+      } catch (e) {
+        log("Error signing out prior to Google sign-in: $e");
+      }
+
       //google login
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
@@ -36,10 +40,14 @@ class AuthService {
       );
 
       //firebase login
-      await _firebaseAuth.signInWithCredential(credential);
+      final UserCredential userCredential = await _firebaseAuth
+          .signInWithCredential(credential);
+      final String? firebaseIdToken = await userCredential.user?.getIdToken();
 
       return {
         'idToken': googleAuth.idToken,
+        'accessToken': googleAuth.accessToken,
+        'firebaseIdToken': firebaseIdToken,
         'name': googleUser.displayName,
         'email': googleUser.email,
         'photoUrl': googleUser.photoUrl,
