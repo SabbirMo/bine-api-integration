@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/data/models/cart_model.dart';
+import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 class CartBottomSheet extends StatefulWidget {
   const CartBottomSheet({super.key});
@@ -45,106 +46,121 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
           ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Row(
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Builder(
+              builder: (context) {
+                return SafeArea(
+                  child: Column(
                     children: [
-                      // 1. Left Back Arrow
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.black),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-
-                      // 2. Centered Title
-                      const Expanded(
-                        child: Text(
-                          "MON PANIER",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-
-                      // 3. Right Cancel Button
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.black,
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                Expanded(
-                  child: items.isEmpty
-                      ? const Center(child: Text("Votre panier est vide"))
-                      : ListView(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Row(
                           children: [
-                            ...items.map((item) => _buildCartItem(item)),
-                            const SizedBox(height: 30),
+                            // 1. Left Back Arrow
+                            IconButton(
+                              icon: const Icon(
+                                Icons.arrow_back,
+                                color: Colors.black,
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                            ),
 
-                            // Total Box
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF3E6),
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: const Color(0xFFFFD1A1),
-                                  width: 0.5,
+                            // 2. Centered Title
+                            const Expanded(
+                              child: Text(
+                                "MON PANIER",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                            ),
+
+                            // 3. Right Cancel Button
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: Colors.black,
+                              ),
+                              onPressed: () {
+                                Navigator.pop(context);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      Expanded(
+                        child: items.isEmpty
+                            ? const Center(child: Text("Votre panier est vide"))
+                            : ListView(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
                                 children: [
-                                  const Text(
-                                    "Total",
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
+                                  ...items.map((item) => _buildCartItem(item)),
+                                  const SizedBox(height: 30),
+
+                                  // Total Box
+                                  Container(
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFF3E6),
+                                      borderRadius: BorderRadius.circular(15),
+                                      border: Border.all(
+                                        color: const Color(0xFFFFD1A1),
+                                        width: 0.5,
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    "$totalDisplay FCFA",
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFFFF6900),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          "Total",
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          "$totalDisplay FCFA",
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFFFF6900),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
+                      ),
+
+                      // Bottom Buttons
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          children: [
+                            const Divider(),
+                            const SizedBox(height: 10),
+                            _buildSecondaryButton(
+                              "Continuer Mes Achats",
+                              Icons.add,
                             ),
+                            const SizedBox(height: 12),
+                            _buildPrimaryButton(context, "JE VALIDE"),
                           ],
                         ),
-                ),
-
-                // Bottom Buttons
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      const Divider(),
-                      const SizedBox(height: 10),
-                      _buildSecondaryButton("Continuer Mes Achats", Icons.add),
-                      const SizedBox(height: 12),
-                      _buildPrimaryButton("JE VALIDE"),
+                      ),
                     ],
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         );
@@ -257,7 +273,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
     );
   }
 
-  Widget _buildPrimaryButton(String label) {
+  Widget _buildPrimaryButton(BuildContext context, String label) {
     return SizedBox(
       width: double.infinity,
       height: 55,
@@ -269,6 +285,43 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
           ),
         ),
         onPressed: () {
+          final cartProvider = context.read<CartProvider>();
+          final items = cartProvider.cart?.items ?? [];
+          if (items.isEmpty) {
+            showTopSnackBar(
+              Overlay.of(context),
+              Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6900),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    "Votre panier est vide !",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+            );
+            return;
+          }
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => ValidationScreen()),

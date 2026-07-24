@@ -16,6 +16,7 @@ import 'package:binetatour/providers/home_provider.dart';
 import 'package:binetatour/data/models/home_response_model.dart';
 import 'package:binetatour/data/models/product_model.dart' as shop_model;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:binetatour/core/base_url/base_url.dart';
 
 class AccueilScreen extends StatefulWidget {
   const AccueilScreen({super.key});
@@ -367,24 +368,69 @@ class _AccueilScreenState extends State<AccueilScreen> {
         itemCount: storyCategories.length,
         itemBuilder: (context, index) {
           final cat = storyCategories[index];
+
+          // Resolve absolute URL for category image if it is relative
+          String catImg = cat.imageUrl ?? '';
+          if (catImg.isNotEmpty && !catImg.startsWith('http')) {
+            final base = BaseUrl.baseUrl;
+            if (catImg.startsWith('/')) {
+              catImg = '$base$catImg';
+            } else {
+              catImg = '$base/$catImg';
+            }
+          }
+
           final sItem = StoryItem(
             title: cat.name ?? "Story",
-            imagePath: cat.imageUrl ?? "assets/images/footbal.jpg",
+            imagePath: catImg.isNotEmpty ? catImg : "assets/images/footbal.jpg",
             isDashed: true,
           );
 
           // Map API stories to StoryContent list
-          final mappedStories = cat.stories.map((s) {
-            bool isVid = s.contentType == 'video';
-            bool isImg = s.contentType == 'image';
-            bool isAud = s.contentType == 'audio';
+          final mappedStories = cat.stories
+              .where((s) => s.mediaUrl != null && s.mediaUrl!.trim().isNotEmpty)
+              .map((s) {
+            String url = s.mediaUrl ?? '';
+            // Resolve absolute URL for media URL if it is relative
+            if (url.isNotEmpty && !url.startsWith('http')) {
+              final base = BaseUrl.baseUrl;
+              if (url.startsWith('/')) {
+                url = '$base$url';
+              } else {
+                url = '$base/$url';
+              }
+            }
+
+            final String cType = (s.contentType ?? '').toLowerCase().trim();
+            final String lowerUrl = url.toLowerCase();
+            bool isVid = cType == 'video' ||
+                lowerUrl.endsWith('.mp4') ||
+                lowerUrl.endsWith('.mov') ||
+                lowerUrl.endsWith('.avi');
+            bool isImg = cType == 'image' ||
+                lowerUrl.endsWith('.png') ||
+                lowerUrl.endsWith('.jpg') ||
+                lowerUrl.endsWith('.jpeg') ||
+                lowerUrl.endsWith('.webp') ||
+                lowerUrl.endsWith('.gif');
+            bool isAud = cType == 'audio' ||
+                lowerUrl.endsWith('.mp3') ||
+                lowerUrl.endsWith('.wav') ||
+                lowerUrl.endsWith('.aac') ||
+                lowerUrl.endsWith('.m4a');
+
+            // Fallback: if none is detected, treat as image
+            if (!isVid && !isImg && !isAud) {
+              isImg = true;
+            }
+
             return StoryContent(
               id: s.id,
-              url: s.mediaUrl ?? '',
+              url: url,
               isVideo: isVid,
               isAudio: isAud,
               isImage: isImg,
-              isNetwork: s.mediaUrl?.startsWith('http') ?? false,
+              isNetwork: url.startsWith('http'),
             );
           }).toList();
 
@@ -397,9 +443,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   builder: (context) => StoryDetailScreen(
                     stories: mappedStories,
                     userName: cat.name ?? "Story",
-                    userProfile:
-                        cat.imageUrl ??
-                        "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg",
+                    userProfile: catImg.isNotEmpty
+                        ? catImg
+                        : "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg",
                   ),
                 ),
               );

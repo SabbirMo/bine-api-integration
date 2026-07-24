@@ -1,14 +1,11 @@
-import 'dart:async';
 import 'dart:math';
-import 'dart:io';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/story_provider.dart';
+import 'package:binetatour/providers/story_detail_provider.dart';
 
-class StoryDetailScreen extends StatefulWidget {
+class StoryDetailScreen extends StatelessWidget {
   final List<StoryContent> stories;
   final String userName;
   final String userProfile;
@@ -22,228 +19,57 @@ class StoryDetailScreen extends StatefulWidget {
   });
 
   @override
-  State<StoryDetailScreen> createState() => _StoryDetailScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) => StoryDetailProvider(
+        stories: stories,
+        storyProvider: context.read<StoryProvider>(),
+        onFinished: () {
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+        },
+      ),
+      child: _StoryDetailContent(userName: userName, userProfile: userProfile),
+    );
+  }
 }
 
-class _StoryDetailScreenState extends State<StoryDetailScreen> {
-  Player? _player;
-  VideoController? _videoController;
-  int _currentIndex = 0;
-  bool _isMuted = false;
-  Timer? _timer;
-  double _imageProgress = 0.0;
-  final TextEditingController _replyController = TextEditingController();
+class _StoryDetailContent extends StatelessWidget {
+  final String userName;
+  final String userProfile;
 
-  StreamSubscription? _positionSub;
-  double _currentMediaProgress = 0.0;
-  bool _isLoading = false;
-  bool _isPlaying = false;
+  const _StoryDetailContent({
+    required this.userName,
+    required this.userProfile,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _loadStory(_currentIndex);
-  }
-
-  void _loadStory(int index) {
-    _cancelTimer();
-    _positionSub?.cancel();
-    _player?.dispose();
-    _player = null;
-    _videoController = null;
-    _imageProgress = 0.0;
-    _currentMediaProgress = 0.0;
-    _isLoading = true;
-    _isPlaying = false;
-
-    final story = widget.stories[index];
-
-    // Call API to mark story as viewed
-    if (story.id != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          context.read<StoryProvider>().viewStory(story.id!);
-        }
-      });
-    }
-
-    if (story.isVideo || story.isAudio) {
-      _initializeMedia(story);
-    } else {
-      _isLoading = false;
-      startImageTimer();
-    }
-    setState(() {});
-  }
-
-  void _initializeMedia(StoryContent story) {
-    _player = Player();
-    _videoController = VideoController(
-      _player!,
-      configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: false,
-      ),
-    );
-
-    _player!.setVolume(_isMuted ? 0.0 : 100.0);
-
-    _positionSub = _player!.stream.position.listen((pos) {
-      if (!mounted) return;
-      final dur = _player!.state.duration;
-      setState(() {
-        if (dur.inMilliseconds > 0) {
-          _currentMediaProgress = pos.inMilliseconds / dur.inMilliseconds;
-        }
-      });
-    });
-
-    _player!.stream.completed.listen((completed) {
-      if (mounted && completed) {
-        _nextStory();
-      }
-    });
-
-    _player!.stream.buffering.listen((buffering) {
-      if (mounted) setState(() => _isLoading = buffering);
-    });
-
-    _player!.stream.playing.listen((playing) {
-      if (mounted) {
-        setState(() {
-          _isPlaying = playing;
-          if (playing) _isLoading = false;
-        });
-      }
-    });
-
-    if (story.isAudio && story.isNetwork) {
-      // Audio: download first via Dio then play local file (same fix as ProductAudioItem)
-      _downloadAndPlayAudio(story.url);
-    } else if (story.isNetwork) {
-      _player!.open(Media(story.url));
-    } else {
-      _player!.open(Media('asset://${story.url}'));
-    }
-  }
-
-  Future<void> _downloadAndPlayAudio(String url) async {
-    try {
-      final dio = Dio();
-      final tempDir = Directory.systemTemp;
-      final fileName = 'story_audio_${url.hashCode}.mp3';
-      final savePath = '${tempDir.path}/$fileName';
-      final file = File(savePath);
-
-      if (!await file.exists()) {
-        await dio.download(url, savePath);
-      }
-
-      if (!mounted) return;
-      await _player?.open(Media('file://$savePath'));
-      if (mounted) setState(() => _isLoading = false);
-    } catch (e) {
-      debugPrint('Story audio download error: $e');
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void startImageTimer() {
-    const duration = Duration(seconds: 5);
-    _timer = Timer.periodic(const Duration(milliseconds: 50), (t) {
-      if (mounted) {
-        setState(
-          () => _imageProgress = (t.tick * 50) / duration.inMilliseconds,
-        );
-        if (_imageProgress >= 1.0) _nextStory();
-      }
-    });
-  }
-
-  void _cancelTimer() => _timer?.cancel();
-
-  void _nextStory() {
-    if (_currentIndex < widget.stories.length - 1) {
-      setState(() => _currentIndex++);
-      _loadStory(_currentIndex);
-    } else {
-      _cancelTimer();
-      _player?.pause();
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-    }
-  }
-
-  void _previousStory() {
-    if (_currentIndex > 0) {
-      setState(() => _currentIndex--);
-      _loadStory(_currentIndex);
-    }
-  }
-
-  @override
-  void dispose() {
-    _cancelTimer();
-    _positionSub?.cancel();
-    _player?.dispose();
-    _replyController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final story = widget.stories[_currentIndex];
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. Media Content (no gesture here)
-          Center(child: _buildMedia(story)),
-
-          // 2. Navigation zones (long press + tap left/right)
-          //    For audio: center 40% is excluded so play button works freely
-          _buildNavigationLayer(story),
-
-          // 3. UI Overlay (Header + Progress)
-          SafeArea(
-            child: Column(children: [_buildProgressBars(), _buildHeader()]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavigationLayer(StoryContent story) {
-    // For audio stories, skip the center 30% so the play button isn't blocked
+  Widget _buildNavigationLayer(
+    BuildContext context,
+    StoryDetailProvider provider,
+    StoryContent story,
+  ) {
     if (story.isAudio) {
       return Row(
         children: [
-          // Left zone → previous story
           Expanded(
             flex: 3,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onTap: _previousStory,
-              onLongPressStart: (_) {
-                _player?.pause();
-              },
-              onLongPressEnd: (_) => _player?.play(),
+              onTap: provider.previousStory,
+              onLongPressStart: (_) => provider.pauseStory(),
+              onLongPressEnd: (_) => provider.resumeStory(),
               child: const SizedBox.expand(),
             ),
           ),
-          // Center gap → play button handles this
           const Expanded(flex: 4, child: SizedBox.expand()),
-          // Right zone → next story
           Expanded(
             flex: 3,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onTap: _nextStory,
-              onLongPressStart: (_) {
-                _player?.pause();
-              },
-              onLongPressEnd: (_) => _player?.play(),
+              onTap: provider.nextStory,
+              onLongPressStart: (_) => provider.pauseStory(),
+              onLongPressEnd: (_) => provider.resumeStory(),
               child: const SizedBox.expand(),
             ),
           ),
@@ -251,77 +77,101 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       );
     }
 
-    // For image/video stories: full screen navigation
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTapDown: (details) {
         final screenWidth = MediaQuery.of(context).size.width;
         if (details.globalPosition.dx < screenWidth / 3) {
-          _previousStory();
+          provider.previousStory();
         } else {
-          _nextStory();
+          provider.nextStory();
         }
       },
-      onLongPressStart: (_) {
-        _player?.pause();
-        _cancelTimer();
-      },
-      onLongPressEnd: (_) {
-        if (story.isImage) {
-          startImageTimer();
-        } else {
-          _player?.play();
-        }
-      },
+      onLongPressStart: (_) => provider.pauseStory(),
+      onLongPressEnd: (_) => provider.resumeStory(),
       child: const SizedBox.expand(),
     );
   }
 
-  Widget _buildMedia(StoryContent story) {
+  Widget _buildMedia(
+    BuildContext context,
+    StoryDetailProvider provider,
+    StoryContent story,
+  ) {
+    final isLoading = provider.isLoading;
     if (story.isImage) {
-      return Image.network(
-        story.url,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return const Center(
-            child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-          );
-        },
-      );
+      if (story.isNetwork) {
+        return Image.network(
+          story.url,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return const Center(
+              child: Icon(Icons.broken_image, color: Colors.white, size: 50),
+            );
+          },
+        );
+      } else {
+        return Image.asset(
+          story.url,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (context, error, stackTrace) {
+            return const Center(
+              child: Icon(Icons.broken_image, color: Colors.white, size: 50),
+            );
+          },
+        );
+      }
     }
-    if (story.isAudio) return _buildAudioPlaceholder();
-    if (story.isVideo && _videoController != null) {
+    if (story.isAudio) return _buildAudioPlaceholder(provider);
+    if (story.isVideo && provider.videoController != null) {
       return Stack(
         alignment: Alignment.center,
         children: [
-          // Background placeholder while loading to prevent black screen
-          if (_isLoading)
+          if (isLoading)
             Positioned.fill(
-              child: Image.network(
-                widget.userProfile,
-                fit: BoxFit.cover,
-                color: Colors.black.withValues(alpha: 0.7),
-                colorBlendMode: BlendMode.darken,
-              ),
+              child: userProfile.startsWith('http')
+                  ? Image.network(
+                      userProfile,
+                      fit: BoxFit.cover,
+                      color: Colors.black.withValues(alpha: 0.7),
+                      colorBlendMode: BlendMode.darken,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Container(color: Colors.black),
+                    )
+                  : Image.asset(
+                      userProfile,
+                      fit: BoxFit.cover,
+                      color: Colors.black.withValues(alpha: 0.7),
+                      colorBlendMode: BlendMode.darken,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Container(color: Colors.black),
+                    ),
             ),
 
           SizedBox.expand(
             child: FittedBox(
               fit: BoxFit.contain,
               child: SizedBox(
-                width: _player!.state.width?.toDouble() ?? 16.0,
-                height: _player!.state.height?.toDouble() ?? 9.0,
+                width: provider.player!.state.width?.toDouble() ?? 16.0,
+                height: provider.player!.state.height?.toDouble() ?? 9.0,
                 child: Video(
-                  controller: _videoController!,
+                  controller: provider.videoController!,
                   controls: NoVideoControls,
                 ),
               ),
             ),
           ),
-          if (_isLoading)
+          if (isLoading)
             const CircularProgressIndicator(color: Color(0xFFFF6900)),
         ],
       );
@@ -329,8 +179,8 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     return const CircularProgressIndicator(color: Colors.white);
   }
 
-  Widget _buildAudioPlaceholder() {
-    if (_isLoading) {
+  Widget _buildAudioPlaceholder(StoryDetailProvider provider) {
+    if (provider.isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFFFF6900)),
       );
@@ -341,14 +191,10 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _StoryAudioWave(isPlaying: _isPlaying, isReversed: true),
+            _StoryAudioWave(isPlaying: provider.isPlaying, isReversed: true),
             const SizedBox(width: 16),
             GestureDetector(
-              onTap: () {
-                if (_player != null) {
-                  _isPlaying ? _player!.pause() : _player!.play();
-                }
-              },
+              onTap: provider.togglePlayPause,
               child: Container(
                 width: 76,
                 height: 76,
@@ -369,7 +215,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                       color: Color(0xFFFF6900),
                     ),
                     child: Icon(
-                      _isPlaying
+                      provider.isPlaying
                           ? Icons.volume_up_rounded
                           : Icons.play_arrow_rounded,
                       color: Colors.white,
@@ -380,23 +226,26 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               ),
             ),
             const SizedBox(width: 16),
-            _StoryAudioWave(isPlaying: _isPlaying, isReversed: false),
+            _StoryAudioWave(isPlaying: provider.isPlaying, isReversed: false),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProgressBars() {
+  Widget _buildProgressBars(StoryDetailProvider provider) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       child: Row(
-        children: List.generate(widget.stories.length, (index) {
+        children: List.generate(provider.stories.length, (index) {
           double val = 0.0;
-          if (index < _currentIndex) {
+          if (index < provider.currentIndex) {
             val = 1.0;
-          } else if (index == _currentIndex) {
-            val = (_player != null) ? _currentMediaProgress : _imageProgress;
+          } else if (index == provider.currentIndex) {
+            final story = provider.stories[index];
+            val = (story.isVideo || story.isAudio)
+                ? provider.currentMediaProgress
+                : provider.imageProgress;
           }
           return Expanded(
             child: Container(
@@ -408,7 +257,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               ),
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
-                widthFactor: val.clamp(0, 1),
+                widthFactor: val.clamp(0.0, 1.0),
                 child: Container(color: Colors.white),
               ),
             ),
@@ -418,18 +267,20 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context, StoryDetailProvider provider) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 15),
       child: Row(
         children: [
           CircleAvatar(
             radius: 18,
-            backgroundImage: NetworkImage(widget.userProfile),
+            backgroundImage: userProfile.startsWith('http')
+                ? NetworkImage(userProfile)
+                : AssetImage(userProfile) as ImageProvider,
           ),
           const SizedBox(width: 12),
           Text(
-            widget.userName,
+            userName,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -443,17 +294,44 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
           const Spacer(),
           IconButton(
             icon: Icon(
-              _isMuted ? Icons.volume_off : Icons.volume_up,
+              provider.isMuted ? Icons.volume_off : Icons.volume_up,
               color: Colors.white,
             ),
-            onPressed: () => setState(() {
-              _isMuted = !_isMuted;
-              _player?.setVolume(_isMuted ? 0.0 : 100.0);
-            }),
+            onPressed: provider.toggleMute,
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white),
             onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<StoryDetailProvider>();
+    final story = provider.stories[provider.currentIndex];
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // 1. Media Content (no gesture here)
+          Center(child: _buildMedia(context, provider, story)),
+
+          // 2. Navigation zones (long press + tap left/right)
+          //    For audio: center 40% is excluded so play button works freely
+          _buildNavigationLayer(context, provider, story),
+
+          // 3. UI Overlay (Header + Progress)
+          SafeArea(
+            child: Column(
+              children: [
+                _buildProgressBars(provider),
+                _buildHeader(context, provider),
+              ],
+            ),
           ),
         ],
       ),

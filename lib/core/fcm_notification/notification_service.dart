@@ -13,7 +13,16 @@ class NotificationService {
       '@mipmap/ic_launcher',
     );
 
-    const settings = InitializationSettings(android: androidSettings);
+    const darwinSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const settings = InitializationSettings(
+      android: androidSettings,
+      iOS: darwinSettings,
+    );
 
     await notifications.initialize(settings: settings);
 
@@ -37,6 +46,11 @@ class NotificationService {
         'High Importance Notifications',
         importance: Importance.max,
         priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
       ),
     );
 

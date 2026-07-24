@@ -195,7 +195,10 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                           Positioned.fill(
                             child: ClipRect(
                               child: ImageFiltered(
-                                imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                                imageFilter: ImageFilter.blur(
+                                  sigmaX: 15.0,
+                                  sigmaY: 15.0,
+                                ),
                                 child: Image.network(
                                   media.url,
                                   fit: BoxFit.cover,
@@ -515,6 +518,31 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                               await TokenStorage.getAccessToken();
                           if (tokenAfter == null || tokenAfter.isEmpty) {
                             return; // Still not logged in
+                          }
+                        }
+
+                        if (!context.mounted) return;
+
+                        // Show a loading dialog while the product is added to the cart
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFFF6900),
+                            ),
+                          ),
+                        );
+
+                        try {
+                          await context.read<CartProvider>().addToCart(
+                            _product,
+                          );
+                        } catch (e) {
+                          debugPrint("Error adding product to cart: $e");
+                        } finally {
+                          if (context.mounted) {
+                            Navigator.pop(context); // Dismiss loading dialog
                           }
                         }
 

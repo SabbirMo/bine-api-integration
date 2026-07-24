@@ -30,6 +30,14 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   bool _hasError = false;
   bool _isInitializing = false;
   bool _isPlaying = false;
+  bool _isBuffering = false;
+  bool _hasStartedPlaying = false;
+
+  void _updateStartedPlayingState() {
+    if (_isPlaying && !_isBuffering) {
+      _hasStartedPlaying = true;
+    }
+  }
 
   @override
   void initState() {
@@ -43,6 +51,8 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     setState(() {
       _isInitializing = true;
       _hasError = false;
+      _isBuffering = true;
+      _hasStartedPlaying = false;
     });
 
     try {
@@ -61,7 +71,17 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         if (mounted) {
           setState(() {
             _isPlaying = playing;
+            _updateStartedPlayingState();
             if (playing) _isInitializing = false;
+          });
+        }
+      });
+
+      _player!.stream.buffering.listen((buffering) {
+        if (mounted) {
+          setState(() {
+            _isBuffering = buffering;
+            _updateStartedPlayingState();
           });
         }
       });
@@ -85,6 +105,8 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         setState(() {
           _hasError = true;
           _isInitializing = false;
+          _isBuffering = false;
+          _hasStartedPlaying = false;
         });
         _player?.dispose();
         _player = null;
@@ -127,101 +149,133 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     final double videoWidth = _player?.state.width?.toDouble() ?? 16.0;
     final double videoHeight = _player?.state.height?.toDouble() ?? 9.0;
 
-    return Center(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (_isVideoReady)
-            Stack(
-              fit: StackFit.expand,
-              children: [
-                // Blurred Background Video
-                Positioned.fill(
-                  child: ClipRect(
-                    child: ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: videoWidth,
-                          height: videoHeight,
-                          child: Video(
-                            controller: _controller!,
-                            controls: NoVideoControls,
-                            fill: Colors.transparent,
+    return GestureDetector(
+      onTap: () {
+        if (_isVideoReady) {
+          setState(() {
+            _isPlaying ? _player!.pause() : _player!.play();
+          });
+        }
+      },
+      child: Center(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_isVideoReady)
+              Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Blurred Background Video
+                  Positioned.fill(
+                    child: ClipRect(
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(
+                          sigmaX: 15.0,
+                          sigmaY: 15.0,
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          clipBehavior: Clip.hardEdge,
+                          child: SizedBox(
+                            width: videoWidth,
+                            height: videoHeight,
+                            child: Video(
+                              controller: _controller!,
+                              controls: NoVideoControls,
+                              fill: Colors.transparent,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                // Dark overlay to dim the background
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withValues(alpha: 0.25),
+                  // Dark overlay to dim the background
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.25),
+                    ),
                   ),
-                ),
-                // Foreground Clear Video
-                Center(
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: videoWidth,
-                      height: videoHeight,
-                      child: Video(
-                        controller: _controller!,
-                        controls: NoVideoControls,
-                        fill: Colors.transparent,
+                  // Foreground Clear Video
+                  Center(
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: SizedBox(
+                        width: videoWidth,
+                        height: videoHeight,
+                        child: Video(
+                          controller: _controller!,
+                          controls: NoVideoControls,
+                          fill: Colors.transparent,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
 
-          if (!_isVideoReady || _isInitializing || !_isPlaying)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black,
-                child: widget.thumbnailUrl != null
-                    ? Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Blurred background thumbnail
-                          Positioned.fill(
-                            child: ClipRect(
-                              child: ImageFiltered(
-                                imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                                child: Image.network(
-                                  widget.thumbnailUrl!,
-                                  fit: BoxFit.cover,
-                                  color: Colors.black.withValues(alpha: 0.35),
-                                  colorBlendMode: BlendMode.darken,
-                                  errorBuilder: (_, _, _) => const SizedBox(),
+            if (!_isVideoReady || !_isPlaying || !_hasStartedPlaying)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black,
+                  child: widget.thumbnailUrl != null
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Blurred background thumbnail
+                            Positioned.fill(
+                              child: ClipRect(
+                                child: ImageFiltered(
+                                  imageFilter: ImageFilter.blur(
+                                    sigmaX: 15.0,
+                                    sigmaY: 15.0,
+                                  ),
+                                  child: Image.network(
+                                    widget.thumbnailUrl!,
+                                    fit: BoxFit.cover,
+                                    color: Colors.black.withValues(alpha: 0.35),
+                                    colorBlendMode: BlendMode.darken,
+                                    errorBuilder: (_, _, _) => const SizedBox(),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          // Clear foreground thumbnail
-                          Center(
-                            child: Image.network(
-                              widget.thumbnailUrl!,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, _, _) => const SizedBox(),
+                            // Clear foreground thumbnail
+                            Center(
+                              child: Image.network(
+                                widget.thumbnailUrl!,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, _, _) => const SizedBox(),
+                              ),
                             ),
-                          ),
-                        ],
-                      )
-                    : const SizedBox(),
+                          ],
+                        )
+                      : const SizedBox(),
+                ),
               ),
-            ),
 
-          if (_isInitializing)
-            const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-            ),
-        ],
+            if (_isInitializing || (_hasStartedPlaying && _isBuffering))
+              const Center(
+                child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+              ),
+
+            // Play icon overlay when paused
+            if (!_isPlaying && _isVideoReady && !_isInitializing)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 50,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
