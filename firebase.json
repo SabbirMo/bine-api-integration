@@ -4,7 +4,7 @@
             "android": {
                 "default": {
                     "projectId": "bine-tatour",
-                    "appId": "1:74471662195:android:880e33db4c22622ed3c006",
+                    "appId": "1:74471662195:android:e2a76ce34910079ad3c006",
                     "fileOutput": "android/app/google-services.json"
                 }
             },
@@ -12,8 +12,8 @@
                 "lib/firebase_options.dart": {
                     "projectId": "bine-tatour",
                     "configurations": {
-                        "android": "1:74471662195:android:880e33db4c22622ed3c006",
-                        "ios": "1:74471662195:ios:b59e8bdfcf0fff01d3c006"
+                        "android": "1:74471662195:android:e2a76ce34910079ad3c006",
+                        "ios": "1:74471662195:ios:d3bf5a8a11c23be0d3c006"
                     }
                 }
             }

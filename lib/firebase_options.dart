@@ -51,18 +51,19 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBaeF7YavqynPlEyCs1hf5CnZWaWTMk7L8',
-    appId: '1:74471662195:android:880e33db4c22622ed3c006',
+    appId: '1:74471662195:android:e2a76ce34910079ad3c006',
     messagingSenderId: '74471662195',
     projectId: 'bine-tatour',
     storageBucket: 'bine-tatour.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCUGJwD37RaJx8nOoQAOJcfupMOkNVoFyw',
-    appId: '1:74471662195:ios:b59e8bdfcf0fff01d3c006',
+    appId: '1:74471662195:ios:d3bf5a8a11c23be0d3c006',
     messagingSenderId: '74471662195',
     projectId: 'bine-tatour',
     storageBucket: 'bine-tatour.firebasestorage.app',
-    iosBundleId: 'com.example.binetatour',
+    androidClientId: '74471662195-g2c9jnq9qvv6hn5l3cubna705pv709t0.apps.googleusercontent.com',
+    iosClientId: '74471662195-5jod56lcd4jk039agmo8tmiq9bg0180o.apps.googleusercontent.com',
+    iosBundleId: 'com.bineta.binetatour',
   );
 }

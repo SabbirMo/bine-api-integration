@@ -13,11 +13,11 @@ class AuthService {
 
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
-      // Force sign-out before signing in, so the user is prompted with the account chooser list
+      // Force disconnect/sign-out before signing in, so the user is prompted with the account chooser list
       try {
-        await _googleSignIn.signOut();
+        await _googleSignIn.disconnect();
       } catch (e) {
-        log("Error signing out prior to Google sign-in: $e");
+        log("Error disconnecting prior to Google sign-in: $e");
       }
 
       //google login
@@ -59,6 +59,11 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    try {
+      await _googleSignIn.disconnect();
+    } catch (e) {
+      log("Error disconnecting Google Sign In: $e");
+    }
     await _googleSignIn.signOut();
     await _firebaseAuth.signOut();
   }

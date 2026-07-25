@@ -7,6 +7,58 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:74471662195:android:e2a76ce34910079ad3c006",
+        "android_client_info": {
+          "package_name": "com.bineta.binetatour"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "74471662195-siqaev3rkekq3oe9e9me9atopdii139j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bineta.binetatour",
+            "certificate_hash": "33e379648f204c1bae4ef3edf4dc84ed11e807b1"
+          }
+        },
+        {
+          "client_id": "74471662195-uvlr6ita10dv25maqedoj75hrol6snp6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bineta.binetatour",
+            "certificate_hash": "4400fb6bed4ddc71dfa79d162ea0aa8dd5b5718e"
+          }
+        },
+        {
+          "client_id": "74471662195-5ac9tsnhgn8emgkjpj3j94lek2a4cdgj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaeF7YavqynPlEyCs1hf5CnZWaWTMk7L8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "74471662195-5ac9tsnhgn8emgkjpj3j94lek2a4cdgj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "74471662195-4borqchlbealr4gd53sj52at1a0tavan.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.binetatour"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:74471662195:android:880e33db4c22622ed3c006",
         "android_client_info": {
           "package_name": "com.example.binetatour"
@@ -19,6 +71,14 @@
           "android_info": {
             "package_name": "com.example.binetatour",
             "certificate_hash": "33e379648f204c1bae4ef3edf4dc84ed11e807b1"
+          }
+        },
+        {
+          "client_id": "74471662195-mn9bqapcrta6qa8h1vpuc9lbu91lp36n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.binetatour",
+            "certificate_hash": "4400fb6bed4ddc71dfa79d162ea0aa8dd5b5718e"
           }
         },
         {

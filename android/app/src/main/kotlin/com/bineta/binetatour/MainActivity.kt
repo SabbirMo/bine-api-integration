@@ -1,4 +1,4 @@
-package com.example.binetatour
+package com.bineta.binetatour
 
 import io.flutter.embedding.android.FlutterActivity
 
