@@ -50,7 +50,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
               TextButton(
                 onPressed: provider.notifications.isEmpty
                     ? null
-                    : provider.markAllAsRead,
+                    : () => provider.markAllAsRead(),
                 child: const Text(
                   "Tout lire",
                   style: TextStyle(color: Color(0xFFFF6900)),

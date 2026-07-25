@@ -45,7 +45,16 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  void markAllAsRead() {
+  Future<void> markAllAsRead() async {
+    final unreadIds = _notifications
+        .where((n) => !n.isRead)
+        .map((n) => n.id)
+        .toList();
+
+    if (unreadIds.isEmpty) return;
+
+    // Optimistically update the UI state
+    final previousNotifications = List<NotificationModel>.from(_notifications);
     _notifications = _notifications
         .map(
           (notification) => notification.isRead
@@ -54,6 +63,18 @@ class NotificationProvider extends ChangeNotifier {
         )
         .toList();
     notifyListeners();
+
+    try {
+      await _apiServices.post(
+        '/api/notifications/mark-all-read/',
+        data: {'ids': unreadIds},
+      );
+    } catch (e) {
+      // Rollback on error
+      _notifications = previousNotifications;
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
   }
 
   int get unreadCount => _notifications.where((item) => !item.isRead).length;

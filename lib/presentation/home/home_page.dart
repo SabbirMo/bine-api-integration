@@ -17,6 +17,7 @@ import 'package:binetatour/data/models/home_response_model.dart';
 import 'package:binetatour/data/models/product_model.dart' as shop_model;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
+import 'package:binetatour/core/fcm_notification/firebase_service.dart';
 
 class AccueilScreen extends StatefulWidget {
   const AccueilScreen({super.key});
@@ -25,7 +26,8 @@ class AccueilScreen extends StatefulWidget {
   State<AccueilScreen> createState() => _AccueilScreenState();
 }
 
-class _AccueilScreenState extends State<AccueilScreen> {
+class _AccueilScreenState extends State<AccueilScreen>
+    with WidgetsBindingObserver {
   Future<void> _refreshHomeData() async {
     await Future.wait([
       context.read<HomeProvider>().fetchHomeData(),
@@ -39,9 +41,42 @@ class _AccueilScreenState extends State<AccueilScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // Auto-refresh notifications and update bell count when a foreground notification is received
+    FirebaseService.instance.onNotificationReceived = () {
+      if (mounted) {
+        context.read<NotificationProvider>().fetchNotifications(
+          forceRefresh: true,
+        );
+      }
+    };
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshHomeData();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    FirebaseService.instance.onNotificationReceived = null;
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint("App resumed from background: refreshing notifications...");
+      if (mounted) {
+        context
+            .read<NotificationProvider>()
+            .fetchNotifications(forceRefresh: true)
+            .catchError((e) {
+              debugPrint("Error refreshing notifications on resume: $e");
+            });
+      }
+    }
   }
 
   @override
@@ -390,49 +425,53 @@ class _AccueilScreenState extends State<AccueilScreen> {
           final mappedStories = cat.stories
               .where((s) => s.mediaUrl != null && s.mediaUrl!.trim().isNotEmpty)
               .map((s) {
-            String url = s.mediaUrl ?? '';
-            // Resolve absolute URL for media URL if it is relative
-            if (url.isNotEmpty && !url.startsWith('http')) {
-              final base = BaseUrl.baseUrl;
-              if (url.startsWith('/')) {
-                url = '$base$url';
-              } else {
-                url = '$base/$url';
-              }
-            }
+                String url = s.mediaUrl ?? '';
+                // Resolve absolute URL for media URL if it is relative
+                if (url.isNotEmpty && !url.startsWith('http')) {
+                  final base = BaseUrl.baseUrl;
+                  if (url.startsWith('/')) {
+                    url = '$base$url';
+                  } else {
+                    url = '$base/$url';
+                  }
+                }
 
-            final String cType = (s.contentType ?? '').toLowerCase().trim();
-            final String lowerUrl = url.toLowerCase();
-            bool isVid = cType == 'video' ||
-                lowerUrl.endsWith('.mp4') ||
-                lowerUrl.endsWith('.mov') ||
-                lowerUrl.endsWith('.avi');
-            bool isImg = cType == 'image' ||
-                lowerUrl.endsWith('.png') ||
-                lowerUrl.endsWith('.jpg') ||
-                lowerUrl.endsWith('.jpeg') ||
-                lowerUrl.endsWith('.webp') ||
-                lowerUrl.endsWith('.gif');
-            bool isAud = cType == 'audio' ||
-                lowerUrl.endsWith('.mp3') ||
-                lowerUrl.endsWith('.wav') ||
-                lowerUrl.endsWith('.aac') ||
-                lowerUrl.endsWith('.m4a');
+                final String cType = (s.contentType ?? '').toLowerCase().trim();
+                final String lowerUrl = url.toLowerCase();
+                bool isVid =
+                    cType == 'video' ||
+                    lowerUrl.endsWith('.mp4') ||
+                    lowerUrl.endsWith('.mov') ||
+                    lowerUrl.endsWith('.avi');
+                bool isImg =
+                    cType == 'image' ||
+                    lowerUrl.endsWith('.png') ||
+                    lowerUrl.endsWith('.jpg') ||
+                    lowerUrl.endsWith('.jpeg') ||
+                    lowerUrl.endsWith('.webp') ||
+                    lowerUrl.endsWith('.gif');
+                bool isAud =
+                    cType == 'audio' ||
+                    lowerUrl.endsWith('.mp3') ||
+                    lowerUrl.endsWith('.wav') ||
+                    lowerUrl.endsWith('.aac') ||
+                    lowerUrl.endsWith('.m4a');
 
-            // Fallback: if none is detected, treat as image
-            if (!isVid && !isImg && !isAud) {
-              isImg = true;
-            }
+                // Fallback: if none is detected, treat as image
+                if (!isVid && !isImg && !isAud) {
+                  isImg = true;
+                }
 
-            return StoryContent(
-              id: s.id,
-              url: url,
-              isVideo: isVid,
-              isAudio: isAud,
-              isImage: isImg,
-              isNetwork: url.startsWith('http'),
-            );
-          }).toList();
+                return StoryContent(
+                  id: s.id,
+                  url: url,
+                  isVideo: isVid,
+                  isAudio: isAud,
+                  isImage: isImg,
+                  isNetwork: url.startsWith('http'),
+                );
+              })
+              .toList();
 
           return InkWell(
             onTap: () {

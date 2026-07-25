@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -14,12 +15,21 @@ class FirebaseService {
   final FirebaseMessaging messaging = FirebaseMessaging.instance;
   final ApiServices apiServices = ApiServices();
 
+  Function()? onNotificationReceived;
+
   Future<void> init() async {
     await messaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
       provisional: false,
+    );
+
+    // Allow iOS to show notification banners in the foreground
+    await messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
     );
 
     String? token;
@@ -30,17 +40,47 @@ class FirebaseService {
       }
       log("FCM TOKEN => $token");
     } catch (e) {
-      log("FCM getToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e");
+      log(
+        "FCM getToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e",
+      );
     }
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
 
       if (notification != null) {
-        NotificationService.instance.show(
-          title: notification.title ?? '',
-          body: notification.body ?? '',
-        );
+        // iOS will show the default system banner automatically because we set setForegroundNotificationPresentationOptions.
+        // So we only need to trigger a local notification banner on Android to avoid duplicate banners on iOS.
+        if (!Platform.isIOS) {
+          NotificationService.instance.show(
+            title: notification.title ?? '',
+            body: notification.body ?? '',
+          );
+        }
+        onNotificationReceived?.call();
+      } else {
+        // Fallback for data-only notifications where title/body might be sent in the 'data' payload
+        final title =
+            message.data['title'] ??
+            message.data['notification_title'] ??
+            message.data['header'];
+        final body =
+            message.data['body'] ??
+            message.data['notification_body'] ??
+            message.data['message'] ??
+            message.data['content'];
+        if (title != null || body != null) {
+          log("FCM onMessage: Presenting local notification from data payload");
+          NotificationService.instance.show(
+            title: title.toString(),
+            body: body.toString(),
+          );
+          onNotificationReceived?.call();
+        } else {
+          log(
+            "FCM onMessage: No notification or data-only title/body fields found to display.",
+          );
+        }
       }
     });
 
@@ -67,7 +107,9 @@ class FirebaseService {
         log('FCM token registered after login');
       }
     } catch (e) {
-      log('FCM registerCurrentToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e');
+      log(
+        'FCM registerCurrentToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e',
+      );
     }
   }
 
