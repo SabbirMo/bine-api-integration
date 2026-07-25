@@ -35,13 +35,18 @@ class _ProfileViewState extends State<ProfileView> {
           ? "Utilisateur"
           : storedName;
       email = (storedEmail == null || storedEmail == "null") ? "" : storedEmail;
-      profileImage = (storedImage == "null") ? null : storedImage;
+      profileImage =
+          (storedImage == "null" || storedImage == null || storedImage.isEmpty)
+          ? null
+          : storedImage;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final userPhotoUrl = user?.photoURL;
+    final localProfileImage = profileImage;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -55,15 +60,37 @@ class _ProfileViewState extends State<ProfileView> {
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 35,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: user?.photoURL != null
-                      ? NetworkImage(user!.photoURL!)
-                      : profileImage != null
-                      ? NetworkImage(profileImage!)
-                      : const AssetImage("assets/images/dp.png")
-                            as ImageProvider,
+                ClipOval(
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    color: Colors.grey[200],
+                    child: (userPhotoUrl != null && userPhotoUrl.isNotEmpty)
+                        ? Image.network(
+                            userPhotoUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Image.asset(
+                                  "assets/images/dp.png",
+                                  fit: BoxFit.cover,
+                                ),
+                          )
+                        : (localProfileImage != null &&
+                              localProfileImage.isNotEmpty)
+                        ? Image.network(
+                            localProfileImage,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Image.asset(
+                                  "assets/images/dp.png",
+                                  fit: BoxFit.cover,
+                                ),
+                          )
+                        : Image.asset(
+                            "assets/images/dp.png",
+                            fit: BoxFit.cover,
+                          ),
+                  ),
                 ),
                 const SizedBox(width: 15),
                 Expanded(

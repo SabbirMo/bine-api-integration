@@ -1,11 +1,18 @@
 import 'dart:developer';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class AuthService {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: kIsWeb
+        ? null
+        : (defaultTargetPlatform == TargetPlatform.iOS
+              ? '74471662195-5jod56lcd4jk039agmo8tmiq9bg0180o.apps.googleusercontent.com'
+              : null),
     serverClientId:
         '74471662195-5ac9tsnhgn8emgkjpj3j94lek2a4cdgj.apps.googleusercontent.com',
     scopes: ['email', 'profile'],
@@ -54,6 +61,47 @@ class AuthService {
       };
     } catch (e) {
       log("Error signing in with Google: $e");
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> signInWithApple() async {
+    try {
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final OAuthCredential credential = OAuthProvider("apple.com").credential(
+        idToken: appleCredential.identityToken,
+        accessToken: appleCredential.authorizationCode,
+      );
+
+      final UserCredential userCredential = await _firebaseAuth
+          .signInWithCredential(credential);
+      final String? firebaseIdToken = await userCredential.user?.getIdToken();
+
+      // Apple only returns name and email on first sign-in
+      String? displayName =
+          '${appleCredential.givenName ?? ''} ${appleCredential.familyName ?? ''}'
+              .trim();
+      if (displayName.isEmpty) {
+        displayName = userCredential.user?.displayName;
+      }
+      final String? email = appleCredential.email ?? userCredential.user?.email;
+
+      return {
+        'idToken': appleCredential.identityToken,
+        'accessToken': appleCredential.authorizationCode,
+        'firebaseIdToken': firebaseIdToken,
+        'name': displayName,
+        'email': email,
+        'photoUrl': userCredential.user?.photoURL,
+      };
+    } catch (e) {
+      log("Error signing in with Apple: $e");
       return null;
     }
   }

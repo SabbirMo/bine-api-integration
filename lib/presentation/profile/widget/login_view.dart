@@ -98,7 +98,35 @@ class LoginView extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           OutlinedButton(
-            onPressed: onLogin,
+            onPressed: loginProvider.isAppleLoading
+                ? null
+                : () async {
+                    final success = await loginProvider.loginWithApple();
+                    if (success) {
+                      if (context.mounted) {
+                        await Future.wait([
+                          context.read<CartProvider>().fetchCart().catchError((
+                            e,
+                          ) {
+                            debugPrint("Error fetching cart: $e");
+                          }),
+                          context
+                              .read<NotificationProvider>()
+                              .fetchNotifications()
+                              .catchError((e) {
+                                debugPrint("Error fetching notifications: $e");
+                              }),
+                          context
+                              .read<OrderProvider>()
+                              .fetchOrderHistory()
+                              .catchError((e) {
+                                debugPrint("Error fetching order history: $e");
+                              }),
+                        ]);
+                      }
+                      onLogin();
+                    }
+                  },
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
               shape: RoundedRectangleBorder(
@@ -106,19 +134,28 @@ class LoginView extends StatelessWidget {
               ),
               side: BorderSide(color: Colors.grey[300]!),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SvgPicture.asset(
-                  "assets/icon/apple.svg",
-                ), // Use a local asset in production
-                const SizedBox(width: 12),
-                const Text(
-                  "Continuer avec Apple",
-                  style: TextStyle(color: Colors.black, fontSize: 16),
-                ),
-              ],
-            ),
+            child: loginProvider.isAppleLoading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.black,
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SvgPicture.asset(
+                        "assets/icon/apple.svg",
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        "Continuer avec Apple",
+                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),
