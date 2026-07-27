@@ -91,5 +91,11 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app requires access to the photo library to pick images for your profile and tours.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires access to the camera to take photos for your profile and tours.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app requires access to the microphone to record video if needed.</string>
 </dict>
 </plist>
