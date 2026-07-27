@@ -43,11 +43,16 @@ class LoginProvider extends ChangeNotifier {
             appleAuthData['photoUrl'] ??
             '';
 
+        final userId = data['user']?['id']?.toString() ?? '';
+
         await TokenStorage.saveAccessToken(data['access']);
         await TokenStorage.saveRefreshToken(data['refresh']);
         await TokenStorage.saveName(name.toString());
         await TokenStorage.saveEmail(userEmail.toString());
         await TokenStorage.saveProfileImage(profileImage.toString());
+        if (userId.isNotEmpty) {
+          await TokenStorage.saveUserId(userId);
+        }
 
         await FirebaseService.instance.registerCurrentToken();
 
@@ -94,11 +99,16 @@ class LoginProvider extends ChangeNotifier {
             googleAuthData['photoUrl'] ??
             '';
 
+        final userId = data['user']?['id']?.toString() ?? '';
+
         await TokenStorage.saveAccessToken(data['access']);
         await TokenStorage.saveRefreshToken(data['refresh']);
         await TokenStorage.saveName(name.toString());
         await TokenStorage.saveEmail(userEmail.toString());
         await TokenStorage.saveProfileImage(profileImage.toString());
+        if (userId.isNotEmpty) {
+          await TokenStorage.saveUserId(userId);
+        }
 
         await FirebaseService.instance.registerCurrentToken();
 
@@ -133,12 +143,17 @@ class LoginProvider extends ChangeNotifier {
       final userEmail = data['user']['email'];
       final profileImage = data['user']['profile_photo_url'];
 
+      final userId = data['user']['id'];
+
       await TokenStorage.saveAccessToken(data['access']);
 
       await TokenStorage.saveRefreshToken(data['refresh']);
       await TokenStorage.saveName(name.toString());
       await TokenStorage.saveEmail(userEmail.toString());
       await TokenStorage.saveProfileImage(profileImage.toString());
+      if (userId != null) {
+        await TokenStorage.saveUserId(userId.toString());
+      }
 
       await FirebaseService.instance.registerCurrentToken();
 
@@ -146,6 +161,33 @@ class LoginProvider extends ChangeNotifier {
     } catch (e) {
       log("Login Failed $e");
       rethrow;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> deleteAccount() async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      final userId = await TokenStorage.getUserId();
+      if (userId == null || userId.isEmpty) {
+        log("Delete account failed: userId is null or empty");
+        return false;
+      }
+
+      final response = await apiServices.delete(
+        '/api/users/$userId/',
+        requireAuth: true,
+      );
+
+      log("Delete account success response: $response");
+      return true;
+    } catch (e) {
+      log("Delete account API failed: $e");
+      return false;
     } finally {
       isLoading = false;
       notifyListeners();

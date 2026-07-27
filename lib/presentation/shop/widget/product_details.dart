@@ -5,6 +5,7 @@ import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
+import 'package:binetatour/core/widgets/fireworks_overlay.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_video_item.dart';
 import 'package:binetatour/presentation/shop/widget/product_audio_item.dart';
@@ -320,6 +321,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                   if (!mounted) return;
 
                   context.read<CartProvider>().addToCart(_product);
+                  FireworksOverlay.show(context);
 
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(

@@ -1,3 +1,4 @@
+import 'package:binetatour/core/login/login_provider.dart';
 import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/feedback_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/invoice/invoice_screen.dart';
@@ -5,6 +6,7 @@ import 'package:binetatour/presentation/profile/my_order/my_order_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:provider/provider.dart';
 
 class ProfileView extends StatefulWidget {
   final VoidCallback onLogout;
@@ -165,6 +167,36 @@ class _ProfileViewState extends State<ProfileView> {
           ),
           const SizedBox(height: 20),
 
+          // Delete Account Button
+          GestureDetector(
+            onTap: () {
+              _showDeleteAccountDialog();
+            },
+            child: Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.red[100]!),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.delete_forever, color: Colors.red),
+                  SizedBox(width: 15),
+                  Text(
+                    "Supprimer le compte",
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 15),
+
           // Logout Button
           GestureDetector(
             onTap: () {
@@ -228,6 +260,98 @@ class _ProfileViewState extends State<ProfileView> {
         ],
       ),
     );
+  }
+
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Supprimer le compte"),
+          content: const Text(
+            "Êtes-vous sûr de vouloir supprimer votre compte ? Cette action est irréversible.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text(
+                "Annuler",
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context); // Close the confirm dialog
+                _performDeleteAccount();
+              },
+              child: const Text(
+                "Supprimer",
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _performDeleteAccount() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+        );
+      },
+    );
+
+    try {
+      final loginProvider = Provider.of<LoginProvider>(context, listen: false);
+      final success = await loginProvider.deleteAccount();
+
+      if (mounted) {
+        Navigator.pop(context); // Dismiss the loading dialog
+      }
+
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Votre compte a été supprimé avec succès."),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        widget.onLogout();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Échec de la suppression du compte. Veuillez réessayer.",
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Dismiss loading dialog if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Une erreur est survenue: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildMenuItem(String icon, String title, Color iconColor) {

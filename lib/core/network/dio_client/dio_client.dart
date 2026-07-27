@@ -1,6 +1,7 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/network/auth_interceptor/auth_interceptor.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 class DioClient {
   static Dio? _dio;
@@ -25,19 +26,21 @@ class DioClient {
 
   //login and signup api calls should not have auth interceptor
   static Dio get instanceWithoutAuth {
-    return Dio(
-        BaseOptions(
-          baseUrl: BaseUrl.baseUrl,
-          connectTimeout: const Duration(seconds: 60),
-          receiveTimeout: const Duration(seconds: 60),
-          sendTimeout: const Duration(seconds: 60),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-        ),
-      )
-      ..interceptors.add(
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: BaseUrl.baseUrl,
+        connectTimeout: const Duration(seconds: 60),
+        receiveTimeout: const Duration(seconds: 60),
+        sendTimeout: const Duration(seconds: 60),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ),
+    );
+
+    if (kDebugMode) {
+      dio.interceptors.add(
         LogInterceptor(
           requestBody: true,
           responseBody: true,
@@ -46,6 +49,8 @@ class DioClient {
           responseHeader: false,
         ),
       );
+    }
+    return dio;
   }
 
   static void reset() {

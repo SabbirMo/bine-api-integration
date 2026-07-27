@@ -22,7 +22,7 @@ class AuthService {
     try {
       // Force disconnect/sign-out before signing in, so the user is prompted with the account chooser list
       try {
-        await _googleSignIn.disconnect();
+        await _googleSignIn.signOut();
       } catch (e) {
         log("Error disconnecting prior to Google sign-in: $e");
       }

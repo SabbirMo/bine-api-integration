@@ -10,7 +10,7 @@
         android:label="Bineta Tour"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true">
 
         <!-- Required for video playback on real devices -->

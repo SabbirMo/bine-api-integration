@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthInterceptor extends QueuedInterceptor {
   final Dio dio;
@@ -16,17 +17,23 @@ class AuthInterceptor extends QueuedInterceptor {
     RequestInterceptorHandler handler,
   ) async {
     final accessToken = await TokenStorage.getAccessToken();
-    log(
-      'onRequest: Retrieved access token from storage: ${accessToken ?? "NULL"} for path: ${options.path}',
-    );
+    if (kDebugMode) {
+      log(
+        'onRequest: Access token retrieved (isPresent: ${accessToken != null && accessToken.isNotEmpty}) for path: ${options.path}',
+      );
+    }
 
     if (accessToken != null && accessToken.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $accessToken';
-      log('onRequest: Bearer token attached');
+      if (kDebugMode) {
+        log('onRequest: Bearer token attached');
+      }
     } else {
-      log(
-        'WARNING: Access token is null or empty for request to ${options.path}',
-      );
+      if (kDebugMode) {
+        log(
+          'WARNING: Access token is null or empty for request to ${options.path}',
+        );
+      }
     }
     return handler.next(options);
   }

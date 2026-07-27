@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class TokenStorage {
@@ -6,6 +7,7 @@ class TokenStorage {
   static const String _nameKey = 'name';
   static const String _emailKey = 'email';
   static const String _profileImageKey = 'profile_photo_url';
+  static const String _userIdKey = 'user_id';
 
   // Save access token
   static Future<bool> saveAccessToken(String token) async {
@@ -57,6 +59,16 @@ class TokenStorage {
     }
   }
 
+  // Save User ID
+  static Future<bool> saveUserId(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return await prefs.setString(_userIdKey, userId);
+    } catch (e) {
+      return false;
+    }
+  }
+
   //Get name
   static Future<String?> getName() async {
     try {
@@ -82,6 +94,47 @@ class TokenStorage {
     try {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getString(_profileImageKey);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Get User ID (with JWT decode fallback)
+  static Future<String?> getUserId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final id = prefs.getString(_userIdKey);
+      if (id != null && id.isNotEmpty) {
+        return id;
+      }
+
+      // Fallback: Try to extract user ID from stored access token
+      final accessToken = await getAccessToken();
+      if (accessToken != null && accessToken.isNotEmpty) {
+        final userIdFromJwt = _getUserIdFromJwt(accessToken);
+        if (userIdFromJwt != null) {
+          // Cache it for subsequent calls
+          await prefs.setString(_userIdKey, userIdFromJwt);
+          return userIdFromJwt;
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // JWT Helper to decode user_id from access token payload
+  static String? _getUserIdFromJwt(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload = parts[1];
+      final decodedBytes = base64Url.decode(base64Url.normalize(payload));
+      final decodedString = utf8.decode(decodedBytes);
+      final map = json.decode(decodedString) as Map<String, dynamic>;
+      final userId = map['user_id'] ?? map['sub'] ?? map['id'];
+      return userId?.toString();
     } catch (e) {
       return null;
     }
@@ -113,6 +166,7 @@ class TokenStorage {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_accessTokenKey);
       await prefs.remove(_refreshTokenKey);
+      await prefs.remove(_userIdKey);
       return true;
     } catch (e) {
       return false;
