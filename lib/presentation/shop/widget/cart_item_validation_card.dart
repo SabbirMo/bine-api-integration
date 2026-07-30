@@ -362,7 +362,44 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           ),
           IconButton(
             onPressed: () {
-              context.read<CartProvider>().increment(item.id);
+              if (_productDetails != null && _productDetails!.variants.isNotEmpty) {
+                final variants = _productDetails!.variants;
+                ProductVariantModel? selectedVariant;
+
+                // Try matching based on selection in UI
+                for (var v in variants) {
+                  bool colorMatch = _selectedColorCode == null || v.colorCode == _selectedColorCode;
+                  bool sizeMatch = _selectedSize == null || v.size == _selectedSize;
+                  if (colorMatch && sizeMatch) {
+                    selectedVariant = v;
+                    break;
+                  }
+                }
+
+                // If not matched, fallback to first variant
+                selectedVariant ??= variants.first;
+
+                final maxStock = selectedVariant.stockQuantity;
+                if (item.quantity >= maxStock) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        "Stock disponible : $maxStock",
+                        textAlign: TextAlign.center,
+                      ),
+                      backgroundColor: const Color(0xFFFF6900),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      margin: const EdgeInsets.all(20),
+                    ),
+                  );
+                  return;
+                }
+              }
+              context.read<CartProvider>().increment(item.id, context);
             },
             icon: const Icon(
               Icons.add_circle_outline,

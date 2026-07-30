@@ -320,6 +320,25 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
                   if (!mounted) return;
 
+                  if (_product.status == "out_of_stock") {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                          "Ce produit est en rupture de stock !",
+                          textAlign: TextAlign.center,
+                        ),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        margin: const EdgeInsets.all(20),
+                      ),
+                    );
+                    return;
+                  }
+
                   context.read<CartProvider>().addToCart(_product);
                   FireworksOverlay.show(context);
 
@@ -524,6 +543,25 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                         }
 
                         if (!context.mounted) return;
+
+                        if (_product.status == "out_of_stock") {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                "Ce produit est en rupture de stock !",
+                                textAlign: TextAlign.center,
+                              ),
+                              backgroundColor: Colors.red,
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              margin: const EdgeInsets.all(20),
+                            ),
+                          );
+                          return;
+                        }
 
                         // Show a loading dialog while the product is added to the cart
                         showDialog(

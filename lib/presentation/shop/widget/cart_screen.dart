@@ -243,7 +243,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                         Provider.of<CartProvider>(
                           context,
                           listen: false,
-                        ).increment(item.id);
+                        ).increment(item.id, context);
                       }),
                     ],
                   ),

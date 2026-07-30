@@ -110,7 +110,8 @@ class LoginProvider extends ChangeNotifier {
           await TokenStorage.saveUserId(userId);
         }
 
-        await FirebaseService.instance.registerCurrentToken();
+        // Register token in the background so it doesn't block the login flow
+        FirebaseService.instance.registerCurrentToken();
 
         log("Google Login Successful");
         return true;
@@ -155,7 +156,8 @@ class LoginProvider extends ChangeNotifier {
         await TokenStorage.saveUserId(userId.toString());
       }
 
-      await FirebaseService.instance.registerCurrentToken();
+      // Register token in the background so it doesn't block the login flow
+      FirebaseService.instance.registerCurrentToken();
 
       log("Login Successfull $response");
     } catch (e) {

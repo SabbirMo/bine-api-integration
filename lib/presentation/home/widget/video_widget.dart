@@ -102,6 +102,33 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
     );
   }
 
+  Widget _buildDefaultPlaceholder({required bool isLoading}) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.grey[900]!,
+            Colors.grey[850]!,
+            Colors.black,
+          ],
+        ),
+      ),
+      child: Center(
+        child: isLoading
+            ? const CircularProgressIndicator(
+                color: Color(0xFFFF6900),
+              )
+            : const Icon(
+                Icons.play_circle_outline_rounded,
+                color: Colors.white24,
+                size: 64,
+              ),
+      ),
+    );
+  }
+
   // Logic to show controls on click/hover and hide after 3 seconds
   void _toggleControls() {
     _showControls.value = !_showControls.value;
@@ -169,23 +196,32 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              if (widget.thumbnailUrl != null)
+                              if (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty)
                                 Image.network(
                                   widget.thumbnailUrl!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => const Center(
-                                    child: Icon(
-                                      Icons.image_not_supported,
-                                      color: Colors.white38,
-                                      size: 40,
-                                    ),
-                                  ),
-                                ),
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return _buildDefaultPlaceholder(isLoading: true);
+                                  },
+                                  errorBuilder: (_, _, _) => _buildDefaultPlaceholder(isLoading: false),
+                                )
+                              else
+                                _buildDefaultPlaceholder(isLoading: false),
                               ValueListenableBuilder<bool>(
                                 valueListenable: _isBuffering,
                                 builder: (context, isBuffering, _) {
                                   if (isBuffering) {
-                                    return _buildShimmer();
+                                    return Stack(
+                                      children: [
+                                        _buildShimmer(),
+                                        const Center(
+                                          child: CircularProgressIndicator(
+                                            color: Color(0xFFFF6900),
+                                          ),
+                                        ),
+                                      ],
+                                    );
                                   }
                                   return const SizedBox.shrink();
                                 },

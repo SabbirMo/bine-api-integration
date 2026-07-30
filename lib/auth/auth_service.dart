@@ -20,15 +20,11 @@ class AuthService {
 
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
-      // Force disconnect/sign-out before signing in, so the user is prompted with the account chooser list
-      try {
-        await _googleSignIn.signOut();
-      } catch (e) {
-        log("Error disconnecting prior to Google sign-in: $e");
-      }
+      // Try silent sign-in first (extremely fast if already authorized)
+      GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
 
-      //google login
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      // If silent sign-in is not possible, prompt the user to sign in
+      googleUser ??= await _googleSignIn.signIn();
 
       //user cancel
       if (googleUser == null) {
@@ -107,11 +103,6 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    try {
-      await _googleSignIn.disconnect();
-    } catch (e) {
-      log("Error disconnecting Google Sign In: $e");
-    }
     await _googleSignIn.signOut();
     await _firebaseAuth.signOut();
   }

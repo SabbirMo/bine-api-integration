@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "74471662195-itt95jk9rv5p56h223pd5m3i2pp2bgkt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bineta.binetatour",
+            "certificate_hash": "4a1927a9f56adbbec66e4aaf31b5ed9d7959c075"
+          }
+        },
+        {
+          "client_id": "74471662195-pb100ldcfumci0qjsag58h9a33v99ubt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bineta.binetatour",
+            "certificate_hash": "28d0b0dee5c36be0bf0d706609807b3f36589673"
+          }
+        },
+        {
           "client_id": "74471662195-siqaev3rkekq3oe9e9me9atopdii139j.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
