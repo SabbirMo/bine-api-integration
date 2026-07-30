@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/presentation/home/widget/full_screen_player.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -14,8 +15,7 @@ class VideoPlaceholder extends StatefulWidget {
   State<VideoPlaceholder> createState() => _VideoPlaceholderState();
 }
 
-class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerProviderStateMixin {
-  late AnimationController _shimmerController;
+class _VideoPlaceholderState extends State<VideoPlaceholder> {
   late final Player _player = Player();
   late final VideoController _videoController = VideoController(
     _player,
@@ -35,11 +35,33 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat();
     _initializePlayer();
+  }
+
+  String get _resolvedThumbnailUrl {
+    String url = widget.thumbnailUrl ?? '';
+    if (url.isNotEmpty && !url.startsWith('http')) {
+      final base = BaseUrl.baseUrl;
+      if (url.startsWith('/')) {
+        url = '$base$url';
+      } else {
+        url = '$base/$url';
+      }
+    }
+    return url;
+  }
+
+  String get _resolvedVideoUrl {
+    String url = widget.link;
+    if (url.isNotEmpty && !url.startsWith('http')) {
+      final base = BaseUrl.baseUrl;
+      if (url.startsWith('/')) {
+        url = '$base$url';
+      } else {
+        url = '$base/$url';
+      }
+    }
+    return url;
   }
 
   void _initializePlayer() {
@@ -56,7 +78,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
       _updateStartedPlayingState();
     });
 
-    _player.open(Media(widget.link));
+    _player.open(Media(_resolvedVideoUrl));
   }
 
   void _updateStartedPlayingState() {
@@ -74,32 +96,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
     _isPlaying.dispose();
     _isBuffering.dispose();
     _hasStartedPlaying.dispose();
-    _shimmerController.dispose();
     super.dispose();
-  }
-
-  Widget _buildShimmer() {
-    return AnimatedBuilder(
-      animation: _shimmerController,
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment(-2.0 + _shimmerController.value * 4.0, -1.0),
-              end: Alignment(-1.0 + _shimmerController.value * 4.0, 1.0),
-              colors: [
-                Colors.white.withValues(alpha: 0.0),
-                Colors.white.withValues(alpha: 0.15),
-                Colors.white.withValues(alpha: 0.35),
-                Colors.white.withValues(alpha: 0.15),
-                Colors.white.withValues(alpha: 0.0),
-              ],
-              stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Widget _buildDefaultPlaceholder({required bool isLoading}) {
@@ -108,18 +105,12 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.grey[900]!,
-            Colors.grey[850]!,
-            Colors.black,
-          ],
+          colors: [Colors.grey[900]!, Colors.grey[850]!, Colors.black],
         ),
       ),
       child: Center(
         child: isLoading
-            ? const CircularProgressIndicator(
-                color: Color(0xFFFF6900),
-              )
+            ? const CircularProgressIndicator(color: Color(0xFFFF6900))
             : const Icon(
                 Icons.play_circle_outline_rounded,
                 color: Colors.white24,
@@ -185,26 +176,35 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
                   ),
                 ),
 
-                // 2. Thumbnail / Loading State (On top, hides when playing starts and buffering ends)
+                // 2. Thumbnail / Loading State (On top, hides when playing starts and buffering ends, shows on pause)
                 ValueListenableBuilder<bool>(
-                  valueListenable: _hasStartedPlaying,
-                  builder: (context, hasStartedPlaying, _) {
-                    if (!hasStartedPlaying) {
+                  valueListenable: _isPlaying,
+                  builder: (context, isPlaying, _) {
+                    if (!isPlaying) {
+                      final thumb = _resolvedThumbnailUrl;
                       return Positioned.fill(
                         child: Container(
                           color: Colors.black,
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              if (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty)
+                              if (thumb.isNotEmpty)
                                 Image.network(
-                                  widget.thumbnailUrl!,
+                                  thumb,
                                   fit: BoxFit.cover,
-                                  loadingBuilder: (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return _buildDefaultPlaceholder(isLoading: true);
-                                  },
-                                  errorBuilder: (_, _, _) => _buildDefaultPlaceholder(isLoading: false),
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
+                                        if (loadingProgress == null) {
+                                          return child;
+                                        }
+                                        return _buildDefaultPlaceholder(
+                                          isLoading: true,
+                                        );
+                                      },
+                                  errorBuilder: (_, _, _) =>
+                                      _buildDefaultPlaceholder(
+                                        isLoading: false,
+                                      ),
                                 )
                               else
                                 _buildDefaultPlaceholder(isLoading: false),
@@ -212,15 +212,10 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> with SingleTickerPr
                                 valueListenable: _isBuffering,
                                 builder: (context, isBuffering, _) {
                                   if (isBuffering) {
-                                    return Stack(
-                                      children: [
-                                        _buildShimmer(),
-                                        const Center(
-                                          child: CircularProgressIndicator(
-                                            color: Color(0xFFFF6900),
-                                          ),
-                                        ),
-                                      ],
+                                    return const Center(
+                                      child: CircularProgressIndicator(
+                                        color: Color(0xFFFF6900),
+                                      ),
                                     );
                                   }
                                   return const SizedBox.shrink();

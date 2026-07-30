@@ -51,12 +51,14 @@ class StoryCategoryModel {
   final int id;
   final String? name;
   final String? imageUrl;
+  final String? type;
   final List<StoryModel> stories;
 
   StoryCategoryModel({
     required this.id,
     this.name,
     this.imageUrl,
+    this.type,
     required this.stories,
   });
 
@@ -65,6 +67,7 @@ class StoryCategoryModel {
       id: json['id'],
       name: json['name'],
       imageUrl: json['image_url'],
+      type: json['type'],
       stories:
           (json['stories'] as List?)
               ?.map((e) => StoryModel.fromJson(e))

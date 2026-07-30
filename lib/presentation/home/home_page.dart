@@ -415,10 +415,17 @@ class _AccueilScreenState extends State<AccueilScreen>
             }
           }
 
+          final String type = (cat.type ?? '').toLowerCase().trim();
+          final bool isMixed = type == 'mixed';
+          final bool isVideo = type == 'video';
+          final bool isAudio = type == 'audio';
+
           final sItem = StoryItem(
             title: cat.name ?? "Story",
             imagePath: catImg.isNotEmpty ? catImg : "assets/images/footbal.jpg",
-            isDashed: true,
+            isDashed: isMixed,
+            isVideo: isVideo,
+            isAudio: isAudio,
           );
 
           // Map API stories to StoryContent list
@@ -651,12 +658,14 @@ class StoryItem {
   final String imagePath;
   final bool isDashed;
   final bool isVideo;
+  final bool isAudio;
 
   StoryItem({
     required this.title,
     required this.imagePath,
     this.isDashed = false,
     this.isVideo = false,
+    this.isAudio = false,
   });
 }
 

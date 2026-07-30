@@ -65,6 +65,20 @@ class CircularStoryAvatar extends StatelessWidget {
                     child: const Icon(Icons.play_arrow, color: Colors.white, size: 15),
                   ),
                 ),
+              // Audio Icon for Audio stories
+              if (item.isAudio)
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF6900),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.volume_up_rounded, color: Colors.white, size: 15),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
