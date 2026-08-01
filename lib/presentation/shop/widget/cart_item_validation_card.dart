@@ -70,15 +70,15 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     ProductVariantModel? match;
 
     if (hasColors && hasSizes) {
-      match = variants.firstWhere(
-        (v) => v.colorCode == _selectedColorCode && v.size == _selectedSize,
-        orElse: () => variants.first,
-      );
       // Only valid if both are selected
       if (_selectedColorCode == null || _selectedSize == null) {
         widget.onVariantSelected?.call(null);
         return;
       }
+      match = variants.firstWhere(
+        (v) => v.colorCode == _selectedColorCode && v.size == _selectedSize,
+        orElse: () => variants.first,
+      );
     } else if (hasColors) {
       if (_selectedColorCode == null) {
         widget.onVariantSelected?.call(null);
@@ -97,6 +97,12 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         (v) => v.size == _selectedSize,
         orElse: () => variants.first,
       );
+    }
+
+    // If selected variant is out of stock, don't allow ordering
+    if (match != null && match.stockQuantity <= 0) {
+      widget.onVariantSelected?.call(null);
+      return;
     }
 
     widget.onVariantSelected?.call(match?.id);
@@ -208,16 +214,51 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     );
   }
 
-  Widget _buildVariantsSelection(List<ProductVariantModel> variants) {
-    // Extract unique colors and sizes
-    final uniqueColors = <String, String>{}; // colorCode -> colorName
-    final uniqueSizes = <String>{};
+  /// Get the selected variant (matching both color and size)
+  ProductVariantModel? get _selectedVariant {
+    if (_productDetails == null) return null;
+    final variants = _productDetails!.variants;
+    if (variants.isEmpty) return null;
 
+    for (var v in variants) {
+      bool colorMatch = _selectedColorCode == null || v.colorCode == _selectedColorCode;
+      bool sizeMatch = _selectedSize == null || v.size == _selectedSize;
+      if (colorMatch && sizeMatch) return v;
+    }
+    return null;
+  }
+
+  /// Check if the currently selected variant is out of stock
+  bool get _isSelectedVariantOutOfStock {
+    final variant = _selectedVariant;
+    if (variant == null) return false;
+    return variant.stockQuantity <= 0;
+  }
+
+  Widget _buildVariantsSelection(List<ProductVariantModel> variants) {
+    // Extract unique colors
+    final uniqueColors = <String, String>{}; // colorCode -> colorName
     for (var v in variants) {
       if (v.colorCode.isNotEmpty) {
         uniqueColors[v.colorCode] = v.colorName;
       }
-      if (v.size.isNotEmpty) {
+    }
+
+    // Filter sizes based on selected color
+    // If a color is selected, only show sizes that exist for that color
+    final List<ProductVariantModel> filteredVariants;
+    if (_selectedColorCode != null) {
+      filteredVariants = variants
+          .where((v) => v.colorCode == _selectedColorCode)
+          .toList();
+    } else {
+      filteredVariants = variants;
+    }
+
+    // Build unique sizes from filtered variants (preserving order)
+    final uniqueSizes = <String>[];
+    for (var v in filteredVariants) {
+      if (v.size.isNotEmpty && !uniqueSizes.contains(v.size)) {
         uniqueSizes.add(v.size);
       }
     }
@@ -254,8 +295,43 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               spacing: 8,
               runSpacing: 8,
               children: uniqueSizes.map((size) {
-                return _choiceChip(size);
+                // Find the stock for this size (with selected color)
+                final variantForSize = filteredVariants.firstWhere(
+                  (v) => v.size == size,
+                  orElse: () => filteredVariants.first,
+                );
+                return _choiceChip(size, stockQuantity: variantForSize.stockQuantity);
               }).toList(),
+            ),
+          ],
+          // Show out of stock warning if selected variant has 0 stock
+          if (_selectedColorCode != null &&
+              _selectedSize != null &&
+              _isSelectedVariantOutOfStock) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 18),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      "Rupture de stock – Ce produit ne peut pas être commandé",
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
@@ -270,6 +346,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       onTap: () {
         setState(() {
           _selectedColorCode = colorCode;
+          // Reset size selection when color changes,
+          // because available sizes may differ per color
+          _selectedSize = null;
         });
         _notifyVariant();
       },
@@ -302,8 +381,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     );
   }
 
-  Widget _choiceChip(String text) {
+  Widget _choiceChip(String text, {required int stockQuantity}) {
     final bool isSelected = _selectedSize == text;
+    final bool isOutOfStock = stockQuantity <= 0;
 
     return GestureDetector(
       onTap: () {
@@ -316,20 +396,36 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFEF3E7) : Colors.white,
+          color: isSelected
+              ? (isOutOfStock ? Colors.red.shade50 : const Color(0xFFFEF3E7))
+              : (isOutOfStock ? Colors.grey.shade100 : Colors.white),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? const Color(0xFFFF6900) : Colors.grey.shade300,
+            color: isSelected
+                ? (isOutOfStock ? Colors.red : const Color(0xFFFF6900))
+                : Colors.grey.shade300,
             width: isSelected ? 1.8 : 1.2,
           ),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isSelected ? const Color(0xFFFF6900) : Colors.black,
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              text,
+              style: TextStyle(
+                color: isOutOfStock
+                    ? Colors.grey
+                    : (isSelected ? const Color(0xFFFF6900) : Colors.black),
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                decoration: isOutOfStock ? TextDecoration.lineThrough : null,
+              ),
+            ),
+            if (isOutOfStock) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.block, size: 14, color: Colors.red.shade300),
+            ],
+          ],
         ),
       ),
     );
@@ -345,66 +441,81 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            onPressed: () {
-              if (item.quantity > 1) {
-                context.read<CartProvider>().decrement(item.id);
-              }
-            },
+            onPressed: _isSelectedVariantOutOfStock
+                ? null
+                : () {
+                    if (item.quantity > 1) {
+                      context.read<CartProvider>().decrement(item.id);
+                    }
+                  },
             icon: Icon(
               Icons.remove_circle_outline,
               size: 22,
-              color: item.quantity > 1 ? Colors.black : Colors.grey.shade400,
+              color: (_isSelectedVariantOutOfStock || item.quantity <= 1)
+                  ? Colors.grey.shade400
+                  : Colors.black,
             ),
           ),
           Text(
-            "${item.quantity}",
+            _isSelectedVariantOutOfStock ? "0" : "${item.quantity}",
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           IconButton(
-            onPressed: () {
-              if (_productDetails != null && _productDetails!.variants.isNotEmpty) {
-                final variants = _productDetails!.variants;
-                ProductVariantModel? selectedVariant;
+            onPressed: _isSelectedVariantOutOfStock
+                ? null
+                : () {
+                    if (_productDetails != null &&
+                        _productDetails!.variants.isNotEmpty) {
+                      final variant = _selectedVariant;
 
-                // Try matching based on selection in UI
-                for (var v in variants) {
-                  bool colorMatch = _selectedColorCode == null || v.colorCode == _selectedColorCode;
-                  bool sizeMatch = _selectedSize == null || v.size == _selectedSize;
-                  if (colorMatch && sizeMatch) {
-                    selectedVariant = v;
-                    break;
-                  }
-                }
-
-                // If not matched, fallback to first variant
-                selectedVariant ??= variants.first;
-
-                final maxStock = selectedVariant.stockQuantity;
-                if (item.quantity >= maxStock) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        "Stock disponible : $maxStock",
-                        textAlign: TextAlign.center,
-                      ),
-                      backgroundColor: const Color(0xFFFF6900),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      margin: const EdgeInsets.all(20),
-                    ),
-                  );
-                  return;
-                }
-              }
-              context.read<CartProvider>().increment(item.id, context);
-            },
-            icon: const Icon(
+                      if (variant != null) {
+                        final maxStock = variant.stockQuantity;
+                        if (maxStock <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                "Rupture de stock",
+                                textAlign: TextAlign.center,
+                              ),
+                              backgroundColor: Colors.red,
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              margin: const EdgeInsets.all(20),
+                            ),
+                          );
+                          return;
+                        }
+                        if (item.quantity >= maxStock) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                "Stock disponible : $maxStock",
+                                textAlign: TextAlign.center,
+                              ),
+                              backgroundColor: const Color(0xFFFF6900),
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              margin: const EdgeInsets.all(20),
+                            ),
+                          );
+                          return;
+                        }
+                      }
+                    }
+                    context.read<CartProvider>().increment(item.id, context);
+                  },
+            icon: Icon(
               Icons.add_circle_outline,
               size: 22,
-              color: Colors.black,
+              color: _isSelectedVariantOutOfStock
+                  ? Colors.grey.shade400
+                  : Colors.black,
             ),
           ),
         ],

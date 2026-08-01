@@ -19,16 +19,18 @@ class CircularStoryAvatar extends StatelessWidget {
               Container(
                 width: 80,
                 height: 80,
-                padding: const EdgeInsets.all(4), // Space between border and image
+                padding: const EdgeInsets.all(
+                  4,
+                ), // Space between border and image
                 child: CustomPaint(
                   painter: item.isDashed ? DashedBorderPainter() : null,
-                  foregroundPainter: !item.isDashed 
+                  foregroundPainter: !item.isDashed
                       ? null // Standard solid border handled by decoration below
                       : null,
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: !item.isDashed 
+                      border: !item.isDashed
                           ? Border.all(color: const Color(0xFFFF6900), width: 2)
                           : null,
                     ),
@@ -42,10 +44,7 @@ class CircularStoryAvatar extends StatelessWidget {
                                 errorBuilder: (context, error, stackTrace) =>
                                     const Icon(Icons.error),
                               )
-                            : Image.asset(
-                                item.imagePath,
-                                fit: BoxFit.cover,
-                              ),
+                            : Image.asset(item.imagePath, fit: BoxFit.cover),
                       ),
                     ),
                   ),
@@ -62,7 +61,11 @@ class CircularStoryAvatar extends StatelessWidget {
                       color: Color(0xFFFF6900),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.play_arrow, color: Colors.white, size: 15),
+                    child: const Icon(
+                      Icons.play_arrow,
+                      color: Colors.white,
+                      size: 15,
+                    ),
                   ),
                 ),
               // Audio Icon for Audio stories
@@ -76,7 +79,11 @@ class CircularStoryAvatar extends StatelessWidget {
                       color: Color(0xFFFF6900),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.volume_up_rounded, color: Colors.white, size: 15),
+                    child: const Icon(
+                      Icons.volume_up_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    ),
                   ),
                 ),
             ],
