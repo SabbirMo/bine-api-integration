@@ -151,6 +151,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   "📞 Tél. Principal",
                   "77..",
                   controller: _phoneController,
+                  keyboardType: TextInputType.number,
                 ),
               ),
               const SizedBox(width: 10),
@@ -159,6 +160,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   "📞 Tél. 2 (Optionnel)",
                   "Secondaire",
                   controller: _phone2Controller,
+                  keyboardType: TextInputType.number,
                 ),
               ),
             ],
@@ -218,6 +220,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
     String label,
     String hint, {
     TextEditingController? controller,
+    TextInputType? keyboardType,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,6 +232,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
         const SizedBox(height: 5),
         TextField(
           controller: controller,
+          keyboardType: keyboardType,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),

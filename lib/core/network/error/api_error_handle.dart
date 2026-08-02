@@ -45,6 +45,12 @@ class ApiErrorHandle {
         }
         return data['non_field_errors'].toString();
       }
+
+      // If it's a Map but doesn't have the common keys above, parse it as a raw map of field validation errors.
+      final mapMessage = _mapToMessage(data);
+      if (mapMessage.isNotEmpty) {
+        return mapMessage;
+      }
     }
     return data != null ? data.toString() : 'An unexpected error occurred';
   }
@@ -71,6 +77,13 @@ class ApiErrorHandle {
     for (var value in map.values) {
       if (value is List) {
         messages.addAll(value.map((e) => e.toString()));
+      } else if (value is Map) {
+        final nested = _mapToMessage(value);
+        if (nested.isNotEmpty) {
+          messages.add(nested);
+        }
+      } else if (value != null) {
+        messages.add(value.toString());
       }
     }
 

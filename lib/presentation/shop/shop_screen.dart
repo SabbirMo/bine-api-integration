@@ -280,8 +280,8 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                           const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
                             childAspectRatio: 0.75,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
                           ),
                       delegate: SliverChildBuilderDelegate((context, index) {
                         return InkWell(
@@ -346,11 +346,17 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                     ),
             ),
             const SizedBox(height: 5),
-            Text(
-              category.name,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.orange[800] : Colors.black,
+            SizedBox(
+              width: 80,
+              child: Text(
+                category.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? Colors.orange[800] : Colors.black,
+                ),
               ),
             ),
           ],

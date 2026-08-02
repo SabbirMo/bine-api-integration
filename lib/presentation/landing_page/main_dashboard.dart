@@ -28,26 +28,32 @@ class _MainDashboardState extends State<MainDashboard> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
 
-        // 1. Force the icons to stay Orange regardless of selection
-        selectedIconTheme: IconThemeData(color: Colors.orange[800]),
-        unselectedIconTheme: IconThemeData(color: Colors.orange[800]),
+        selectedItemColor: const Color(0xffFF6900),
+        unselectedItemColor: const Color(0xFF7E848C),
 
-        // 2. Set the labels to Black
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.black,
-
-        // 3. Ensure the font style follows the color
-        selectedLabelStyle: const TextStyle(color: Colors.black, fontSize: 12),
-        unselectedLabelStyle: const TextStyle(
-          color: Colors.black,
+        selectedLabelStyle: const TextStyle(
           fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
         ),
 
         type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Accueil"),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: "Boutique"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Compte"),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_rounded),
+            label: "Accueil",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.storefront_rounded),
+            label: "Boutique",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_rounded),
+            label: "Compte",
+          ),
         ],
       ),
     );

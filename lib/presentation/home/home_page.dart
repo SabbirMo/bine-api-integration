@@ -98,15 +98,15 @@ class _AccueilScreenState extends State<AccueilScreen>
                   "Bawane",
                   style: TextStyle(
                     color: Color(0xFFE8500A),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 24,
                   ),
                 ),
                 Text(
                   "ya tou ceux qu' il me faut",
                   style: TextStyle(
                     color: Colors.black,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -226,27 +226,39 @@ class _AccueilScreenState extends State<AccueilScreen>
                 ),
               ),
               Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Color(0xffF85000),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Consumer<CartProvider>(
-                      builder: (context, cartProvider, child) {
-                        final totalItems = cartProvider.cart?.items.length ?? 0;
-                        return Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: Text(
-                            totalItems.toString(),
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                top: 4,
+                right: 4,
+                child: Consumer<CartProvider>(
+                  builder: (context, cartProvider, child) {
+                    final totalItems = cartProvider.cart?.items.length ?? 0;
+                    if (totalItems == 0) {
+                      return const SizedBox.shrink();
+                    }
+                    return Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Color(0xffF85000),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        totalItems.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -298,7 +310,7 @@ class _AccueilScreenState extends State<AccueilScreen>
                     _buildAddressBar(homeData.storeAddress!),
 
                   _buildSectionHeader(
-                    "Clients Livrés 🏆",
+                    "Clients Livrés 🙍‍♂️",
                     "assets/icon/right.svg",
                     titelIcon: true,
                     showMore: true,
@@ -336,9 +348,9 @@ class _AccueilScreenState extends State<AccueilScreen>
           Icon(Icons.location_on_outlined, color: Colors.orange, size: 20),
           SizedBox(width: 8),
           Text("Adresse :", style: TextStyle(fontWeight: FontWeight.bold)),
-          SizedBox(width: 4),
+          SizedBox(width: 6),
           Expanded(
-            child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis),
+            child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ],
       ),
@@ -522,6 +534,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
     return Column(
       children: [
+        const SizedBox(height: 10),
         CategorySectionHeader(
           title: widget.section.categoryName ?? 'Category',
           imagePath: widget.section.categoryImageUrl,
@@ -536,6 +549,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
             );
           },
         ),
+
         _buildVideoHorizontalListDynamic(
           widget.section.products,
           widget.section.categoryName ?? 'Category',
@@ -548,8 +562,16 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     List<ProductModel> allProducts,
     String categoryName,
   ) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    // Total padding of ListView: 16 * 2 = 32
+    // Spacing between cards: 12 * 2 = 24
+    // cardWidth = (screenWidth - 32 - 24) / 3
+    final double cardWidth = (screenWidth - 56) / 2.9;
+    final double cardHeight =
+        cardWidth * 1.72; // Adjusted height ratio to match ~0.58 aspect ratio (Figma)
+
     return SizedBox(
-      height: 260,
+      height: cardHeight,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -623,6 +645,9 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                 showOldPrice: discPerc > 0,
                 assetThumbnail: product.mainImage,
                 content: productContents,
+                width: cardWidth,
+                height: cardHeight,
+                isCompact: true,
               ),
             ),
           );
@@ -668,20 +693,3 @@ class StoryItem {
     this.isAudio = false,
   });
 }
-
-final myStories = [
-  StoryContent(
-    url: 'https://www.pexels.com/download/video/4398957/',
-    isVideo: true,
-    isAudio: false,
-    isImage: false,
-    isNetwork: true,
-  ),
-  StoryContent(
-    url: 'https://images.pexels.com/photos/17943742/pexels-photo-17943742.jpeg',
-    isVideo: false,
-    isAudio: false,
-    isImage: true,
-    isNetwork: true,
-  ),
-];

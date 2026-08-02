@@ -240,7 +240,7 @@ class _InprogressScreenState extends State<InprogressScreen> {
           _infoRow(
             Icons.access_time_outlined,
             "Heure de livraison",
-            "${orderDetail.deliveryTime} - ${orderDetail.deliveryTimeEnd}",
+            "${_formatTo12Hour(orderDetail.deliveryTime)} - ${_formatTo12Hour(orderDetail.deliveryTimeEnd)}",
           ),
           if (orderDetail.deliveryNote.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -746,6 +746,30 @@ class _InprogressScreenState extends State<InprogressScreen> {
         ],
       ),
     );
+  }
+
+  String _formatTo12Hour(String timeStr) {
+    if (timeStr.isEmpty) return "";
+    try {
+      final regExp = RegExp(r'(\d+)');
+      final matches = regExp.allMatches(timeStr).toList();
+      if (matches.length >= 2) {
+        int hour = int.parse(matches[0].group(0)!);
+        int minute = int.parse(matches[1].group(0)!);
+
+        final period = hour >= 12 ? "PM" : "AM";
+        int displayHour = hour % 12;
+        if (displayHour == 0) displayHour = 12;
+
+        final hourStr = displayHour.toString().padLeft(2, '0');
+        final minuteStr = minute.toString().padLeft(2, '0');
+
+        return "$hourStr:$minuteStr $period";
+      }
+    } catch (e) {
+      debugPrint("Error formatting time: $e");
+    }
+    return timeStr;
   }
 }
 

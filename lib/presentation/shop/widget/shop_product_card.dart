@@ -13,6 +13,11 @@ class ShopProductCard extends StatelessWidget {
   final bool showDiscountPercentage; // Controls the red badge
   final bool showOldPrice; // Controls the strikethrough text
 
+  // Custom sizing and styling options
+  final double? width;
+  final double? height;
+  final bool isCompact;
+
   const ShopProductCard({
     super.key,
     required this.content,
@@ -23,16 +28,19 @@ class ShopProductCard extends StatelessWidget {
     this.discount,
     this.showDiscountPercentage = true, // Default to true
     this.showOldPrice = true, // Default to true
+    this.width,
+    this.height,
+    this.isCompact = false, // Default to false
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 180, // Adjusted width for better spacing
-      height: 300,
+      width: width ?? (isCompact ? 110 : 180),
+      height: height ?? (isCompact ? 150 : 300),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(
-          30,
+          isCompact ? 16 : 16,
         ), // Match the rounded look in image
       ),
       clipBehavior: Clip.antiAlias,
@@ -43,10 +51,10 @@ class ShopProductCard extends StatelessWidget {
           if (assetThumbnail == null || assetThumbnail!.isEmpty)
             Container(
               color: Colors.grey[300],
-              child: const Center(
+              child: Center(
                 child: Icon(
                   Icons.image_not_supported,
-                  size: 50,
+                  size: isCompact ? 24 : 50,
                   color: Colors.black45,
                 ),
               ),
@@ -58,10 +66,10 @@ class ShopProductCard extends StatelessWidget {
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
                       color: Colors.grey[300],
-                      child: const Center(
+                      child: Center(
                         child: Icon(
                           Icons.image_not_supported,
-                          size: 50,
+                          size: isCompact ? 24 : 50,
                           color: Colors.black45,
                         ),
                       ),
@@ -88,22 +96,22 @@ class ShopProductCard extends StatelessWidget {
           // 3. Discount Badge (Conditional)
           if (showDiscountPercentage && discount != null)
             Positioned(
-              top: 15,
-              left: 15,
+              top: isCompact ? 8 : 15,
+              left: isCompact ? 8 : 15,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 8 : 14,
+                  vertical: isCompact ? 4 : 8,
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFF1111), // Bright red from image
-                  borderRadius: BorderRadius.circular(25),
+                  borderRadius: BorderRadius.circular(isCompact ? 12 : 25),
                 ),
                 child: Text(
                   discount!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: isCompact ? 10 : 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -112,57 +120,88 @@ class ShopProductCard extends StatelessWidget {
 
           // 4. Product Details
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(isCompact ? 8.0 : 16.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.end,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: isCompact ? 12 : 18,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Wrap current price in Flexible so it doesn't push the old price off-screen
-                    Text(
-                      price,
-                      style: const TextStyle(
-                        color: Color(0xFFFF8000),
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                      ),
-                    ),
-
-                    // Old Price (Conditional)
-                    if (showOldPrice && oldPrice != null) ...[
-                      // Reduced spacing slightly
-                      Flexible(
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 2.0),
-                          child: Text(
-                            oldPrice!,
+                SizedBox(height: isCompact ? 2 : 4),
+                isCompact
+                    ? Wrap(
+                        children: [
+                          Text(
+                            price,
                             style: const TextStyle(
-                              color: Color(0xFFCC3333),
-                              fontSize: 10,
-                              decoration: TextDecoration.lineThrough,
-                              decorationThickness: 2,
+                              color: Color(0xFFFF8000),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 11,
                             ),
                             maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            overflow: TextOverflow.visible,
                           ),
-                        ),
+                          const SizedBox(width: 6),
+                          if (showOldPrice && oldPrice != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              oldPrice!.replaceAll(
+                                RegExp(r'\s*FCFA', caseSensitive: false),
+                                '',
+                              ),
+                              style: const TextStyle(
+                                color: Color(0xFFCC3333),
+                                fontSize: 10,
+                                decoration: TextDecoration.lineThrough,
+                                decorationThickness: 1.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                            ),
+                          ],
+                        ],
+                      )
+                    : Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            price,
+                            style: const TextStyle(
+                              color: Color(0xFFFF8000),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                            ),
+                          ),
+
+                          // Old Price (Conditional)
+                          if (showOldPrice && oldPrice != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4.0),
+                              child: Text(
+                                oldPrice!.replaceAll(
+                                  RegExp(r'\s*FCFA', caseSensitive: false),
+                                  '',
+                                ),
+                                style: const TextStyle(
+                                  color: Color(0xFFCC3333),
+                                  fontSize: 10,
+                                  decoration: TextDecoration.lineThrough,
+                                  decorationThickness: 2,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
                       ),
-                    ],
-                  ],
-                ),
               ],
             ),
           ),

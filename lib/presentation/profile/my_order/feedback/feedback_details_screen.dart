@@ -304,36 +304,34 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
                         return;
                       }
 
-                      await provider.submitFeedback(
+                      final success = await provider.submitFeedback(
                         orderNumber: widget.orderId,
                         orderItemId: widget.item.id,
                         rating: _currentRating,
                         comment: _commentController.text,
                       );
 
-                      // if (success && mounted) {
-                      //   final paths = provider.selectedImages.map((e) => e.path).toList();
-                      //   provider.clearImages();
-                      //   Navigator.pushReplacement(
-                      //     context,
-                      //     MaterialPageRoute(
-                      //       builder: (_) => SubmitReviewScreen(
-                      //         orderId: widget.orderId,
-                      //         date: widget.date,
-                      //         items: widget.items,
-                      //         rating: _currentRating,
-                      //         comment: _commentController.text,
-                      //         imagePaths: paths,
-                      //       ),
-                      //     ),
-                      //   );
-                      // } else if (mounted) {
-                      //   ScaffoldMessenger.of(context).showSnackBar(
-                      //     SnackBar(
-                      //       content: Text(provider.errorMessage ?? "Erreur d'envoi"),
-                      //     ),
-                      //   );
-                      // }
+                      if (!context.mounted) return;
+
+                      if (success) {
+                        provider.clearImages();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Your review successfully sent"),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        Navigator.pop(context);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              provider.errorMessage ?? "Erreur d'envoi",
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE65100),
