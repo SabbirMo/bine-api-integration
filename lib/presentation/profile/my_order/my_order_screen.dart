@@ -79,7 +79,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
             "Annulées",
             "assets/icon/cancelv.svg",
             OrderStatus.annulees,
-            const Color(0xFFFF3D00),
+            const Color(0xFFFB313A),
           ),
         ],
       ),
@@ -121,15 +121,30 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
         child: Row(
           children: [
             isSVG
-                ? SvgPicture.asset(
-                    icon,
-                    width: 16,
-                    height: 16,
-                    colorFilter: ColorFilter.mode(
-                      isSelected ? Colors.white : activeColor,
-                      BlendMode.srcIn,
-                    ),
-                  )
+                ? (icon.contains('cancelv.svg')
+                      ? Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: isSelected ? Colors.white : activeColor,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.close,
+                            size: 11,
+                            color: isSelected ? activeColor : Colors.white,
+                          ),
+                        )
+                      : SvgPicture.asset(
+                          icon,
+                          width: 16,
+                          height: 16,
+                          colorFilter: ColorFilter.mode(
+                            isSelected ? Colors.white : activeColor,
+                            BlendMode.srcIn,
+                          ),
+                        ))
                 : Image.asset(icon, width: 16, height: 16),
             const SizedBox(width: 6),
             Text(
