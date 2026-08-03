@@ -488,6 +488,7 @@ class _AccueilScreenState extends State<AccueilScreen>
                   isAudio: isAud,
                   isImage: isImg,
                   isNetwork: url.startsWith('http'),
+                  createdAt: s.createdAt,
                 );
               })
               .toList();
@@ -568,7 +569,8 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     // cardWidth = (screenWidth - 32 - 24) / 3
     final double cardWidth = (screenWidth - 56) / 2.9;
     final double cardHeight =
-        cardWidth * 1.72; // Adjusted height ratio to match ~0.58 aspect ratio (Figma)
+        cardWidth *
+        1.72; // Adjusted height ratio to match ~0.58 aspect ratio (Figma)
 
     return SizedBox(
       height: cardHeight,

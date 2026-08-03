@@ -268,6 +268,7 @@ class _StoryDetailContent extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context, StoryDetailProvider provider) {
+    final story = provider.stories[provider.currentIndex];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 15),
       child: Row(
@@ -287,9 +288,9 @@ class _StoryDetailContent extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          const Text(
-            "12h",
-            style: TextStyle(color: Colors.white54, fontSize: 12),
+          Text(
+            story.createdAt ?? " ",
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
           const Spacer(),
           IconButton(
@@ -346,6 +347,7 @@ class StoryContent {
   final bool isAudio;
   final bool isImage;
   final bool isNetwork;
+  final String? createdAt;
 
   StoryContent({
     this.id,
@@ -354,6 +356,7 @@ class StoryContent {
     required this.isAudio,
     required this.isImage,
     this.isNetwork = false,
+    this.createdAt,
   });
 }
 

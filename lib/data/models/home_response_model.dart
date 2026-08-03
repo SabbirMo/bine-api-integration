@@ -82,20 +82,23 @@ class StoryModel {
   final String? contentType;
   final String? mediaUrl;
   final String? thumbnailUrl;
+  final String? createdAt;
 
   StoryModel({
     required this.id,
     this.contentType,
     this.mediaUrl,
     this.thumbnailUrl,
+    this.createdAt,
   });
 
   factory StoryModel.fromJson(Map<String, dynamic> json) {
     return StoryModel(
-      id: json['id'],
+      id: json['id'] ?? 0,
       contentType: json['content_type'],
       mediaUrl: json['media_url'],
       thumbnailUrl: json['thumbnail_url'],
+      createdAt: json['created_at'],
     );
   }
 }

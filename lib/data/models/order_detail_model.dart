@@ -51,13 +51,13 @@ class OrderDetailModel {
       createdAt: json['created_at'] ?? '',
       trackingSteps: json['tracking_steps'] != null
           ? (json['tracking_steps'] as List)
-              .map((i) => TrackingStepModel.fromJson(i))
-              .toList()
+                .map((i) => TrackingStepModel.fromJson(i))
+                .toList()
           : [],
       items: json['items'] != null
           ? (json['items'] as List)
-              .map((i) => OrderItemModel.fromJson(i))
-              .toList()
+                .map((i) => OrderItemModel.fromJson(i))
+                .toList()
           : [],
       customerName: json['customer_name'] ?? '',
       customerSurname: json['customer_surname'] ?? '',
