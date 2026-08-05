@@ -254,6 +254,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
     bool isSelected = selectedPayment == selectionKey;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         setState(() {
           selectedPayment = selectionKey;
@@ -308,265 +309,273 @@ class _ValidationScreenState extends State<ValidationScreen> {
 
   Widget _buildBottomCTA(CartProvider cartProvider) {
     String totalAmount = cartProvider.cart?.total.toStringAsFixed(2) ?? "0.00";
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey, width: 0.2)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF3E7),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Total",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  "$totalAmount FCFA",
-                  style: const TextStyle(
-                    color: Color(0xFFFF6900),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+    return Consumer<OrderProvider>(
+      builder: (context, orderProvider, child) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Colors.grey, width: 0.2)),
           ),
-          const SizedBox(height: 5),
-          SafeArea(
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF6900),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3E7),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                onPressed: () async {
-                  final orderProvider = Provider.of<OrderProvider>(
-                    context,
-                    listen: false,
-                  );
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Total",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      "$totalAmount FCFA",
+                      style: const TextStyle(
+                        color: Color(0xFFFF6900),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 5),
+              SafeArea(
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6900),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: orderProvider.isLoading
+                        ? null
+                        : () async {
+                            // ── Validate: every item with variants must have a variant selected ──
+                            final cartItems = cartProvider.cart?.items ?? [];
+                            final List<String> missingVariantProducts = [];
 
-                  // ── Validate: every item with variants must have a variant selected ──
-                  final cartItems = cartProvider.cart?.items ?? [];
-                  final List<String> missingVariantProducts = [];
+                            for (final cartItem in cartItems) {
+                              final selectedVariant =
+                                  _selectedVariantIds[cartItem.id];
+                              if (!_selectedVariantIds.containsKey(cartItem.id) ||
+                                  selectedVariant == null) {
+                                missingVariantProducts.add(cartItem.productName);
+                              }
+                            }
 
-                  for (final cartItem in cartItems) {
-                    final selectedVariant = _selectedVariantIds[cartItem.id];
-                    // If the map has no entry yet OR the entry is null, variant not selected
-                    if (!_selectedVariantIds.containsKey(cartItem.id) ||
-                        selectedVariant == null) {
-                      missingVariantProducts.add(cartItem.productName);
-                    }
-                  }
-
-                  if (missingVariantProducts.isNotEmpty && context.mounted) {
-                    final names = missingVariantProducts.join(', ');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        backgroundColor: const Color(0xFFFF4500),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        content: Row(
-                          children: [
-                            const Icon(
-                              Icons.warning_amber_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                "$names : couleur ou taille non sélectionnée",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
+                            if (missingVariantProducts.isNotEmpty &&
+                                context.mounted) {
+                              final names = missingVariantProducts.join(', ');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: const Color(0xFFFF4500),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  content: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          "$names : couleur ou taille non sélectionnée",
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  duration: const Duration(seconds: 3),
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        duration: const Duration(seconds: 3),
-                      ),
-                    );
-                    return;
-                  }
+                              );
+                              return;
+                            }
 
-                  String deliveryDate = "";
-                  if (_selectedDate == "AUJOURD'HUI") {
-                    deliveryDate = DateFormat(
-                      'yyyy-MM-dd',
-                    ).format(DateTime.now());
-                  } else if (_selectedDate == "DEMAIN") {
-                    deliveryDate = DateFormat(
-                      'yyyy-MM-dd',
-                    ).format(DateTime.now().add(const Duration(days: 1)));
-                  } else {
-                    try {
-                      final parts = _formattedDate.split('/');
-                      deliveryDate = "${parts[2]}-${parts[1]}-${parts[0]}";
-                    } catch (e) {
-                      deliveryDate = DateFormat(
-                        'yyyy-MM-dd',
-                      ).format(DateTime.now());
-                    }
-                  }
+                            String deliveryDate = "";
+                            if (_selectedDate == "AUJOURD'HUI") {
+                              deliveryDate = DateFormat(
+                                'yyyy-MM-dd',
+                              ).format(DateTime.now());
+                            } else if (_selectedDate == "DEMAIN") {
+                              deliveryDate = DateFormat(
+                                'yyyy-MM-dd',
+                              ).format(DateTime.now().add(const Duration(days: 1)));
+                            } else {
+                              try {
+                                final parts = _formattedDate.split('/');
+                                deliveryDate =
+                                    "${parts[2]}-${parts[1]}-${parts[0]}";
+                              } catch (e) {
+                                deliveryDate = DateFormat(
+                                  'yyyy-MM-dd',
+                                ).format(DateTime.now());
+                              }
+                            }
 
-                  String deliveryTimeStr = "06:25:27.291Z"; // Default fallback
-                  if (!_isAvailableNow && _timeController.text.isNotEmpty) {
-                    deliveryTimeStr =
-                        "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
-                  }
+                            String deliveryTimeStr =
+                                "06:25:27.291Z"; // Default fallback
+                            if (!_isAvailableNow &&
+                                _timeController.text.isNotEmpty) {
+                              deliveryTimeStr =
+                                  "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
+                            }
 
-                  // Build items list with selected variant_id
-                  final items = cartItems.map((cartItem) {
-                    return {
-                      "variant_id": _selectedVariantIds[cartItem.id] ?? 0,
-                      "quantity": cartItem.quantity,
-                    };
-                  }).toList();
+                            // Build items list with selected variant_id
+                            final items = cartItems.map((cartItem) {
+                              return {
+                                "variant_id":
+                                    _selectedVariantIds[cartItem.id] ?? 0,
+                                "quantity": cartItem.quantity,
+                              };
+                            }).toList();
 
-                  // Map UI selection → two separate slugs:
-                  // orderPaymentMethod  → used in POST /orders/ (payment_method field)
-                  // payProvider         → used in POST /pay/{id}/ (provider field)
-                  String orderPaymentMethod;
-                  String payProvider;
-                  if (selectedPayment == "Wave") {
-                    orderPaymentMethod = "wave";
-                    payProvider = "wave";
-                  } else if (selectedPayment == "Liquide") {
-                    orderPaymentMethod = "cash_on_delivery";
-                    payProvider = "cash_on_delivery";
-                  } else {
-                    // Orange Money
-                    orderPaymentMethod = "orange_money";
-                    payProvider = "orange";
-                  }
+                            String orderPaymentMethod;
+                            String payProvider;
+                            if (selectedPayment == "Wave") {
+                              orderPaymentMethod = "wave";
+                              payProvider = "wave";
+                            } else if (selectedPayment == "Liquide") {
+                              orderPaymentMethod = "cash_on_delivery";
+                              payProvider = "cash_on_delivery";
+                            } else {
+                              // Orange Money
+                              orderPaymentMethod = "orange_money";
+                              payProvider = "orange";
+                            }
 
-                  // Step 1 – Create the order
-                  final int? orderId = await orderProvider.createOrder(
-                    items: items,
-                    customerName: _nameController.text,
-                    customerSurname: _surnameController.text,
-                    customerPhone: _phoneController.text,
-                    customerPhone2: _phone2Controller.text,
-                    customerAddress: _addressController.text,
-                    deliveryDate: deliveryDate,
-                    deliveryTime: deliveryTimeStr,
-                    deliveryTimeEnd: deliveryTimeStr,
-                    deliveryNote: _noteController.text,
-                    deliveryFee: "0.00",
-                    paymentMethod: orderPaymentMethod,
-                  );
+                            // Step 1 – Create the order
+                            final int? orderId = await orderProvider.createOrder(
+                              items: items,
+                              customerName: _nameController.text,
+                              customerSurname: _surnameController.text,
+                              customerPhone: _phoneController.text,
+                              customerPhone2: _phone2Controller.text,
+                              customerAddress: _addressController.text,
+                              deliveryDate: deliveryDate,
+                              deliveryTime: deliveryTimeStr,
+                              deliveryTimeEnd: deliveryTimeStr,
+                              deliveryNote: _noteController.text,
+                              deliveryFee: "0.00",
+                              paymentMethod: orderPaymentMethod,
+                            );
 
-                  if (orderId == null) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            orderProvider.errorMessage ??
-                                "Erreur lors de la commande",
-                          ),
-                        ),
-                      );
-                    }
-                    return;
-                  }
+                            if (orderId == null) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      orderProvider.errorMessage ??
+                                          "Erreur lors de la commande",
+                                    ),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
 
-                  // Step 2 – Initiate payment
-                  final payResponse = await orderProvider.payOrder(
-                    orderId: orderId,
-                    provider: payProvider,
-                  );
+                            // Step 2 – Initiate payment
+                            final payResponse = await orderProvider.payOrder(
+                              orderId: orderId,
+                              provider: payProvider,
+                            );
 
-                  if (!context.mounted) return;
+                            if (!context.mounted) return;
 
-                  if (payResponse == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          orderProvider.errorMessage ??
-                              "Erreur lors du paiement",
-                        ),
-                      ),
-                    );
-                    return;
-                  }
+                            if (payResponse == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    orderProvider.errorMessage ??
+                                        "Erreur lors du paiement",
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
 
-                  final String payStatus =
-                      payResponse['status']?.toString() ?? '';
+                            final String payStatus =
+                                payResponse['status']?.toString() ?? '';
 
-                  if (payStatus == 'qrcode') {
-                    // Orange Money or Wave – launch deep link
-                    final qrData = payResponse['qr'] as Map<String, dynamic>?;
-                    final String? deepLink = qrData?['deepLink']?.toString();
+                            if (payStatus == 'qrcode') {
+                              // Orange Money or Wave – launch deep link
+                              final qrData =
+                                  payResponse['qr'] as Map<String, dynamic>?;
+                              final String? deepLink =
+                                  qrData?['deepLink']?.toString();
 
-                    if (deepLink != null && deepLink.isNotEmpty) {
-                      final uri = Uri.parse(deepLink);
-                      bool launched = false;
+                              if (deepLink != null && deepLink.isNotEmpty) {
+                                final uri = Uri.parse(deepLink);
+                                bool launched = false;
 
-                      // 1️⃣ App installed → open directly (Wave / Orange Money app)
-                      try {
-                        launched = await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalNonBrowserApplication,
-                        );
-                      } catch (_) {
-                        launched = false;
-                      }
+                                // 1️⃣ Try launching external application (app or web browser)
+                                try {
+                                  launched = await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                } catch (_) {
+                                  launched = false;
+                                }
 
-                      // 2️⃣ Fallback → open in browser / Play Store
-                      if (!launched) {
-                        try {
-                          launched = await launchUrl(
-                            uri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                        } catch (_) {
-                          launched = false;
-                        }
-                      }
+                                // 2️⃣ Fallback mode if externalApplication failed
+                                if (!launched) {
+                                  try {
+                                    launched = await launchUrl(
+                                      uri,
+                                      mode: LaunchMode
+                                          .externalNonBrowserApplication,
+                                    );
+                                  } catch (_) {
+                                    launched = false;
+                                  }
+                                }
 
-                      // 3️⃣ Nothing worked
-                      if (!launched && context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              "Impossible d'ouvrir l'application de paiement.",
-                            ),
-                          ),
-                        );
-                      }
-                    }
-                    // Stay on this page so the user can come back after paying
-                  } else {
-                    // cash_on_delivery or other confirmed status
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Commande confirmée")),
-                    );
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MainDashboard()),
-                      (route) => false,
-                    );
-                  }
-                },
-                child: Consumer<OrderProvider>(
-                  builder: (context, orderProvider, child) {
-                    return orderProvider.isLoading
+                                if (!launched && context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "Impossible d'ouvrir l'application de paiement.",
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+
+                            // Clear cart & Navigate to Dashboard on 1st click
+                            cartProvider.clearCart();
+
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Commande confirmée"),
+                                ),
+                              );
+                              Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const MainDashboard(),
+                                ),
+                                (route) => false,
+                              );
+                            }
+                          },
+                    child: orderProvider.isLoading
                         ? const SizedBox(
                             height: 20,
                             width: 20,
@@ -582,14 +591,14 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
-                          );
-                  },
+                          ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

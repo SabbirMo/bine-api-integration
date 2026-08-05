@@ -117,10 +117,21 @@ class _AccueilScreenState extends State<AccueilScreen>
         actions: [
           GestureDetector(
             onTap: () async {
-              final Uri whatsappAppUrl = Uri.parse('whatsapp://send');
-              final Uri whatsappWebUrl = Uri.parse(
-                'https://wa.me/',
-              ); // You can append a phone number here
+              const String phoneNumber =
+                  ""; // Optional support phone number e.g. "221770000000"
+
+              final String cleanPhone = phoneNumber.replaceAll(
+                RegExp(r'[^\d]'),
+                '',
+              );
+
+              final Uri whatsappAppUrl = cleanPhone.isNotEmpty
+                  ? Uri.parse("whatsapp://send?phone=$cleanPhone")
+                  : Uri.parse("whatsapp://");
+
+              final Uri whatsappWebUrl = cleanPhone.isNotEmpty
+                  ? Uri.parse("https://wa.me/$cleanPhone")
+                  : Uri.parse("https://wa.me");
 
               bool launched = false;
 
@@ -134,7 +145,7 @@ class _AccueilScreenState extends State<AccueilScreen>
                 launched = false;
               }
 
-              // 2. If app fails, try web/fallback URL
+              // 2. Fallback to web if WhatsApp app is not installed
               if (!launched) {
                 try {
                   launched = await launchUrl(
@@ -350,7 +361,7 @@ class _AccueilScreenState extends State<AccueilScreen>
           Text("Adresse :", style: TextStyle(fontWeight: FontWeight.bold)),
           SizedBox(width: 6),
           Expanded(
-            child: Text(address, maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis),
           ),
         ],
       ),

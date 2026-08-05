@@ -390,10 +390,12 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     bool launched = false;
 
                     try {
-                      launched = await launchUrl(
-                        whatsappAppUrl,
-                        mode: LaunchMode.externalApplication,
-                      );
+                      if (await canLaunchUrl(whatsappAppUrl)) {
+                        launched = await launchUrl(
+                          whatsappAppUrl,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      }
                     } catch (e) {
                       launched = false;
                     }
@@ -779,7 +781,22 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
   Widget _buildActionIcon(IconData icon, String label) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white, size: 28),
+        Text(
+          String.fromCharCode(icon.codePoint),
+          style: TextStyle(
+            inherit: false,
+            fontSize: 28,
+            fontFamily: icon.fontFamily,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 6,
+                offset: Offset(2, 2),
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 4),
         Text(
           label,
@@ -787,6 +804,13 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
             color: Colors.white,
             fontSize: 11,
             fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 6,
+                offset: Offset(2, 2),
+              ),
+            ],
           ),
         ),
       ],

@@ -170,8 +170,10 @@ class OrderProvider extends ChangeNotifier {
       // Extract the numeric order id from the response
       final int? orderId = response.data?['id'] as int?;
 
-      _isLoading = false;
-      notifyListeners();
+      if (orderId == null) {
+        _isLoading = false;
+        notifyListeners();
+      }
       return orderId;
     } catch (e) {
       _errorMessage = e.toString();
@@ -188,6 +190,9 @@ class OrderProvider extends ChangeNotifier {
     required int orderId,
     required String provider,
   }) async {
+    _isLoading = true;
+    notifyListeners();
+
     try {
       final response = await _apiServices.post(
         '/api/mobile/pay/$orderId/',
@@ -200,8 +205,10 @@ class OrderProvider extends ChangeNotifier {
     } catch (e) {
       _errorMessage = e.toString();
       log("Error paying order: ${e.toString()}");
-      notifyListeners();
       return null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
