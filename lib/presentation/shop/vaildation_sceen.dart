@@ -365,9 +365,13 @@ class _ValidationScreenState extends State<ValidationScreen> {
                             for (final cartItem in cartItems) {
                               final selectedVariant =
                                   _selectedVariantIds[cartItem.id];
-                              if (!_selectedVariantIds.containsKey(cartItem.id) ||
+                              if (!_selectedVariantIds.containsKey(
+                                    cartItem.id,
+                                  ) ||
                                   selectedVariant == null) {
-                                missingVariantProducts.add(cartItem.productName);
+                                missingVariantProducts.add(
+                                  cartItem.productName,
+                                );
                               }
                             }
 
@@ -412,9 +416,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 'yyyy-MM-dd',
                               ).format(DateTime.now());
                             } else if (_selectedDate == "DEMAIN") {
-                              deliveryDate = DateFormat(
-                                'yyyy-MM-dd',
-                              ).format(DateTime.now().add(const Duration(days: 1)));
+                              deliveryDate = DateFormat('yyyy-MM-dd').format(
+                                DateTime.now().add(const Duration(days: 1)),
+                              );
                             } else {
                               try {
                                 final parts = _formattedDate.split('/');
@@ -459,20 +463,21 @@ class _ValidationScreenState extends State<ValidationScreen> {
                             }
 
                             // Step 1 – Create the order
-                            final int? orderId = await orderProvider.createOrder(
-                              items: items,
-                              customerName: _nameController.text,
-                              customerSurname: _surnameController.text,
-                              customerPhone: _phoneController.text,
-                              customerPhone2: _phone2Controller.text,
-                              customerAddress: _addressController.text,
-                              deliveryDate: deliveryDate,
-                              deliveryTime: deliveryTimeStr,
-                              deliveryTimeEnd: deliveryTimeStr,
-                              deliveryNote: _noteController.text,
-                              deliveryFee: "0.00",
-                              paymentMethod: orderPaymentMethod,
-                            );
+                            final int? orderId = await orderProvider
+                                .createOrder(
+                                  items: items,
+                                  customerName: _nameController.text,
+                                  customerSurname: _surnameController.text,
+                                  customerPhone: _phoneController.text,
+                                  customerPhone2: _phone2Controller.text,
+                                  customerAddress: _addressController.text,
+                                  deliveryDate: deliveryDate,
+                                  deliveryTime: deliveryTimeStr,
+                                  deliveryTimeEnd: deliveryTimeStr,
+                                  deliveryNote: _noteController.text,
+                                  deliveryFee: "0.00",
+                                  paymentMethod: orderPaymentMethod,
+                                );
 
                             if (orderId == null) {
                               if (context.mounted) {
@@ -508,21 +513,50 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               return;
                             }
 
-                            final String payStatus =
-                                payResponse['status']?.toString() ?? '';
+                            final qrData =
+                                payResponse['qr'] as Map<String, dynamic>?;
+                            final dataMap =
+                                payResponse['data'] as Map<String, dynamic>?;
 
-                            if (payStatus == 'qrcode') {
-                              // Orange Money or Wave – launch deep link
-                              final qrData =
-                                  payResponse['qr'] as Map<String, dynamic>?;
-                              final String? deepLink =
-                                  qrData?['deepLink']?.toString();
+                            // Extract deep link with support for Wave & Orange Money key variations
+                            String? deepLink =
+                                payResponse['payment_url']?.toString() ??
+                                payResponse['paymentUrl']?.toString() ??
+                                payResponse['redirect_url']?.toString() ??
+                                payResponse['redirectUrl']?.toString() ??
+                                payResponse['wave_launch_url']?.toString() ??
+                                payResponse['deep_link']?.toString() ??
+                                payResponse['deepLink']?.toString() ??
+                                payResponse['launch_url']?.toString() ??
+                                payResponse['url']?.toString() ??
+                                qrData?['payment_url']?.toString() ??
+                                qrData?['paymentUrl']?.toString() ??
+                                qrData?['deepLink']?.toString() ??
+                                qrData?['wave_launch_url']?.toString() ??
+                                qrData?['launch_url']?.toString() ??
+                                qrData?['url']?.toString() ??
+                                dataMap?['payment_url']?.toString() ??
+                                dataMap?['paymentUrl']?.toString() ??
+                                dataMap?['wave_launch_url']?.toString() ??
+                                dataMap?['deepLink']?.toString() ??
+                                dataMap?['url']?.toString();
 
-                              if (deepLink != null && deepLink.isNotEmpty) {
-                                final uri = Uri.parse(deepLink);
-                                bool launched = false;
+                            if (deepLink != null && deepLink.isNotEmpty) {
+                              final uri = Uri.parse(deepLink);
+                              bool launched = false;
 
-                                // 1️⃣ Try launching external application (app or web browser)
+                              // 1️⃣ Try launching directly into installed native app (Wave app)
+                              try {
+                                launched = await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalNonBrowserApplication,
+                                );
+                              } catch (_) {
+                                launched = false;
+                              }
+
+                              // 2️⃣ Fallback: open in external web browser if app is not installed
+                              if (!launched) {
                                 try {
                                   launched = await launchUrl(
                                     uri,
@@ -531,34 +565,33 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 } catch (_) {
                                   launched = false;
                                 }
+                              }
 
-                                // 2️⃣ Fallback mode if externalApplication failed
-                                if (!launched) {
-                                  try {
-                                    launched = await launchUrl(
-                                      uri,
-                                      mode: LaunchMode
-                                          .externalNonBrowserApplication,
-                                    );
-                                  } catch (_) {
-                                    launched = false;
-                                  }
-                                }
-
-                                if (!launched && context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Impossible d'ouvrir l'application de paiement.",
-                                      ),
-                                    ),
+                              // 3️⃣ Fallback: platformDefault
+                              if (!launched) {
+                                try {
+                                  launched = await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.platformDefault,
                                   );
+                                } catch (_) {
+                                  launched = false;
                                 }
+                              }
+
+                              if (!launched && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "Impossible d'ouvrir l'application de paiement.",
+                                    ),
+                                  ),
+                                );
                               }
                             }
 
                             // Clear cart & Navigate to Dashboard on 1st click
-                            cartProvider.clearCart();
+                            await cartProvider.clearServerCart();
 
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -841,24 +874,53 @@ class TimeTextInputFormatter extends TextInputFormatter {
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    String text = newValue.text.replaceAll(
-      RegExp(r'[^0-9]'),
-      '',
-    ); // Numbers only
+    String text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // Handle backspace when formatted text ends with "h : "
+    if (oldValue.text.length > newValue.text.length) {
+      if (oldValue.text.endsWith("h : ") || oldValue.text.endsWith("h :")) {
+        if (text.length == 2) {
+          text = text.substring(0, 1);
+        } else if (text.length == 1) {
+          text = "";
+        }
+      }
+    }
+
+    if (text.isEmpty) {
+      return const TextEditingValue(
+        text: "",
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    // Limit to max 4 digits
+    if (text.length > 4) {
+      text = text.substring(0, 4);
+    }
+
     String formatted = "";
 
-    // Handle typing logic
-    if (text.isNotEmpty) {
-      if (text.length <= 2) {
-        // User types: 12 -> 12h :
-        formatted = "${text}h : ";
-      } else if (text.length <= 4) {
-        // User types: 1234 -> 12h : 34
-        formatted = "${text.substring(0, 2)}h : ${text.substring(2)}";
-      } else {
-        // Prevent typing more than 4 digits
-        formatted = "${text.substring(0, 2)}h : ${text.substring(2, 4)}";
+    if (text.length <= 2) {
+      int hh = int.tryParse(text) ?? 0;
+      if (hh > 24) {
+        text = "24";
       }
+      formatted = "${text}h : ";
+    } else {
+      String hoursPart = text.substring(0, 2);
+      int hh = int.tryParse(hoursPart) ?? 0;
+      if (hh > 24) {
+        hoursPart = "24";
+      }
+
+      String minutesPart = text.substring(2);
+      int mm = int.tryParse(minutesPart) ?? 0;
+      if (minutesPart.length == 2 && mm > 59) {
+        minutesPart = "59";
+      }
+
+      formatted = "${hoursPart}h : $minutesPart";
     }
 
     return TextEditingValue(
@@ -867,3 +929,4 @@ class TimeTextInputFormatter extends TextInputFormatter {
     );
   }
 }
+

@@ -390,14 +390,23 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     bool launched = false;
 
                     try {
-                      if (await canLaunchUrl(whatsappAppUrl)) {
+                      launched = await launchUrl(
+                        whatsappAppUrl,
+                        mode: LaunchMode.externalNonBrowserApplication,
+                      );
+                    } catch (e) {
+                      launched = false;
+                    }
+
+                    if (!launched) {
+                      try {
                         launched = await launchUrl(
                           whatsappAppUrl,
                           mode: LaunchMode.externalApplication,
                         );
+                      } catch (e) {
+                        launched = false;
                       }
-                    } catch (e) {
-                      launched = false;
                     }
 
                     if (!launched) {

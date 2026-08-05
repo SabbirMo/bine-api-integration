@@ -139,10 +139,21 @@ class _AccueilScreenState extends State<AccueilScreen>
               try {
                 launched = await launchUrl(
                   whatsappAppUrl,
-                  mode: LaunchMode.externalApplication,
+                  mode: LaunchMode.externalNonBrowserApplication,
                 );
               } catch (e) {
                 launched = false;
+              }
+
+              if (!launched) {
+                try {
+                  launched = await launchUrl(
+                    whatsappAppUrl,
+                    mode: LaunchMode.externalApplication,
+                  );
+                } catch (e) {
+                  launched = false;
+                }
               }
 
               // 2. Fallback to web if WhatsApp app is not installed

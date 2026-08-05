@@ -40,6 +40,9 @@
 		<string>whatsapp</string>
 		<string>https</string>
 		<string>http</string>
+		<string>wave</string>
+		<string>orangemoney</string>
+		<string>om</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

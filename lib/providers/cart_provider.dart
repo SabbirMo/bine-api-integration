@@ -205,9 +205,33 @@ class CartProvider extends ChangeNotifier {
     }
   }
 
-  void clearCart() {
+  Future<void> clearServerCart() async {
+    final itemsToDelete = _cart?.items != null
+        ? List<CartItemModel>.from(_cart!.items)
+        : <CartItemModel>[];
+
     _cart = null;
     _errorMessage = null;
     notifyListeners();
+
+    try {
+      // 1. Try endpoint for clearing entire cart if available
+      await _apiServices.delete('/api/mobile/cart/', requireAuth: true);
+    } catch (_) {
+      // 2. Fallback: delete item by item
+      for (final item in itemsToDelete) {
+        try {
+          await _apiServices.delete('/api/mobile/cart/${item.id}/',
+              requireAuth: true);
+        } catch (e) {
+          log("Error deleting cart item ${item.id}: $e");
+        }
+      }
+    }
+    await fetchCart(showLoading: false);
+  }
+
+  void clearCart() {
+    clearServerCart();
   }
 }
