@@ -131,6 +131,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   "🤴 Nom",
                   "votre nom",
                   controller: _nameController,
+                  maxLength: 15,
                 ),
               ),
               const SizedBox(width: 10),
@@ -139,6 +140,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   "🤴 Prénom",
                   "votre Prénom",
                   controller: _surnameController,
+                  maxLength: 15,
                 ),
               ),
             ],
@@ -152,6 +154,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   "77..",
                   controller: _phoneController,
                   keyboardType: TextInputType.number,
+                  maxLength: 13,
                 ),
               ),
               const SizedBox(width: 10),
@@ -161,6 +164,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   "Secondaire",
                   controller: _phone2Controller,
                   keyboardType: TextInputType.number,
+                  maxLength: 13,
                 ),
               ),
             ],
@@ -170,6 +174,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
             "📍 Adresse",
             "Enter votre adresse",
             controller: _addressController,
+            maxLength: 35,
           ),
         ],
       ),
@@ -221,6 +226,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
     String hint, {
     TextEditingController? controller,
     TextInputType? keyboardType,
+    int? maxLength,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,7 +239,11 @@ class _ValidationScreenState extends State<ValidationScreen> {
         TextField(
           controller: controller,
           keyboardType: keyboardType,
+          inputFormatters: [
+            if (maxLength != null) LengthLimitingTextInputFormatter(maxLength),
+          ],
           decoration: InputDecoration(
+            counterText: "",
             hintText: hint,
             hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
             contentPadding: const EdgeInsets.symmetric(
@@ -432,11 +442,20 @@ class _ValidationScreenState extends State<ValidationScreen> {
                             }
 
                             String deliveryTimeStr =
-                                "06:25:27.291Z"; // Default fallback
-                            if (!_isAvailableNow &&
-                                _timeController.text.isNotEmpty) {
-                              deliveryTimeStr =
-                                  "${_timeController.text.replaceAll('h :', ':').replaceAll(' ', '')}:00.000Z";
+                                "${DateFormat('HH:mm:ss.SSS').format(DateTime.now())}Z";
+                            if (_timeController.text.trim().isNotEmpty) {
+                              final cleanTime = _timeController.text
+                                  .replaceAll('h :', ':')
+                                  .replaceAll(' ', '');
+                              final parts = cleanTime.split(':');
+                              if (parts.isNotEmpty && parts[0].isNotEmpty) {
+                                final hh = parts[0].padLeft(2, '0');
+                                final mm =
+                                    parts.length > 1 && parts[1].isNotEmpty
+                                    ? parts[1].padLeft(2, '0')
+                                    : '00';
+                                deliveryTimeStr = "$hh:$mm:00.000Z";
+                              }
                             }
 
                             // Build items list with selected variant_id
@@ -549,7 +568,8 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               try {
                                 launched = await launchUrl(
                                   uri,
-                                  mode: LaunchMode.externalNonBrowserApplication,
+                                  mode:
+                                      LaunchMode.externalNonBrowserApplication,
                                 );
                               } catch (_) {
                                 launched = false;
@@ -753,18 +773,6 @@ class _ValidationScreenState extends State<ValidationScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          const Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              "Enregistrer L'heure De Votre Disponibilité",
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -929,4 +937,3 @@ class TimeTextInputFormatter extends TextInputFormatter {
     );
   }
 }
-

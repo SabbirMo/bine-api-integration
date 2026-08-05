@@ -181,9 +181,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           final statusStr = order.status.toLowerCase();
           switch (_selectedStatus) {
             case OrderStatus.enCours:
-              return statusStr == 'pending' ||
-                  statusStr == 'confirmed' ||
-                  statusStr == 'in_delivery';
+              return statusStr != 'delivered' && statusStr != 'cancelled';
             case OrderStatus.livrees:
               return statusStr == 'delivered';
             case OrderStatus.annulees:
@@ -205,8 +203,11 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
             itemCount: filteredOrders.length,
             itemBuilder: (context, index) {
               final order = filteredOrders[index];
+              final displayOrderNum = order.orderNumber.isNotEmpty
+                  ? order.orderNumber
+                  : "ORD-${order.id}";
               return _orderCard(
-                id: order.orderNumber,
+                id: displayOrderNum,
                 date: order.createdAt,
                 items: "${order.itemCount} article(s)",
                 price: "${order.totalAmount} FCFA",

@@ -240,7 +240,7 @@ class _InprogressScreenState extends State<InprogressScreen> {
           _infoRow(
             Icons.access_time_outlined,
             "Heure de livraison",
-            "${_formatTo12Hour(orderDetail.deliveryTime)} - ${_formatTo12Hour(orderDetail.deliveryTimeEnd)}",
+            _formatTo12Hour(orderDetail.deliveryTime),
           ),
           if (orderDetail.deliveryNote.isNotEmpty) ...[
             const SizedBox(height: 16),

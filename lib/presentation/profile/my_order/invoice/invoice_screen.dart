@@ -82,11 +82,15 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
           final allOrders = orderProvider.orderHistory;
 
-          // Filter if needed (e.g., exclude cancelled). Currently showing all.
           final displayOrders = allOrders.where((order) {
             final statusStr = order.status.toLowerCase();
-            final matchesStatus = statusStr != 'cancelled'; // Often invoices are only for non-cancelled
-            final matchesSearch = order.orderNumber.toLowerCase().contains(_searchQuery.toLowerCase());
+            final matchesStatus = statusStr != 'cancelled';
+            final numStr = order.orderNumber.isNotEmpty
+                ? order.orderNumber
+                : "ORD-${order.id}";
+            final matchesSearch = numStr
+                .toLowerCase()
+                .contains(_searchQuery.toLowerCase());
             return matchesStatus && matchesSearch;
           }).toList();
 
@@ -118,11 +122,15 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   isDone = true;
                 }
 
+                final displayOrderNum = order.orderNumber.isNotEmpty
+                    ? order.orderNumber
+                    : "ORD-${order.id}";
+
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: _buildInvoiceCard(
                     context,
-                    displayId: order.orderNumber,
+                    displayId: displayOrderNum,
                     orderId: order.id.toString(),
                     date: order.createdAt,
                     total: "${order.totalAmount} FCFA",
