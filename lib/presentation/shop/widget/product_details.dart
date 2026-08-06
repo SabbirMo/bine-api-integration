@@ -105,7 +105,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
   List<ProductContent> get _mediaContent {
     if (_product.media.isNotEmpty) {
-      return _product.media
+      final list = _product.media
           .map(
             (m) => ProductContent(
               url: m.mediaUrl,
@@ -116,6 +116,13 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
             ),
           )
           .toList();
+      // Prioritize videos over images
+      list.sort((a, b) {
+        if (a.isVideo && !b.isVideo) return -1;
+        if (!a.isVideo && b.isVideo) return 1;
+        return 0;
+      });
+      return list;
     } else if (_product.mainImage != null && _product.mainImage!.isNotEmpty) {
       return [
         ProductContent(

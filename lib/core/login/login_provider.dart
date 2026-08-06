@@ -80,11 +80,12 @@ class LoginProvider extends ChangeNotifier {
       final googleAuthData = await _authService.signInWithGoogle();
 
       if (googleAuthData != null) {
-        final firebaseIdToken = googleAuthData['firebaseIdToken'];
+        final tokenToSend =
+            googleAuthData['firebaseIdToken'] ?? googleAuthData['idToken'];
 
         final response = await apiServices.post(
           '/api/auth/auth/google/',
-          data: {"id_token": firebaseIdToken},
+          data: {"id_token": tokenToSend},
           requireAuth: false,
         );
 
@@ -119,12 +120,13 @@ class LoginProvider extends ChangeNotifier {
         return true;
       }
 
-      errorMessage = "Google sign-in was cancelled or failed.";
+      // User cancelled Google sign-in prompt
+      errorMessage = null;
       return false;
     } catch (e, stack) {
       debugPrint("Google Login Failed: $e");
       debugPrint("Stacktrace: $stack");
-      errorMessage = "Google login error: $e";
+      errorMessage = "Connexion Google échouée: ${e.toString()}";
       return false;
     } finally {
       isGoogleLoading = false;

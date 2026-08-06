@@ -125,13 +125,19 @@ class _AccueilScreenState extends State<AccueilScreen>
                 '',
               );
 
+              const String defaultMessage =
+                  "Bonjour, je souhaite avoir plus d'informations.";
+              final String encodedMsg = Uri.encodeComponent(defaultMessage);
+
               final Uri whatsappAppUrl = cleanPhone.isNotEmpty
-                  ? Uri.parse("whatsapp://send?phone=$cleanPhone")
-                  : Uri.parse("whatsapp://");
+                  ? Uri.parse(
+                      "whatsapp://send?phone=$cleanPhone&text=$encodedMsg",
+                    )
+                  : Uri.parse("whatsapp://send?text=$encodedMsg");
 
               final Uri whatsappWebUrl = cleanPhone.isNotEmpty
-                  ? Uri.parse("https://wa.me/$cleanPhone")
-                  : Uri.parse("https://wa.me");
+                  ? Uri.parse("https://wa.me/$cleanPhone?text=$encodedMsg")
+                  : Uri.parse("https://wa.me?text=$encodedMsg");
 
               bool launched = false;
 
