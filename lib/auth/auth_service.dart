@@ -20,11 +20,8 @@ class AuthService {
 
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
-      // Try silent sign-in first (extremely fast if already authorized)
-      GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
-
-      // If silent sign-in is not possible, prompt the user to sign in
-      googleUser ??= await _googleSignIn.signIn();
+      // Prompt user directly when button is pressed for instant UI popup
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       //user cancel
       if (googleUser == null) {
@@ -55,8 +52,9 @@ class AuthService {
         'email': googleUser.email,
         'photoUrl': googleUser.photoUrl,
       };
-    } catch (e) {
-      log("Error signing in with Google: $e");
+    } catch (e, stack) {
+      debugPrint("Error signing in with Google: $e");
+      debugPrint("Stacktrace: $stack");
       return null;
     }
   }

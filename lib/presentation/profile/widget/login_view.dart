@@ -43,27 +43,34 @@ class LoginView extends StatelessWidget {
                     final success = await loginProvider.loginWithGoogle();
                     if (success) {
                       if (context.mounted) {
-                        await Future.wait([
-                          context.read<CartProvider>().fetchCart().catchError((
-                            e,
-                          ) {
-                            debugPrint("Error fetching cart: $e");
-                          }),
-                          context
-                              .read<NotificationProvider>()
-                              .fetchNotifications()
-                              .catchError((e) {
-                                debugPrint("Error fetching notifications: $e");
-                              }),
-                          context
-                              .read<OrderProvider>()
-                              .fetchOrderHistory()
-                              .catchError((e) {
-                                debugPrint("Error fetching order history: $e");
-                              }),
-                        ]);
+                        // Fetch cart, notifications, orders in background asynchronously
+                        context.read<CartProvider>().fetchCart().catchError((
+                          e,
+                        ) {
+                          debugPrint("Error fetching cart: $e");
+                        });
+                        context
+                            .read<NotificationProvider>()
+                            .fetchNotifications()
+                            .catchError((e) {
+                              debugPrint("Error fetching notifications: $e");
+                            });
+                        context
+                            .read<OrderProvider>()
+                            .fetchOrderHistory()
+                            .catchError((e) {
+                              debugPrint("Error fetching order history: $e");
+                            });
+                        onLogin();
                       }
-                      onLogin();
+                    } else if (context.mounted &&
+                        loginProvider.errorMessage != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(loginProvider.errorMessage!),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
                     }
                   },
             style: OutlinedButton.styleFrom(
@@ -104,27 +111,25 @@ class LoginView extends StatelessWidget {
                     final success = await loginProvider.loginWithApple();
                     if (success) {
                       if (context.mounted) {
-                        await Future.wait([
-                          context.read<CartProvider>().fetchCart().catchError((
-                            e,
-                          ) {
-                            debugPrint("Error fetching cart: $e");
-                          }),
-                          context
-                              .read<NotificationProvider>()
-                              .fetchNotifications()
-                              .catchError((e) {
-                                debugPrint("Error fetching notifications: $e");
-                              }),
-                          context
-                              .read<OrderProvider>()
-                              .fetchOrderHistory()
-                              .catchError((e) {
-                                debugPrint("Error fetching order history: $e");
-                              }),
-                        ]);
+                        context.read<CartProvider>().fetchCart().catchError((
+                          e,
+                        ) {
+                          debugPrint("Error fetching cart: $e");
+                        });
+                        context
+                            .read<NotificationProvider>()
+                            .fetchNotifications()
+                            .catchError((e) {
+                              debugPrint("Error fetching notifications: $e");
+                            });
+                        context
+                            .read<OrderProvider>()
+                            .fetchOrderHistory()
+                            .catchError((e) {
+                              debugPrint("Error fetching order history: $e");
+                            });
+                        onLogin();
                       }
-                      onLogin();
                     }
                   },
             style: OutlinedButton.styleFrom(
@@ -146,9 +151,7 @@ class LoginView extends StatelessWidget {
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SvgPicture.asset(
-                        "assets/icon/apple.svg",
-                      ),
+                      SvgPicture.asset("assets/icon/apple.svg"),
                       const SizedBox(width: 12),
                       const Text(
                         "Continuer avec Apple",

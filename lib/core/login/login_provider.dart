@@ -10,6 +10,7 @@ class LoginProvider extends ChangeNotifier {
   bool isLoading = false;
   bool isGoogleLoading = false;
   bool isAppleLoading = false;
+  String? errorMessage;
 
   final ApiServices apiServices = ApiServices();
   final AuthService _authService = AuthService();
@@ -73,6 +74,7 @@ class LoginProvider extends ChangeNotifier {
   Future<bool> loginWithGoogle() async {
     try {
       isGoogleLoading = true;
+      errorMessage = null;
       notifyListeners();
 
       final googleAuthData = await _authService.signInWithGoogle();
@@ -86,7 +88,7 @@ class LoginProvider extends ChangeNotifier {
           requireAuth: false,
         );
 
-        log("Google Login Response: $response");
+        debugPrint("Google Login Response: $response");
 
         final data = response.data;
 
@@ -113,13 +115,16 @@ class LoginProvider extends ChangeNotifier {
         // Register token in the background so it doesn't block the login flow
         FirebaseService.instance.registerCurrentToken();
 
-        log("Google Login Successful");
+        debugPrint("Google Login Successful");
         return true;
       }
 
+      errorMessage = "Google sign-in was cancelled or failed.";
       return false;
-    } catch (e) {
-      log("Google Login Failed $e");
+    } catch (e, stack) {
+      debugPrint("Google Login Failed: $e");
+      debugPrint("Stacktrace: $stack");
+      errorMessage = "Google login error: $e";
       return false;
     } finally {
       isGoogleLoading = false;
