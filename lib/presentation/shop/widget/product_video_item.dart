@@ -60,7 +60,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       _controller = VideoController(
         _player!,
         configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: false,
+          enableHardwareAcceleration: true,
         ),
       );
 
