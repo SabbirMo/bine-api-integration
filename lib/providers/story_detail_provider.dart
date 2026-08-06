@@ -87,7 +87,7 @@ class StoryDetailProvider extends ChangeNotifier {
       _videoController = VideoController(
         _player!,
         configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: false,
+          enableHardwareAcceleration: true,
         ),
       );
 

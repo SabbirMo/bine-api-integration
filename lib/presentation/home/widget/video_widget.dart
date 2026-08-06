@@ -20,7 +20,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   late final VideoController _videoController = VideoController(
     _player,
     configuration: const VideoControllerConfiguration(
-      enableHardwareAcceleration: false,
+      enableHardwareAcceleration: true,
     ),
   );
 
