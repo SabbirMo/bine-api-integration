@@ -14,7 +14,6 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  
   @override
   void initState() {
     super.initState();
@@ -24,7 +23,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _navigateToHome() async {
     await Future.delayed(const Duration(seconds: 3));
-    
     if (mounted) {
       // pushReplacement removes the splash screen from the navigation stack
       Navigator.pushReplacement(
@@ -64,7 +62,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
               ),
               const Text(
-                "YA TOUS QU'IL ME FAUT",
+                "Satisfait ou remboursé",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Color(0xFF242424),

@@ -23,16 +23,10 @@ class CircularStoryAvatar extends StatelessWidget {
                   4,
                 ), // Space between border and image
                 child: CustomPaint(
-                  painter: item.isDashed ? DashedBorderPainter() : null,
-                  foregroundPainter: !item.isDashed
-                      ? null // Standard solid border handled by decoration below
-                      : null,
+                  painter: DashedBorderPainter(itemCount: item.storyCount),
                   child: Container(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      border: !item.isDashed
-                          ? Border.all(color: const Color(0xFFFF6900), width: 2)
-                          : null,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(2.0),

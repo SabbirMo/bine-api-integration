@@ -102,8 +102,8 @@ class _AccueilScreenState extends State<AccueilScreen>
                     fontSize: 24,
                   ),
                 ),
-                Text(
-                  "ya tou ceux qu' il me faut",
+                const Text(
+                  "Satisfait ou remboursé",
                   style: TextStyle(
                     color: Colors.black,
                     fontSize: 12,
@@ -419,14 +419,15 @@ class _AccueilScreenState extends State<AccueilScreen>
             Container(
               width: 35,
               height: 35,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: Color(0xFFF5F5F5),
                 shape: BoxShape.circle,
+                border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
               ),
               child: const Icon(
                 Icons.arrow_forward_ios,
                 size: 14,
-                color: Color(0xffFF6900),
+                color: Colors.black,
               ),
             ),
         ],
@@ -456,17 +457,8 @@ class _AccueilScreenState extends State<AccueilScreen>
           }
 
           final String type = (cat.type ?? '').toLowerCase().trim();
-          final bool isMixed = type == 'mixed';
           final bool isVideo = type == 'video';
           final bool isAudio = type == 'audio';
-
-          final sItem = StoryItem(
-            title: cat.name ?? "Story",
-            imagePath: catImg.isNotEmpty ? catImg : "assets/images/footbal.jpg",
-            isDashed: isMixed,
-            isVideo: isVideo,
-            isAudio: isAudio,
-          );
 
           // Map API stories to StoryContent list
           final mappedStories = cat.stories
@@ -520,6 +512,19 @@ class _AccueilScreenState extends State<AccueilScreen>
                 );
               })
               .toList();
+
+          final int sCount = mappedStories.isNotEmpty
+              ? mappedStories.length
+              : (cat.stories.isNotEmpty ? cat.stories.length : 1);
+
+          final sItem = StoryItem(
+            title: cat.name ?? "Story",
+            imagePath: catImg.isNotEmpty ? catImg : "assets/images/footbal.jpg",
+            isDashed: sCount > 1,
+            storyCount: sCount,
+            isVideo: isVideo,
+            isAudio: isAudio,
+          );
 
           return InkWell(
             onTap: () {
@@ -712,6 +717,7 @@ class StoryItem {
   final String title;
   final String imagePath;
   final bool isDashed;
+  final int storyCount;
   final bool isVideo;
   final bool isAudio;
 
@@ -719,6 +725,7 @@ class StoryItem {
     required this.title,
     required this.imagePath,
     this.isDashed = false,
+    this.storyCount = 1,
     this.isVideo = false,
     this.isAudio = false,
   });

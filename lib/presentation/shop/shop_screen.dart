@@ -151,14 +151,17 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
               child: Container(
                 width: 35,
                 height: 35,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: Color(0xFFF5F5F5),
                   shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.1),
+                  ),
                 ),
                 child: const Icon(
                   Icons.arrow_forward_ios,
                   size: 14,
-                  color: Color(0xffFF6900),
+                  color: Colors.black,
                 ),
               ),
             ),

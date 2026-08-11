@@ -31,6 +31,8 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   final ValueNotifier<bool> _hasStartedPlaying = ValueNotifier<bool>(false);
 
   Timer? _hideTimer;
+  bool _isSeeking = false;
+  double _dragValue = 0.0;
 
   @override
   void initState() {
@@ -69,13 +71,17 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
     _player.setVolume(0.0); // Default muted
 
     _player.stream.playing.listen((playing) {
-      _isPlaying.value = playing;
-      _updateStartedPlayingState();
+      if (mounted) {
+        _isPlaying.value = playing;
+        _updateStartedPlayingState();
+      }
     });
 
     _player.stream.buffering.listen((buffering) {
-      _isBuffering.value = buffering;
-      _updateStartedPlayingState();
+      if (mounted) {
+        _isBuffering.value = buffering;
+        _updateStartedPlayingState();
+      }
     });
 
     _player.open(Media(_resolvedVideoUrl));
@@ -120,20 +126,29 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
     );
   }
 
-  // Logic to show controls on click/hover and hide after 3 seconds
   void _toggleControls() {
     _showControls.value = !_showControls.value;
-
-    _hideTimer?.cancel();
     if (_showControls.value) {
-      _hideTimer = Timer(const Duration(seconds: 3), () {
-        _showControls.value = false;
+      _startHideTimer();
+    } else {
+      _hideTimer?.cancel();
+    }
+  }
+
+  void _startHideTimer() {
+    _hideTimer?.cancel();
+    if (_showControls.value && !_isSeeking) {
+      _hideTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted && !_isSeeking) {
+          _showControls.value = false;
+        }
       });
     }
   }
 
-  // Formats Duration to mm:ss
+  // Formats Duration to m:ss
   String _formatDuration(Duration duration) {
+    if (duration < Duration.zero) return "0:00";
     final minutes = duration.inMinutes.remainder(60).toString();
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return "$minutes:$seconds";
@@ -142,11 +157,18 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => _showControls.value = true,
-      onExit: (_) => _showControls.value = false,
+      onEnter: (_) {
+        _showControls.value = true;
+        _startHideTimer();
+      },
+      onExit: (_) {
+        _hideTimer?.cancel();
+        _showControls.value = false;
+      },
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () {
-          _isPlaying.value ? _player.pause() : _player.play();
+          // Tapping the video toggles overlay controls visibility (show/hide)
           _toggleControls();
         },
         child: ClipRRect(
@@ -156,7 +178,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // 1. The Video Player (ALWAYS IN TREE so libmpv can attach to surface)
+                // 1. The Video Player (ALWAYS IN TREE so surface attaches)
                 SizedBox.expand(
                   child: FittedBox(
                     fit: BoxFit.cover,
@@ -176,11 +198,11 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                   ),
                 ),
 
-                // 2. Thumbnail / Loading State (On top, hides when playing starts and buffering ends, shows on pause)
+                // 2. Thumbnail / Loading State (Only before first play starts)
                 ValueListenableBuilder<bool>(
-                  valueListenable: _isPlaying,
-                  builder: (context, isPlaying, _) {
-                    if (!isPlaying) {
+                  valueListenable: _hasStartedPlaying,
+                  builder: (context, hasStartedPlaying, _) {
+                    if (!hasStartedPlaying) {
                       final thumb = _resolvedThumbnailUrl;
                       return Positioned.fill(
                         child: Container(
@@ -230,23 +252,26 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                   },
                 ),
 
-                // 3. Dark Gradient Overlay for readability
+                // 3. Dark Gradient Overlay for readability when controls are active
                 ValueListenableBuilder<bool>(
                   valueListenable: _showControls,
                   builder: (context, showControls, _) {
                     return AnimatedOpacity(
                       opacity: showControls ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.3),
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.7),
-                            ],
+                      duration: const Duration(milliseconds: 250),
+                      child: IgnorePointer(
+                        ignoring: !showControls,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.4),
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.75),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -260,152 +285,189 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                   builder: (context, showControls, _) {
                     return AnimatedOpacity(
                       opacity: showControls ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Center(
-                        child: ValueListenableBuilder<bool>(
-                          valueListenable: _isPlaying,
-                          builder: (context, isPlaying, _) {
-                            return GestureDetector(
-                              onTap: () {
-                                isPlaying ? _player.pause() : _player.play();
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
+                      duration: const Duration(milliseconds: 250),
+                      child: IgnorePointer(
+                        ignoring: !showControls,
+                        child: Center(
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: _isPlaying,
+                            builder: (context, isPlaying, _) {
+                              return GestureDetector(
+                                onTap: () {
+                                  isPlaying ? _player.pause() : _player.play();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    isPlaying
+                                        ? Icons.pause
+                                        : Icons.play_arrow_rounded,
+                                    color: Colors.black,
+                                    size: 44,
+                                  ),
                                 ),
-                                child: Icon(
-                                  isPlaying
-                                      ? Icons.pause
-                                      : Icons.play_arrow_rounded,
-                                  color: Colors.black,
-                                  size: 45,
-                                ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
                       ),
                     );
                   },
                 ),
 
-                // 5. Bottom Controls (Timer, Icons, Slider)
+                // 5. Bottom Controls (Timestamp, Mute, Fullscreen, Seek Slider)
                 ValueListenableBuilder<bool>(
-                  valueListenable: _isPlaying,
-                  builder: (context, isPlaying, _) {
-                    if (isPlaying || _player.state.position > Duration.zero) {
-                      return ValueListenableBuilder<bool>(
-                        valueListenable: _showControls,
-                        builder: (context, showControls, _) {
-                          return AnimatedPositioned(
-                            duration: const Duration(milliseconds: 300),
-                            bottom: showControls ? 10 : -100,
-                            left: 15,
-                            right: 15,
-                            child: StreamBuilder<Duration>(
-                              stream: _player.stream.position,
-                              builder: (context, snapshot) {
-                                final pos =
-                                    snapshot.data ?? _player.state.position;
-                                final dur = _player.state.duration;
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Row: Time and Action Icons
-                                    Row(
-                                      children: [
-                                        Text(
-                                          "${_formatDuration(pos)} / ${_formatDuration(dur)}",
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        ValueListenableBuilder<bool>(
-                                          valueListenable: _isMuted,
-                                          builder: (context, isMuted, _) {
-                                            return IconButton(
-                                              onPressed: () {
-                                                _isMuted.value = !isMuted;
-                                                _player.setVolume(
-                                                  _isMuted.value ? 0.0 : 100.0,
-                                                );
-                                              },
-                                              icon: Icon(
-                                                isMuted
-                                                    ? Icons.volume_off
-                                                    : Icons.volume_up,
-                                                color: Colors.white,
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                        IconButton(
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    FullScreenVideoPlayer(
-                                                      player: _player,
-                                                    ),
-                                              ),
-                                            );
-                                          },
-                                          icon: const Icon(
-                                            Icons.fullscreen,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        const Icon(
-                                          Icons.more_vert,
-                                          color: Colors.white,
-                                        ),
-                                      ],
-                                    ),
+                  valueListenable: _showControls,
+                  builder: (context, showControls, _) {
+                    return AnimatedPositioned(
+                      duration: const Duration(milliseconds: 250),
+                      bottom: showControls ? 6 : -120,
+                      left: 12,
+                      right: 12,
+                      child: IgnorePointer(
+                        ignoring: !showControls,
+                        child: StreamBuilder<Duration>(
+                          stream: _player.stream.position,
+                          builder: (context, snapshot) {
+                            final pos = snapshot.data ?? _player.state.position;
+                            final dur = _player.state.duration;
 
-                                    // Progress Slider
-                                    SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        trackHeight: 4,
-                                        thumbShape: const RoundSliderThumbShape(
-                                          enabledThumbRadius: 7,
-                                        ),
-                                        activeTrackColor: Colors.white,
-                                        inactiveTrackColor: Colors.white30,
-                                        thumbColor: Colors.white,
+                            final double currentMs = _isSeeking
+                                ? _dragValue
+                                : pos.inMilliseconds.toDouble();
+                            final double maxMs =
+                                dur.inMilliseconds.toDouble() > 0
+                                ? dur.inMilliseconds.toDouble()
+                                : 1.0;
+                            final double clampedMs = currentMs.clamp(
+                              0.0,
+                              maxMs,
+                            );
+
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Row: Time and Action Icons
+                                Row(
+                                  children: [
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      "${_formatDuration(_isSeeking ? Duration(milliseconds: clampedMs.toInt()) : pos)} / ${_formatDuration(dur)}",
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        shadows: [
+                                          Shadow(
+                                            blurRadius: 4,
+                                            color: Colors.black,
+                                          ),
+                                        ],
                                       ),
-                                      child: Slider(
-                                        value: pos.inMilliseconds
-                                            .toDouble()
-                                            .clamp(
-                                              0.0,
-                                              dur.inMilliseconds.toDouble(),
-                                            ),
-                                        max: dur.inMilliseconds.toDouble() > 0
-                                            ? dur.inMilliseconds.toDouble()
-                                            : 1.0,
-                                        onChanged: (val) {
-                                          _player.seek(
-                                            Duration(milliseconds: val.toInt()),
-                                          );
-                                        },
+                                    ),
+                                    const Spacer(),
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _isMuted,
+                                      builder: (context, isMuted, _) {
+                                        return IconButton(
+                                          constraints: const BoxConstraints(),
+                                          padding: const EdgeInsets.all(6),
+                                          onPressed: () {
+                                            _isMuted.value = !isMuted;
+                                            _player.setVolume(
+                                              _isMuted.value ? 0.0 : 100.0,
+                                            );
+                                          },
+                                          icon: Icon(
+                                            isMuted
+                                                ? Icons.volume_off
+                                                : Icons.volume_up,
+                                            color: Colors.white,
+                                            size: 22,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(6),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                FullScreenVideoPlayer(
+                                                  player: _player,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(
+                                        Icons.fullscreen,
+                                        color: Colors.white,
+                                        size: 24,
                                       ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(
+                                      Icons.more_vert,
+                                      color: Colors.white,
+                                      size: 22,
                                     ),
                                   ],
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      );
-                    }
-                    return const SizedBox.shrink();
+                                ),
+
+                                // Progress Seek Slider
+                                SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 3,
+                                    thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 6,
+                                    ),
+                                    overlayShape: const RoundSliderOverlayShape(
+                                      overlayRadius: 12,
+                                    ),
+                                    activeTrackColor: Colors.white,
+                                    inactiveTrackColor: Colors.white.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                    thumbColor: Colors.white,
+                                  ),
+                                  child: Slider(
+                                    value: clampedMs,
+                                    max: maxMs,
+                                    onChangeStart: (val) {
+                                      _hideTimer?.cancel();
+                                      setState(() {
+                                        _isSeeking = true;
+                                        _dragValue = val;
+                                      });
+                                    },
+                                    onChanged: (val) {
+                                      setState(() {
+                                        _dragValue = val;
+                                      });
+                                    },
+                                    onChangeEnd: (val) {
+                                      _player.seek(
+                                        Duration(milliseconds: val.toInt()),
+                                      );
+                                      setState(() {
+                                        _isSeeking = false;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    );
                   },
                 ),
 
