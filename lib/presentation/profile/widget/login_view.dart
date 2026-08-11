@@ -130,6 +130,14 @@ class LoginView extends StatelessWidget {
                             });
                         onLogin();
                       }
+                    } else if (context.mounted &&
+                        loginProvider.errorMessage != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(loginProvider.errorMessage!),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
                     }
                   },
             style: OutlinedButton.styleFrom(

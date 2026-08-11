@@ -18,6 +18,7 @@ class LoginProvider extends ChangeNotifier {
   Future<bool> loginWithApple() async {
     try {
       isAppleLoading = true;
+      errorMessage = null;
       notifyListeners();
 
       final appleAuthData = await _authService.signInWithApple();
@@ -61,9 +62,13 @@ class LoginProvider extends ChangeNotifier {
         return true;
       }
 
+      // User cancelled sign in
+      errorMessage = null;
       return false;
-    } catch (e) {
+    } catch (e, stack) {
       log("Apple Login Failed $e");
+      debugPrint("Stacktrace: $stack");
+      errorMessage = "Connexion Apple échouée: ${e.toString()}";
       return false;
     } finally {
       isAppleLoading = false;

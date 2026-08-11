@@ -94,9 +94,16 @@ class AuthService {
         'email': email,
         'photoUrl': userCredential.user?.photoURL,
       };
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) {
+        log("User canceled Apple sign in");
+        return null;
+      }
+      log("Apple Auth Authorization Exception: ${e.message}");
+      rethrow;
     } catch (e) {
       log("Error signing in with Apple: $e");
-      return null;
+      rethrow;
     }
   }
 
