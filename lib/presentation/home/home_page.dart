@@ -28,6 +28,8 @@ class AccueilScreen extends StatefulWidget {
 
 class _AccueilScreenState extends State<AccueilScreen>
     with WidgetsBindingObserver {
+  final ScrollController _storyScrollController = ScrollController();
+
   Future<void> _refreshHomeData() async {
     await Future.wait([
       context.read<HomeProvider>().fetchHomeData(),
@@ -59,6 +61,7 @@ class _AccueilScreenState extends State<AccueilScreen>
 
   @override
   void dispose() {
+    _storyScrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     FirebaseService.instance.onNotificationReceived = null;
     super.dispose();
@@ -342,6 +345,21 @@ class _AccueilScreenState extends State<AccueilScreen>
                     "assets/icon/right.svg",
                     titelIcon: true,
                     showMore: true,
+                    onShowMoreTap: () {
+                      if (_storyScrollController.hasClients) {
+                        double targetOffset =
+                            _storyScrollController.offset + 250;
+                        double maxScroll =
+                            _storyScrollController.position.maxScrollExtent;
+                        if (targetOffset > maxScroll) targetOffset = maxScroll;
+
+                        _storyScrollController.animateTo(
+                          targetOffset,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                      }
+                    },
                   ),
 
                   // Stories List
@@ -390,6 +408,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     String titleIconPath, {
     bool showMore = false,
     bool titelIcon = false,
+    VoidCallback? onShowMoreTap,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -416,18 +435,24 @@ class _AccueilScreenState extends State<AccueilScreen>
             ],
           ),
           if (showMore)
-            Container(
-              width: 35,
-              height: 35,
-              decoration: BoxDecoration(
-                color: Color(0xFFF5F5F5),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
-              ),
-              child: const Icon(
-                Icons.arrow_forward_ios,
-                size: 14,
-                color: Colors.black,
+            InkWell(
+              onTap: onShowMoreTap,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                width: 35,
+                height: 35,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F5F5),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.1),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: Colors.black,
+                ),
               ),
             ),
         ],
@@ -439,6 +464,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     return SizedBox(
       height: 120,
       child: ListView.builder(
+        controller: _storyScrollController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         itemCount: storyCategories.length,
