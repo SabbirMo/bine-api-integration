@@ -228,87 +228,98 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
               ),
 
             // Thumbnail / Loading Placeholder until video frame is decoded and ready
-            if (!_isVideoReady || !_hasStartedPlaying)
-              Positioned.fill(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF2E2620),
-                        Color(0xFF1C1814),
-                        Color(0xFF12100E),
-                      ],
+            Positioned.fill(
+              child: AnimatedOpacity(
+                opacity: (!_isVideoReady || !_hasStartedPlaying) ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                child: IgnorePointer(
+                  ignoring: _isVideoReady && _hasStartedPlaying,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFF2E2620),
+                          Color(0xFF1C1814),
+                          Color(0xFF12100E),
+                        ],
+                      ),
                     ),
-                  ),
-                  child: thumbUrl.isNotEmpty
-                      ? Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            // Blurred background thumbnail
-                            Positioned.fill(
-                              child: ClipRect(
-                                child: ImageFiltered(
-                                  imageFilter: ImageFilter.blur(
-                                    sigmaX: 15.0,
-                                    sigmaY: 15.0,
-                                  ),
-                                  child: Image.network(
-                                    thumbUrl,
-                                    fit: BoxFit.cover,
-                                    color: Colors.black.withValues(alpha: 0.35),
-                                    colorBlendMode: BlendMode.darken,
-                                    errorBuilder: (_, _, _) => const SizedBox(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Clear foreground thumbnail
-                            Center(
-                              child: Image.network(
-                                thumbUrl,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, _, _) => const SizedBox(),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                    child: thumbUrl.isNotEmpty
+                        ? Stack(
+                            fit: StackFit.expand,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.4),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const SizedBox(
-                                  width: 32,
-                                  height: 32,
-                                  child: CircularProgressIndicator(
-                                    color: Color(0xFFFF6900),
-                                    strokeWidth: 3,
+                              // Blurred background thumbnail
+                              Positioned.fill(
+                                child: ClipRect(
+                                  child: ImageFiltered(
+                                    imageFilter: ImageFilter.blur(
+                                      sigmaX: 15.0,
+                                      sigmaY: 15.0,
+                                    ),
+                                    child: Image.network(
+                                      thumbUrl,
+                                      fit: BoxFit.cover,
+                                      color: Colors.black.withValues(
+                                        alpha: 0.35,
+                                      ),
+                                      colorBlendMode: BlendMode.darken,
+                                      errorBuilder:
+                                          (_, _, _) => const SizedBox(),
+                                    ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                "Chargement de la vidéo...",
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.7),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                              // Clear foreground thumbnail
+                              Center(
+                                child: Image.network(
+                                  thumbUrl,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, _, _) => const SizedBox(),
                                 ),
                               ),
                             ],
+                          )
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const SizedBox(
+                                    width: 32,
+                                    height: 32,
+                                    child: CircularProgressIndicator(
+                                      color: Color(0xFFFF6900),
+                                      strokeWidth: 3,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  "Chargement de la vidéo...",
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(
+                                      alpha: 0.7,
+                                    ),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                  ),
                 ),
               ),
+            ),
 
-            if (_isInitializing || (_hasStartedPlaying && _isBuffering))
+            if (_hasStartedPlaying && _isBuffering)
               const Center(
                 child: CircularProgressIndicator(color: Color(0xFFFF6900)),
               ),

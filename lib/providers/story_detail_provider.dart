@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/providers/story_provider.dart';
-import 'package:binetatour/core/base_url/base_url.dart';
 
 class StoryDetailProvider extends ChangeNotifier {
   final List<StoryContent> stories;
@@ -22,9 +19,10 @@ class StoryDetailProvider extends ChangeNotifier {
   bool _isPlaying = false;
   bool _isDisposed = false;
 
-  Player? _player;
-  VideoController? _videoController;
-  StreamSubscription? _positionSub;
+  Player? _playerA;
+  VideoController? _controllerA;
+  Player? _playerB;
+  VideoController? _controllerB;
 
   StoryDetailProvider({
     required this.stories,
@@ -40,95 +38,98 @@ class StoryDetailProvider extends ChangeNotifier {
   double get currentMediaProgress => _currentMediaProgress;
   bool get isLoading => _isLoading;
   bool get isPlaying => _isPlaying;
-  Player? get player => _player;
-  VideoController? get videoController => _videoController;
 
-  void _ensurePlayerInitialized() {
-    if (_player != null) return;
+  Player? get player => (_currentIndex % 2 == 0) ? _playerA : _playerB;
+  VideoController? get videoController =>
+      (_currentIndex % 2 == 0) ? _controllerA : _controllerB;
+
+  Player? get _nextPlayer =>
+      ((_currentIndex + 1) % 2 == 0) ? _playerA : _playerB;
+
+  void _ensurePlayersInitialized() {
+    if (_playerA != null) return;
     try {
-      _player = Player();
-      _videoController = VideoController(
-        _player!,
+      _playerA = Player();
+      _controllerA = VideoController(
+        _playerA!,
         configuration: const VideoControllerConfiguration(
           enableHardwareAcceleration: true,
         ),
       );
+      _playerA!.setVolume(_isMuted ? 0.0 : 100.0);
+      _setupListeners(_playerA!, 0);
 
-      _player!.setVolume(_isMuted ? 0.0 : 100.0);
-
-      _positionSub = _player!.stream.position.listen((pos) {
-        if (_isDisposed) return;
-        if (pos > Duration.zero && _isLoading) {
-          _isLoading = false;
-        }
-        final dur = _player!.state.duration;
-        if (dur.inMilliseconds > 0) {
-          _currentMediaProgress = pos.inMilliseconds / dur.inMilliseconds;
-          notifyListeners();
-        }
-      });
-
-      _player!.stream.completed.listen((completed) {
-        if (!_isDisposed && completed) {
-          nextStory();
-        }
-      });
-
-      _player!.stream.error.listen((error) {
-        debugPrint("Story player error: $error");
-        final story = stories[_currentIndex];
-        if (!_hasTriedFallback &&
-            story.fallbackUrl != null &&
-            story.fallbackUrl!.trim().isNotEmpty &&
-            story.fallbackUrl != story.url) {
-          _hasTriedFallback = true;
-          String fallback = story.fallbackUrl!;
-          if (!fallback.startsWith('http')) {
-            final base = BaseUrl.baseUrl;
-            fallback = fallback.startsWith('/')
-                ? '$base$fallback'
-                : '$base/$fallback';
-          }
-          debugPrint("HLS story failed, falling back to MP4/Media: $fallback");
-          _player!.open(Media(fallback));
-        }
-      });
-
-      _player!.stream.buffering.listen((buffering) {
-        if (!_isDisposed) {
-          if (!_isLoading) {
-            _isLoading = buffering;
-            notifyListeners();
-          }
-        }
-      });
-
-      _player!.stream.playing.listen((playing) {
-        if (!_isDisposed) {
-          _isPlaying = playing;
-          notifyListeners();
-        }
-      });
+      _playerB = Player();
+      _controllerB = VideoController(
+        _playerB!,
+        configuration: const VideoControllerConfiguration(
+          enableHardwareAcceleration: true,
+        ),
+      );
+      _playerB!.setVolume(_isMuted ? 0.0 : 100.0);
+      _setupListeners(_playerB!, 1);
     } catch (e) {
       debugPrint('Story player initialization error: $e');
     }
   }
 
-  bool _hasTriedFallback = false;
+  void _setupListeners(Player p, int pIdx) {
+    p.stream.position.listen((pos) {
+      if (_isDisposed) return;
+      if ((_currentIndex % 2) == pIdx) {
+        if (pos > Duration.zero && _isLoading) {
+          _isLoading = false;
+        }
+        final dur = p.state.duration;
+        if (dur.inMilliseconds > 0) {
+          _currentMediaProgress = pos.inMilliseconds / dur.inMilliseconds;
+          notifyListeners();
+        }
+      }
+    });
+
+    p.stream.completed.listen((completed) {
+      if (!_isDisposed && completed && (_currentIndex % 2) == pIdx) {
+        nextStory();
+      }
+    });
+
+    p.stream.buffering.listen((buffering) {
+      if (!_isDisposed && (_currentIndex % 2) == pIdx) {
+        if (!_isLoading) {
+          _isLoading = buffering;
+          notifyListeners();
+        }
+      }
+    });
+
+    p.stream.playing.listen((playing) {
+      if (!_isDisposed && (_currentIndex % 2) == pIdx) {
+        _isPlaying = playing;
+        notifyListeners();
+      }
+    });
+  }
 
   void _loadStory(int index) {
     _cancelTimer();
     _imageProgress = 0.0;
     _currentMediaProgress = 0.0;
-    _isLoading = true;
-    _isPlaying = false;
-    _hasTriedFallback = false;
-    notifyListeners();
 
     if (index < 0 || index >= stories.length) return;
+
+    final oldIndex = _currentIndex;
+    _currentIndex = index;
     final story = stories[index];
 
-    // Mark story as viewed
+    _ensurePlayersInitialized();
+
+    // Pause previous player if switching index
+    final prevPlayer = (oldIndex % 2 == 0) ? _playerA : _playerB;
+    if (prevPlayer != null && oldIndex != index) {
+      prevPlayer.pause();
+    }
+
     if (story.id != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_isDisposed) {
@@ -138,61 +139,64 @@ class StoryDetailProvider extends ChangeNotifier {
     }
 
     if (story.isVideo || story.isAudio) {
-      _initializeMedia(story);
+      final activePlayer = player!;
+      activePlayer.setVolume(_isMuted ? 0.0 : 100.0);
+
+      // Check if active player was already pre-buffered with this URL!
+      final currentSource = activePlayer.state.playlist.medias.isNotEmpty
+          ? activePlayer.state.playlist.medias.first.uri
+          : '';
+
+      final bool isAlreadyPrebuffered =
+          currentSource == story.url || currentSource == 'file://${story.url}';
+
+      if (isAlreadyPrebuffered) {
+        _isLoading = activePlayer.state.position == Duration.zero;
+        activePlayer.play();
+      } else {
+        _isLoading = true;
+        if (story.isNetwork) {
+          activePlayer.open(Media(story.url), play: true);
+        } else {
+          activePlayer.open(Media('asset://${story.url}'), play: true);
+        }
+      }
+      notifyListeners();
+
+      // Pre-buffer next story in background on the secondary player!
+      _preloadNextStory(index + 1);
     } else {
-      _player?.pause();
       _isLoading = false;
       startImageTimer();
       notifyListeners();
+
+      // Pre-buffer next story in background even if current is an image!
+      _preloadNextStory(index + 1);
     }
   }
 
-  void _initializeMedia(StoryContent story) {
-    if (story.url.isEmpty) {
-      _isLoading = false;
-      notifyListeners();
-      return;
-    }
+  void _preloadNextStory(int nextIndex) {
+    if (nextIndex < 0 || nextIndex >= stories.length) return;
+    final nextStory = stories[nextIndex];
+    if (!nextStory.isVideo && !nextStory.isAudio) return;
+    if (nextStory.url.isEmpty) return;
 
-    _ensurePlayerInitialized();
-    if (_player == null) {
-      _isLoading = false;
-      notifyListeners();
-      return;
-    }
+    final nextP = _nextPlayer;
+    if (nextP == null) return;
 
-    _player!.setVolume(_isMuted ? 0.0 : 100.0);
+    final currentSource = nextP.state.playlist.medias.isNotEmpty
+        ? nextP.state.playlist.medias.first.uri
+        : '';
 
-    if (story.isAudio && story.isNetwork) {
-      _downloadAndPlayAudio(story.url);
-    } else if (story.isNetwork) {
-      _player!.open(Media(story.url));
-    } else {
-      _player!.open(Media('asset://${story.url}'));
-    }
-  }
-
-  Future<void> _downloadAndPlayAudio(String url) async {
-    try {
-      final dio = Dio();
-      final tempDir = Directory.systemTemp;
-      final fileName = 'story_audio_${url.hashCode}.mp3';
-      final savePath = '${tempDir.path}/$fileName';
-      final file = File(savePath);
-
-      if (!await file.exists()) {
-        await dio.download(url, savePath);
-      }
-
-      if (_isDisposed) return;
-      await _player?.open(Media('file://$savePath'));
-      _isLoading = false;
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Story audio download error: $e');
-      if (!_isDisposed) {
-        _isLoading = false;
-        notifyListeners();
+    if (currentSource != nextStory.url) {
+      debugPrint(
+        "Pre-buffering next story index $nextIndex in background: ${nextStory.url}",
+      );
+      nextP.setVolume(_isMuted ? 0.0 : 100.0);
+      if (nextStory.isNetwork) {
+        nextP.open(Media(nextStory.url), play: false);
+      } else {
+        nextP.open(Media('asset://${nextStory.url}'), play: false);
       }
     }
   }
@@ -219,11 +223,11 @@ class StoryDetailProvider extends ChangeNotifier {
 
   void nextStory() {
     if (_currentIndex < stories.length - 1) {
-      _currentIndex++;
-      _loadStory(_currentIndex);
+      _loadStory(_currentIndex + 1);
     } else {
       _cancelTimer();
-      _player?.pause();
+      _playerA?.pause();
+      _playerB?.pause();
       if (onFinished != null) {
         onFinished!();
       }
@@ -232,23 +236,24 @@ class StoryDetailProvider extends ChangeNotifier {
 
   void previousStory() {
     if (_currentIndex > 0) {
-      _currentIndex--;
-      _loadStory(_currentIndex);
+      _loadStory(_currentIndex - 1);
     }
   }
 
   void toggleMute() {
     _isMuted = !_isMuted;
-    _player?.setVolume(_isMuted ? 0.0 : 100.0);
+    _playerA?.setVolume(_isMuted ? 0.0 : 100.0);
+    _playerB?.setVolume(_isMuted ? 0.0 : 100.0);
     notifyListeners();
   }
 
   void togglePlayPause() {
-    if (_player == null) return;
+    final p = player;
+    if (p == null) return;
     if (_isPlaying) {
-      _player!.pause();
+      p.pause();
     } else {
-      _player!.play();
+      p.play();
     }
   }
 
@@ -257,7 +262,7 @@ class StoryDetailProvider extends ChangeNotifier {
     if (story.isImage) {
       _cancelTimer();
     } else {
-      _player?.pause();
+      player?.pause();
     }
   }
 
@@ -266,7 +271,7 @@ class StoryDetailProvider extends ChangeNotifier {
     if (story.isImage) {
       startImageTimer();
     } else {
-      _player?.play();
+      player?.play();
     }
   }
 
@@ -274,8 +279,8 @@ class StoryDetailProvider extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _cancelTimer();
-    _positionSub?.cancel();
-    _player?.dispose();
+    _playerA?.dispose();
+    _playerB?.dispose();
     super.dispose();
   }
 }

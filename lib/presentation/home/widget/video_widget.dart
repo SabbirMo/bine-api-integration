@@ -300,33 +300,6 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                                   )
                                 else
                                   _buildDefaultPlaceholder(isLoading: true),
-                                ValueListenableBuilder<bool>(
-                                  valueListenable: _isBuffering,
-                                  builder: (context, isBuffering, _) {
-                                    if (isBuffering) {
-                                      return Center(
-                                        child: Container(
-                                          padding: const EdgeInsets.all(14),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.3,
-                                            ),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const SizedBox(
-                                            width: 30,
-                                            height: 30,
-                                            child: CircularProgressIndicator(
-                                              color: Color(0xFFFF6900),
-                                              strokeWidth: 3,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return const SizedBox.shrink();
-                                  },
-                                ),
                               ],
                             ),
                           ),

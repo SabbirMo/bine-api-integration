@@ -85,7 +85,7 @@ class MediaModel {
   });
 
   String get effectiveMediaUrl =>
-      (hlsUrl != null && hlsUrl!.trim().isNotEmpty) ? hlsUrl! : mediaUrl;
+      (mediaUrl.trim().isNotEmpty) ? mediaUrl : (hlsUrl ?? '');
 
   factory MediaModel.fromJson(Map<String, dynamic> json) {
     return MediaModel(

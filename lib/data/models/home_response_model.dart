@@ -45,10 +45,13 @@ class BannerModel {
   });
 
   String get effectiveVideoUrl {
+    if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
+      return videoUrl!;
+    }
     if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
       return hlsUrl!;
     }
-    return videoUrl ?? '';
+    return '';
   }
 
   factory BannerModel.fromJson(Map<String, dynamic> json) {
@@ -109,10 +112,13 @@ class StoryModel {
   });
 
   String get effectiveMediaUrl {
+    if (mediaUrl != null && mediaUrl!.trim().isNotEmpty) {
+      return mediaUrl!;
+    }
     if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
       return hlsUrl!;
     }
-    return mediaUrl ?? '';
+    return '';
   }
 
   factory StoryModel.fromJson(Map<String, dynamic> json) {

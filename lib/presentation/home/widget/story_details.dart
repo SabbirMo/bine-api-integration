@@ -149,6 +149,7 @@ class _StoryDetailContent extends StatelessWidget {
                 width: provider.player!.state.width?.toDouble() ?? 16.0,
                 height: provider.player!.state.height?.toDouble() ?? 9.0,
                 child: Video(
+                  key: ValueKey(provider.currentIndex),
                   controller: provider.videoController!,
                   controls: NoVideoControls,
                 ),

@@ -464,7 +464,37 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
+  void _precacheStoryThumbnails(List<StoryCategoryModel> categories) {
+    for (final cat in categories) {
+      String catImg = cat.imageUrl ?? '';
+      if (catImg.isNotEmpty && !catImg.startsWith('http')) {
+        final base = BaseUrl.baseUrl;
+        catImg = catImg.startsWith('/') ? '$base$catImg' : '$base/$catImg';
+      }
+      if (catImg.startsWith('http')) {
+        precacheImage(NetworkImage(catImg), context).catchError((_) {});
+      }
+
+      for (final story in cat.stories) {
+        String? thumb = story.thumbnailUrl;
+        if (thumb != null && thumb.trim().isNotEmpty && !thumb.startsWith('http')) {
+          final base = BaseUrl.baseUrl;
+          thumb = thumb.startsWith('/') ? '$base$thumb' : '$base/$thumb';
+        }
+        if (thumb != null && thumb.startsWith('http')) {
+          precacheImage(NetworkImage(thumb), context).catchError((_) {});
+        }
+      }
+    }
+  }
+
   Widget _buildStoryListDynamic(List<StoryCategoryModel> storyCategories) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _precacheStoryThumbnails(storyCategories);
+      }
+    });
+
     return SizedBox(
       height: 120,
       child: ListView.builder(
