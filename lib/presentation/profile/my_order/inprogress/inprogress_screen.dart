@@ -55,7 +55,47 @@ class _InprogressScreenState extends State<InprogressScreen> {
             );
           }
           if (provider.errorMessage != null) {
-            return Center(child: Text("Erreur: ${provider.errorMessage}"));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Color(0xFFFF6900),
+                      size: 48,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      provider.errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        context
+                            .read<OrderProvider>()
+                            .fetchOrderDetail(widget.orderNumber);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF6900),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text("Réessayer"),
+                    ),
+                  ],
+                ),
+              ),
+            );
           }
           final orderDetail = provider.orderDetail;
           if (orderDetail == null) {

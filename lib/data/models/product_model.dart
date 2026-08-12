@@ -75,18 +75,24 @@ class MediaModel {
   final int id;
   final String mediaType; // "image", "video", "audio"
   final String mediaUrl;
+  final String? hlsUrl;
 
   MediaModel({
     required this.id,
     required this.mediaType,
     required this.mediaUrl,
+    this.hlsUrl,
   });
+
+  String get effectiveMediaUrl =>
+      (hlsUrl != null && hlsUrl!.trim().isNotEmpty) ? hlsUrl! : mediaUrl;
 
   factory MediaModel.fromJson(Map<String, dynamic> json) {
     return MediaModel(
       id: json['id'] ?? 0,
       mediaType: json['media_type'] ?? '',
       mediaUrl: json['media_url'] ?? '',
+      hlsUrl: json['hls_url'],
     );
   }
 }

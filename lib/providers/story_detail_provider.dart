@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/providers/story_provider.dart';
+import 'package:binetatour/core/base_url/base_url.dart';
 
 class StoryDetailProvider extends ChangeNotifier {
   final List<StoryContent> stories;
@@ -42,16 +43,86 @@ class StoryDetailProvider extends ChangeNotifier {
   Player? get player => _player;
   VideoController? get videoController => _videoController;
 
+  void _ensurePlayerInitialized() {
+    if (_player != null) return;
+    try {
+      _player = Player();
+      _videoController = VideoController(
+        _player!,
+        configuration: const VideoControllerConfiguration(
+          enableHardwareAcceleration: true,
+        ),
+      );
+
+      _player!.setVolume(_isMuted ? 0.0 : 100.0);
+
+      _positionSub = _player!.stream.position.listen((pos) {
+        if (_isDisposed) return;
+        if (pos > Duration.zero && _isLoading) {
+          _isLoading = false;
+        }
+        final dur = _player!.state.duration;
+        if (dur.inMilliseconds > 0) {
+          _currentMediaProgress = pos.inMilliseconds / dur.inMilliseconds;
+          notifyListeners();
+        }
+      });
+
+      _player!.stream.completed.listen((completed) {
+        if (!_isDisposed && completed) {
+          nextStory();
+        }
+      });
+
+      _player!.stream.error.listen((error) {
+        debugPrint("Story player error: $error");
+        final story = stories[_currentIndex];
+        if (!_hasTriedFallback &&
+            story.fallbackUrl != null &&
+            story.fallbackUrl!.trim().isNotEmpty &&
+            story.fallbackUrl != story.url) {
+          _hasTriedFallback = true;
+          String fallback = story.fallbackUrl!;
+          if (!fallback.startsWith('http')) {
+            final base = BaseUrl.baseUrl;
+            fallback = fallback.startsWith('/')
+                ? '$base$fallback'
+                : '$base/$fallback';
+          }
+          debugPrint("HLS story failed, falling back to MP4/Media: $fallback");
+          _player!.open(Media(fallback));
+        }
+      });
+
+      _player!.stream.buffering.listen((buffering) {
+        if (!_isDisposed) {
+          if (!_isLoading) {
+            _isLoading = buffering;
+            notifyListeners();
+          }
+        }
+      });
+
+      _player!.stream.playing.listen((playing) {
+        if (!_isDisposed) {
+          _isPlaying = playing;
+          notifyListeners();
+        }
+      });
+    } catch (e) {
+      debugPrint('Story player initialization error: $e');
+    }
+  }
+
+  bool _hasTriedFallback = false;
+
   void _loadStory(int index) {
     _cancelTimer();
-    _positionSub?.cancel();
-    _player?.dispose();
-    _player = null;
-    _videoController = null;
     _imageProgress = 0.0;
     _currentMediaProgress = 0.0;
     _isLoading = true;
     _isPlaying = false;
+    _hasTriedFallback = false;
     notifyListeners();
 
     if (index < 0 || index >= stories.length) return;
@@ -69,6 +140,7 @@ class StoryDetailProvider extends ChangeNotifier {
     if (story.isVideo || story.isAudio) {
       _initializeMedia(story);
     } else {
+      _player?.pause();
       _isLoading = false;
       startImageTimer();
       notifyListeners();
@@ -82,58 +154,21 @@ class StoryDetailProvider extends ChangeNotifier {
       return;
     }
 
-    try {
-      _player = Player();
-      _videoController = VideoController(
-        _player!,
-        configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true,
-        ),
-      );
-
-      _player!.setVolume(_isMuted ? 0.0 : 100.0);
-
-      _positionSub = _player!.stream.position.listen((pos) {
-        if (_isDisposed) return;
-        final dur = _player!.state.duration;
-        if (dur.inMilliseconds > 0) {
-          _currentMediaProgress = pos.inMilliseconds / dur.inMilliseconds;
-          notifyListeners();
-        }
-      });
-
-      _player!.stream.completed.listen((completed) {
-        if (!_isDisposed && completed) {
-          nextStory();
-        }
-      });
-
-      _player!.stream.buffering.listen((buffering) {
-        if (!_isDisposed) {
-          _isLoading = buffering;
-          notifyListeners();
-        }
-      });
-
-      _player!.stream.playing.listen((playing) {
-        if (!_isDisposed) {
-          _isPlaying = playing;
-          if (playing) _isLoading = false;
-          notifyListeners();
-        }
-      });
-
-      if (story.isAudio && story.isNetwork) {
-        _downloadAndPlayAudio(story.url);
-      } else if (story.isNetwork) {
-        _player!.open(Media(story.url));
-      } else {
-        _player!.open(Media('asset://${story.url}'));
-      }
-    } catch (e) {
-      debugPrint('Story player initialization error: $e');
+    _ensurePlayerInitialized();
+    if (_player == null) {
       _isLoading = false;
       notifyListeners();
+      return;
+    }
+
+    _player!.setVolume(_isMuted ? 0.0 : 100.0);
+
+    if (story.isAudio && story.isNetwork) {
+      _downloadAndPlayAudio(story.url);
+    } else if (story.isNetwork) {
+      _player!.open(Media(story.url));
+    } else {
+      _player!.open(Media('asset://${story.url}'));
     }
   }
 

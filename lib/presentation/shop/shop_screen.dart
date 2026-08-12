@@ -109,7 +109,7 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
         content: p.media
             .map(
               (m) => ProductContent(
-                url: m.mediaUrl,
+                url: m.effectiveMediaUrl,
                 isVideo: m.mediaType == 'video',
                 isImage: m.mediaType == 'image',
                 isAudio: m.mediaType == 'audio',

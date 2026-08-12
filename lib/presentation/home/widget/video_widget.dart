@@ -7,9 +7,15 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 class VideoPlaceholder extends StatefulWidget {
   final String link;
+  final String? fallbackLink;
   final String? thumbnailUrl;
 
-  const VideoPlaceholder({super.key, required this.link, this.thumbnailUrl});
+  const VideoPlaceholder({
+    super.key,
+    required this.link,
+    this.fallbackLink,
+    this.thumbnailUrl,
+  });
 
   @override
   State<VideoPlaceholder> createState() => _VideoPlaceholderState();
@@ -33,6 +39,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   Timer? _hideTimer;
   bool _isSeeking = false;
   double _dragValue = 0.0;
+  bool _hasTriedFallback = false;
 
   @override
   void initState() {
@@ -73,23 +80,49 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
     _player.stream.playing.listen((playing) {
       if (mounted) {
         _isPlaying.value = playing;
-        _updateStartedPlayingState();
+      }
+    });
+
+    _player.stream.position.listen((pos) {
+      if (mounted && pos > Duration.zero) {
+        _hasStartedPlaying.value = true;
+        _isBuffering.value = false;
       }
     });
 
     _player.stream.buffering.listen((buffering) {
       if (mounted) {
-        _isBuffering.value = buffering;
-        _updateStartedPlayingState();
+        if (_hasStartedPlaying.value) {
+          _isBuffering.value = buffering;
+        } else {
+          _isBuffering.value = true;
+        }
       }
+    });
+
+    _player.stream.error.listen((error) {
+      debugPrint("Video player error: $error");
+      _handleFallback();
     });
 
     _player.open(Media(_resolvedVideoUrl));
   }
 
-  void _updateStartedPlayingState() {
-    if (_isPlaying.value && !_isBuffering.value) {
-      _hasStartedPlaying.value = true;
+  void _handleFallback() {
+    if (!_hasTriedFallback &&
+        widget.fallbackLink != null &&
+        widget.fallbackLink!.trim().isNotEmpty &&
+        widget.fallbackLink != widget.link) {
+      _hasTriedFallback = true;
+      String fallback = widget.fallbackLink!;
+      if (!fallback.startsWith('http')) {
+        final base = BaseUrl.baseUrl;
+        fallback = fallback.startsWith('/')
+            ? '$base$fallback'
+            : '$base/$fallback';
+      }
+      debugPrint("HLS playback failed, falling back to MP4: $fallback");
+      _player.open(Media(fallback));
     }
   }
 
@@ -108,20 +141,54 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   Widget _buildDefaultPlaceholder({required bool isLoading}) {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.grey[900]!, Colors.grey[850]!, Colors.black],
-        ),
+        color: const Color(0xFFFFF5EE),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Center(
-        child: isLoading
-            ? const CircularProgressIndicator(color: Color(0xFFFF6900))
-            : const Icon(
-                Icons.play_circle_outline_rounded,
-                color: Colors.white24,
-                size: 64,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (isLoading) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFF1E6),
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6900),
+                    strokeWidth: 3,
+                  ),
+                ),
               ),
+              const SizedBox(height: 10),
+              const Text(
+                "Chargement de la vidéo...",
+                style: TextStyle(
+                  color: Color(0xFFE8500A),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFF1E6),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Color(0xFFE8500A),
+                  size: 36,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -174,7 +241,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            color: Colors.black,
+            color: const Color(0xFFFFF5EE),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -198,58 +265,75 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
                   ),
                 ),
 
-                // 2. Thumbnail / Loading State (Only before first play starts)
-                ValueListenableBuilder<bool>(
-                  valueListenable: _hasStartedPlaying,
-                  builder: (context, hasStartedPlaying, _) {
-                    if (!hasStartedPlaying) {
-                      final thumb = _resolvedThumbnailUrl;
-                      return Positioned.fill(
-                        child: Container(
-                          color: Colors.black,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              if (thumb.isNotEmpty)
-                                Image.network(
-                                  thumb,
-                                  fit: BoxFit.cover,
-                                  loadingBuilder:
-                                      (context, child, loadingProgress) {
-                                        if (loadingProgress == null) {
-                                          return child;
-                                        }
-                                        return _buildDefaultPlaceholder(
+                // 2. Thumbnail / Loading State (Fades out when video playback actually begins)
+                Positioned.fill(
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _hasStartedPlaying,
+                    builder: (context, hasStartedPlaying, _) {
+                      return AnimatedOpacity(
+                        opacity: hasStartedPlaying ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: IgnorePointer(
+                          ignoring: hasStartedPlaying,
+                          child: Container(
+                            color: const Color(0xFFFFF5EE),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                if (_resolvedThumbnailUrl.isNotEmpty)
+                                  Image.network(
+                                    _resolvedThumbnailUrl,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder:
+                                        (context, child, loadingProgress) {
+                                          if (loadingProgress == null) {
+                                            return child;
+                                          }
+                                          return _buildDefaultPlaceholder(
+                                            isLoading: true,
+                                          );
+                                        },
+                                    errorBuilder: (_, _, _) =>
+                                        _buildDefaultPlaceholder(
                                           isLoading: true,
-                                        );
-                                      },
-                                  errorBuilder: (_, _, _) =>
-                                      _buildDefaultPlaceholder(
-                                        isLoading: false,
-                                      ),
-                                )
-                              else
-                                _buildDefaultPlaceholder(isLoading: false),
-                              ValueListenableBuilder<bool>(
-                                valueListenable: _isBuffering,
-                                builder: (context, isBuffering, _) {
-                                  if (isBuffering) {
-                                    return const Center(
-                                      child: CircularProgressIndicator(
-                                        color: Color(0xFFFF6900),
-                                      ),
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                },
-                              ),
-                            ],
+                                        ),
+                                  )
+                                else
+                                  _buildDefaultPlaceholder(isLoading: true),
+                                ValueListenableBuilder<bool>(
+                                  valueListenable: _isBuffering,
+                                  builder: (context, isBuffering, _) {
+                                    if (isBuffering) {
+                                      return Center(
+                                        child: Container(
+                                          padding: const EdgeInsets.all(14),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.3,
+                                            ),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const SizedBox(
+                                            width: 30,
+                                            height: 30,
+                                            child: CircularProgressIndicator(
+                                              color: Color(0xFFFF6900),
+                                              strokeWidth: 3,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
-                    }
-                    return const SizedBox.shrink();
-                  },
+                    },
+                  ),
                 ),
 
                 // 3. Dark Gradient Overlay for readability when controls are active

@@ -120,8 +120,7 @@ class _AccueilScreenState extends State<AccueilScreen>
         actions: [
           GestureDetector(
             onTap: () async {
-              const String phoneNumber =
-                  ""; // Optional support phone number e.g. "221770000000"
+              const String phoneNumber = "+221771635015";
 
               final String cleanPhone = phoneNumber.replaceAll(
                 RegExp(r'[^\d]'),
@@ -129,7 +128,7 @@ class _AccueilScreenState extends State<AccueilScreen>
               );
 
               const String defaultMessage =
-                  "Bonjour, je souhaite avoir plus d'informations.";
+                  "Bonjour, je visite votre site web [URL_PAGE_D_ACCUEIL] et j'aimerais avoir des informations.";
               final String encodedMsg = Uri.encodeComponent(defaultMessage);
 
               final Uri whatsappAppUrl = cleanPhone.isNotEmpty
@@ -329,9 +328,14 @@ class _AccueilScreenState extends State<AccueilScreen>
                         aspectRatio: 16 / 9,
                         child: VideoPlaceholder(
                           thumbnailUrl:
-                              homeData.banner!.thumbnailUrl ??
-                              "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
-                          link: homeData.banner!.videoUrl ?? "",
+                              (homeData.banner!.thumbnailUrl != null &&
+                                      homeData.banner!.thumbnailUrl!
+                                          .trim()
+                                          .isNotEmpty)
+                                  ? homeData.banner!.thumbnailUrl
+                                  : "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
+                          link: homeData.banner!.effectiveVideoUrl,
+                          fallbackLink: homeData.banner!.videoUrl,
                         ),
                       ),
                     ),
@@ -488,9 +492,9 @@ class _AccueilScreenState extends State<AccueilScreen>
 
           // Map API stories to StoryContent list
           final mappedStories = cat.stories
-              .where((s) => s.mediaUrl != null && s.mediaUrl!.trim().isNotEmpty)
+              .where((s) => s.effectiveMediaUrl.trim().isNotEmpty)
               .map((s) {
-                String url = s.mediaUrl ?? '';
+                String url = s.effectiveMediaUrl;
                 // Resolve absolute URL for media URL if it is relative
                 if (url.isNotEmpty && !url.startsWith('http')) {
                   final base = BaseUrl.baseUrl;
@@ -505,6 +509,7 @@ class _AccueilScreenState extends State<AccueilScreen>
                 final String lowerUrl = url.toLowerCase();
                 bool isVid =
                     cType == 'video' ||
+                    lowerUrl.contains('.m3u8') ||
                     lowerUrl.endsWith('.mp4') ||
                     lowerUrl.endsWith('.mov') ||
                     lowerUrl.endsWith('.avi');
@@ -527,9 +532,21 @@ class _AccueilScreenState extends State<AccueilScreen>
                   isImg = true;
                 }
 
+                String? storyThumb = s.thumbnailUrl;
+                if (storyThumb != null &&
+                    storyThumb.trim().isNotEmpty &&
+                    !storyThumb.startsWith('http')) {
+                  final base = BaseUrl.baseUrl;
+                  storyThumb = storyThumb.startsWith('/')
+                      ? '$base$storyThumb'
+                      : '$base/$storyThumb';
+                }
+
                 return StoryContent(
                   id: s.id,
                   url: url,
+                  fallbackUrl: s.mediaUrl,
+                  thumbnailUrl: storyThumb,
                   isVideo: isVid,
                   isAudio: isAud,
                   isImage: isImg,

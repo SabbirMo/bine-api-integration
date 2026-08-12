@@ -25,12 +25,6 @@ class HomeProductCardProvider extends ChangeNotifier {
   bool get hasStartedPlaying => _hasStartedPlaying;
   bool get isVideoReady => _player != null && _videoController != null;
 
-  void _updateStartedPlayingState() {
-    if (_isPlaying && !_isBuffering) {
-      _hasStartedPlaying = true;
-    }
-  }
-
   Future<void> playVideo() async {
     if (_isInitializing || _player != null) return;
 
@@ -54,18 +48,30 @@ class HomeProductCardProvider extends ChangeNotifier {
       _player!.stream.playing.listen((playing) {
         if (!_isDisposed) {
           _isPlaying = playing;
-          _updateStartedPlayingState();
           if (playing) {
+            _hasStartedPlaying = true;
+            _isBuffering = false;
             _isInitializing = false;
           }
           notifyListeners();
         }
       });
 
+      _player!.stream.position.listen((pos) {
+        if (!_isDisposed && pos > Duration.zero) {
+          _hasStartedPlaying = true;
+          _isBuffering = false;
+          notifyListeners();
+        }
+      });
+
       _player!.stream.buffering.listen((buffering) {
         if (!_isDisposed) {
-          _isBuffering = buffering;
-          _updateStartedPlayingState();
+          if (_isPlaying || _hasStartedPlaying) {
+            _isBuffering = false;
+          } else {
+            _isBuffering = buffering;
+          }
           notifyListeners();
         }
       });

@@ -4,10 +4,12 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
+import 'package:binetatour/core/base_url/base_url.dart';
 
 class ProductVideoItem extends StatefulWidget {
   final int productId;
   final String videoUrl;
+  final String? fallbackUrl;
   final String? thumbnailUrl;
   final bool isMuted;
 
@@ -15,6 +17,7 @@ class ProductVideoItem extends StatefulWidget {
     super.key,
     required this.productId,
     required this.videoUrl,
+    this.fallbackUrl,
     this.thumbnailUrl,
     required this.isMuted,
   });
@@ -33,10 +36,17 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   bool _isBuffering = false;
   bool _hasStartedPlaying = false;
 
-  void _updateStartedPlayingState() {
-    if (_isPlaying && !_isBuffering) {
-      _hasStartedPlaying = true;
+  String get _resolvedThumbnailUrl {
+    String url = widget.thumbnailUrl ?? '';
+    if (url.isNotEmpty && !url.startsWith('http')) {
+      final base = BaseUrl.baseUrl;
+      if (url.startsWith('/')) {
+        url = '$base$url';
+      } else {
+        url = '$base/$url';
+      }
     }
+    return url;
   }
 
   @override
@@ -71,8 +81,16 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         if (mounted) {
           setState(() {
             _isPlaying = playing;
-            _updateStartedPlayingState();
-            if (playing) _isInitializing = false;
+          });
+        }
+      });
+
+      _player!.stream.position.listen((pos) {
+        if (mounted && pos > Duration.zero) {
+          setState(() {
+            _hasStartedPlaying = true;
+            _isBuffering = false;
+            _isInitializing = false;
           });
         }
       });
@@ -80,18 +98,13 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       _player!.stream.buffering.listen((buffering) {
         if (mounted) {
           setState(() {
-            _isBuffering = buffering;
-            _updateStartedPlayingState();
+            if (_hasStartedPlaying) {
+              _isBuffering = buffering;
+            } else {
+              _isBuffering = true;
+            }
           });
         }
-      });
-
-      _player!.stream.width.listen((width) {
-        if (mounted) setState(() {});
-      });
-
-      _player!.stream.height.listen((height) {
-        if (mounted) setState(() {});
       });
 
       await _player!.open(Media(widget.videoUrl));
@@ -148,6 +161,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
     final double videoWidth = _player?.state.width?.toDouble() ?? 16.0;
     final double videoHeight = _player?.state.height?.toDouble() ?? 9.0;
+    final String thumbUrl = _resolvedThumbnailUrl;
 
     return GestureDetector(
       onTap: () {
@@ -213,11 +227,22 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                 ],
               ),
 
-            if (!_isVideoReady || !_isPlaying || !_hasStartedPlaying)
+            // Thumbnail / Loading Placeholder until video frame is decoded and ready
+            if (!_isVideoReady || !_hasStartedPlaying)
               Positioned.fill(
                 child: Container(
-                  color: Colors.black,
-                  child: widget.thumbnailUrl != null
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF2E2620),
+                        Color(0xFF1C1814),
+                        Color(0xFF12100E),
+                      ],
+                    ),
+                  ),
+                  child: thumbUrl.isNotEmpty
                       ? Stack(
                           fit: StackFit.expand,
                           children: [
@@ -230,7 +255,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                                     sigmaY: 15.0,
                                   ),
                                   child: Image.network(
-                                    widget.thumbnailUrl!,
+                                    thumbUrl,
                                     fit: BoxFit.cover,
                                     color: Colors.black.withValues(alpha: 0.35),
                                     colorBlendMode: BlendMode.darken,
@@ -242,14 +267,44 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                             // Clear foreground thumbnail
                             Center(
                               child: Image.network(
-                                widget.thumbnailUrl!,
+                                thumbUrl,
                                 fit: BoxFit.contain,
                                 errorBuilder: (_, _, _) => const SizedBox(),
                               ),
                             ),
                           ],
                         )
-                      : const SizedBox(),
+                      : Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.4),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFFFF6900),
+                                    strokeWidth: 3,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                "Chargement de la vidéo...",
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                 ),
               ),
 

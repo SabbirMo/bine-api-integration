@@ -134,30 +134,14 @@ class _StoryDetailContent extends StatelessWidget {
     }
     if (story.isAudio) return _buildAudioPlaceholder(provider);
     if (story.isVideo && provider.videoController != null) {
+      final String thumb = (story.thumbnailUrl != null &&
+              story.thumbnailUrl!.trim().isNotEmpty)
+          ? story.thumbnailUrl!
+          : userProfile;
+
       return Stack(
         alignment: Alignment.center,
         children: [
-          if (isLoading)
-            Positioned.fill(
-              child: userProfile.startsWith('http')
-                  ? Image.network(
-                      userProfile,
-                      fit: BoxFit.cover,
-                      color: Colors.black.withValues(alpha: 0.7),
-                      colorBlendMode: BlendMode.darken,
-                      errorBuilder: (context, error, stackTrace) =>
-                          Container(color: Colors.black),
-                    )
-                  : Image.asset(
-                      userProfile,
-                      fit: BoxFit.cover,
-                      color: Colors.black.withValues(alpha: 0.7),
-                      colorBlendMode: BlendMode.darken,
-                      errorBuilder: (context, error, stackTrace) =>
-                          Container(color: Colors.black),
-                    ),
-            ),
-
           SizedBox.expand(
             child: FittedBox(
               fit: BoxFit.contain,
@@ -171,8 +155,45 @@ class _StoryDetailContent extends StatelessWidget {
               ),
             ),
           ),
-          if (isLoading)
-            const CircularProgressIndicator(color: Color(0xFFFF6900)),
+          Positioned.fill(
+            child: AnimatedOpacity(
+              opacity: isLoading ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              child: IgnorePointer(
+                ignoring: !isLoading,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (thumb.startsWith('http'))
+                      Image.network(
+                        thumb,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            Container(color: Colors.black),
+                      )
+                    else if (thumb.isNotEmpty)
+                      Image.asset(
+                        thumb,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            Container(color: Colors.black),
+                      )
+                    else
+                      Container(color: Colors.black),
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.35),
+                    ),
+                    const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFF6900),
+                        strokeWidth: 3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       );
     }
@@ -343,6 +364,8 @@ class _StoryDetailContent extends StatelessWidget {
 class StoryContent {
   final int? id;
   final String url;
+  final String? fallbackUrl;
+  final String? thumbnailUrl;
   final bool isVideo;
   final bool isAudio;
   final bool isImage;
@@ -352,6 +375,8 @@ class StoryContent {
   StoryContent({
     this.id,
     required this.url,
+    this.fallbackUrl,
+    this.thumbnailUrl,
     required this.isVideo,
     required this.isAudio,
     required this.isImage,

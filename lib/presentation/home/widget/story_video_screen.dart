@@ -71,7 +71,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
     _videoController = VideoController(
       _player!,
       configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: false,
+        enableHardwareAcceleration: true,
       ),
     );
 

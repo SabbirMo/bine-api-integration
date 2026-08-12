@@ -380,66 +380,70 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
               const SizedBox(height: 20),
               InkWell(
                 onTap: () async {
-                  String shareText = '';
+                  String productUrl = '';
 
                   if (_mediaContent.isNotEmpty) {
-                    shareText = _mediaContent[_currentMediaIndex].url;
+                    productUrl = _mediaContent[_currentMediaIndex].url;
                   } else if (_product.mainImage != null) {
-                    shareText = _product.mainImage!;
+                    productUrl = _product.mainImage!;
                   }
 
-                  if (shareText.isNotEmpty) {
-                    final whatsappAppUrl = Uri.parse(
-                      "whatsapp://send?text=${Uri.encodeComponent(shareText)}",
-                    );
-                    final whatsappWebUrl = Uri.parse(
-                      "https://wa.me/?text=${Uri.encodeComponent(shareText)}",
-                    );
+                  final String shareText = productUrl.isNotEmpty
+                      ? "Bonjour, je souhaite commander ce produit : $productUrl.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?"
+                      : "Bonjour, je souhaite commander ce produit.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?";
 
-                    bool launched = false;
+                  const String phoneNumber = "+221771635015";
 
+                  final whatsappAppUrl = Uri.parse(
+                    "whatsapp://send?phone=$phoneNumber&text=${Uri.encodeComponent(shareText)}",
+                  );
+                  final whatsappWebUrl = Uri.parse(
+                    "https://wa.me/$phoneNumber?text=${Uri.encodeComponent(shareText)}",
+                  );
+
+                  bool launched = false;
+
+                  try {
+                    launched = await launchUrl(
+                      whatsappAppUrl,
+                      mode: LaunchMode.externalNonBrowserApplication,
+                    );
+                  } catch (e) {
+                    launched = false;
+                  }
+
+                  if (!launched) {
                     try {
                       launched = await launchUrl(
                         whatsappAppUrl,
-                        mode: LaunchMode.externalNonBrowserApplication,
+                        mode: LaunchMode.externalApplication,
                       );
                     } catch (e) {
                       launched = false;
                     }
+                  }
 
-                    if (!launched) {
-                      try {
-                        launched = await launchUrl(
-                          whatsappAppUrl,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      } catch (e) {
-                        launched = false;
-                      }
+                  if (!launched) {
+                    try {
+                      launched = await launchUrl(
+                        whatsappWebUrl,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    } catch (e) {
+                      launched = false;
                     }
+                  }
 
-                    if (!launched) {
-                      try {
-                        launched = await launchUrl(
-                          whatsappWebUrl,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      } catch (e) {
-                        launched = false;
-                      }
-                    }
-
-                    if (!launched) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              "WhatsApp n'est pas installé sur cet appareil et impossible d'ouvrir le navigateur.",
-                            ),
-                            backgroundColor: Colors.red,
+                  if (!launched) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "WhatsApp n'est pas installé sur cet appareil et impossible d'ouvrir le navigateur.",
                           ),
-                        );
-                      }
+                          backgroundColor: Colors.red,
+                        ),
+                      );
                     }
                   }
                 },

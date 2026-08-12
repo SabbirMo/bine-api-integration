@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'dart:io';
+import 'package:binetatour/core/network/error/api_error_handle.dart';
 import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
@@ -41,7 +42,10 @@ class OrderProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = ApiErrorHandle.sanitizeMessage(
+        e.toString().replaceAll('Exception: ', ''),
+        null,
+      );
       log("Error fetching order history: ${e.toString()}");
       _isLoading = false;
       notifyListeners();
@@ -69,7 +73,10 @@ class OrderProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = ApiErrorHandle.sanitizeMessage(
+        e.toString().replaceAll('Exception: ', ''),
+        null,
+      );
       log("Error fetching order detail: ${e.toString()}");
       _isLoading = false;
       notifyListeners();

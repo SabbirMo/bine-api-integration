@@ -34,14 +34,28 @@ class HomeResponseModel {
 class BannerModel {
   final int id;
   final String? videoUrl;
+  final String? hlsUrl;
   final String? thumbnailUrl;
 
-  BannerModel({required this.id, this.videoUrl, this.thumbnailUrl});
+  BannerModel({
+    required this.id,
+    this.videoUrl,
+    this.hlsUrl,
+    this.thumbnailUrl,
+  });
+
+  String get effectiveVideoUrl {
+    if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
+      return hlsUrl!;
+    }
+    return videoUrl ?? '';
+  }
 
   factory BannerModel.fromJson(Map<String, dynamic> json) {
     return BannerModel(
       id: json['id'],
       videoUrl: json['video_url'],
+      hlsUrl: json['hls_url'],
       thumbnailUrl: json['thumbnail_url'],
     );
   }
@@ -81,6 +95,7 @@ class StoryModel {
   final int id;
   final String? contentType;
   final String? mediaUrl;
+  final String? hlsUrl;
   final String? thumbnailUrl;
   final String? createdAt;
 
@@ -88,15 +103,24 @@ class StoryModel {
     required this.id,
     this.contentType,
     this.mediaUrl,
+    this.hlsUrl,
     this.thumbnailUrl,
     this.createdAt,
   });
+
+  String get effectiveMediaUrl {
+    if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
+      return hlsUrl!;
+    }
+    return mediaUrl ?? '';
+  }
 
   factory StoryModel.fromJson(Map<String, dynamic> json) {
     return StoryModel(
       id: json['id'] ?? 0,
       contentType: json['content_type'],
       mediaUrl: json['media_url'],
+      hlsUrl: json['hls_url'],
       thumbnailUrl: json['thumbnail_url'],
       createdAt: json['created_at'],
     );
