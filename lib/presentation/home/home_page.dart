@@ -128,7 +128,7 @@ class _AccueilScreenState extends State<AccueilScreen>
               );
 
               const String defaultMessage =
-                  "Bonjour, je visite votre site web [URL_PAGE_D_ACCUEIL] et j'aimerais avoir des informations.";
+                  "Bonjour, je visite votre site web et j'aimerais avoir des informations.";
               final String encodedMsg = Uri.encodeComponent(defaultMessage);
 
               final Uri whatsappAppUrl = cleanPhone.isNotEmpty
@@ -329,11 +329,11 @@ class _AccueilScreenState extends State<AccueilScreen>
                         child: VideoPlaceholder(
                           thumbnailUrl:
                               (homeData.banner!.thumbnailUrl != null &&
-                                      homeData.banner!.thumbnailUrl!
-                                          .trim()
-                                          .isNotEmpty)
-                                  ? homeData.banner!.thumbnailUrl
-                                  : "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
+                                  homeData.banner!.thumbnailUrl!
+                                      .trim()
+                                      .isNotEmpty)
+                              ? homeData.banner!.thumbnailUrl
+                              : "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
                           link: homeData.banner!.effectiveVideoUrl,
                           fallbackLink: homeData.banner!.videoUrl,
                         ),
@@ -477,7 +477,9 @@ class _AccueilScreenState extends State<AccueilScreen>
 
       for (final story in cat.stories) {
         String? thumb = story.thumbnailUrl;
-        if (thumb != null && thumb.trim().isNotEmpty && !thumb.startsWith('http')) {
+        if (thumb != null &&
+            thumb.trim().isNotEmpty &&
+            !thumb.startsWith('http')) {
           final base = BaseUrl.baseUrl;
           thumb = thumb.startsWith('/') ? '$base$thumb' : '$base/$thumb';
         }
