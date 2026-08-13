@@ -115,7 +115,7 @@ class _AccueilScreenState extends State<AccueilScreen>
                 ),
               ],
             ),
-          ],
+          ], // nothing
         ),
         actions: [
           GestureDetector(
@@ -124,7 +124,7 @@ class _AccueilScreenState extends State<AccueilScreen>
 
               final String cleanPhone = phoneNumber.replaceAll(
                 RegExp(r'[^\d]'),
-                '',
+                ' ',
               );
 
               const String defaultMessage =
