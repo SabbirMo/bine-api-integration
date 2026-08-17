@@ -44,11 +44,17 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       widget.item.productId,
     );
     if (mounted) {
+      String? initialColor = widget.item.colorCode;
+      String? initialSize = widget.item.size;
+
+      if (initialColor != null && initialColor.isEmpty) initialColor = null;
+      if (initialSize != null && initialSize.isEmpty) initialSize = null;
+
       setState(() {
         _productDetails = details;
         _isLoading = false;
-        _selectedColorCode = null;
-        _selectedSize = null;
+        _selectedColorCode = initialColor;
+        _selectedSize = initialSize;
         _isUnassignedSelected = false;
       });
 
@@ -59,8 +65,17 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         _notify(isValid: true, variantId: null);
       } else {
         // Variant mode or mixed mode: user needs to make a selection
-        _notify(isValid: false, variantId: null);
+        _notifyVariant();
       }
+      _clampQuantityToMaxStock();
+    }
+  }
+
+  void _clampQuantityToMaxStock() {
+    if (_productDetails == null) return;
+    final maxStock = _maxAvailableStock;
+    if (maxStock > 0 && widget.item.quantity > maxStock) {
+      context.read<CartProvider>().updateQuantity(widget.item.id, maxStock);
     }
   }
 
@@ -96,28 +111,33 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         _notify(isValid: false, variantId: null);
         return;
       }
-      match = variants.firstWhere(
-        (v) => v.colorCode == _selectedColorCode && v.size == _selectedSize,
-        orElse: () => variants.first,
-      );
+      try {
+        match = variants.firstWhere(
+          (v) => v.colorCode == _selectedColorCode && v.size == _selectedSize,
+        );
+      } catch (_) {
+        match = null;
+      }
     } else if (hasColors) {
       if (_selectedColorCode == null) {
         _notify(isValid: false, variantId: null);
         return;
       }
-      match = variants.firstWhere(
-        (v) => v.colorCode == _selectedColorCode,
-        orElse: () => variants.first,
-      );
+      try {
+        match = variants.firstWhere((v) => v.colorCode == _selectedColorCode);
+      } catch (_) {
+        match = null;
+      }
     } else if (hasSizes) {
       if (_selectedSize == null) {
         _notify(isValid: false, variantId: null);
         return;
       }
-      match = variants.firstWhere(
-        (v) => v.size == _selectedSize,
-        orElse: () => variants.first,
-      );
+      try {
+        match = variants.firstWhere((v) => v.size == _selectedSize);
+      } catch (_) {
+        match = null;
+      }
     }
 
     if (match != null && match.stockQuantity > 0) {
@@ -238,6 +258,12 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     final variants = _productDetails!.variants;
     if (variants.isEmpty) return null;
 
+    final hasColors = variants.any((v) => v.colorCode.isNotEmpty);
+    final hasSizes = variants.any((v) => v.size.isNotEmpty);
+
+    if (hasColors && _selectedColorCode == null) return null;
+    if (hasSizes && _selectedSize == null) return null;
+
     for (var v in variants) {
       bool colorMatch =
           _selectedColorCode == null || v.colorCode == _selectedColorCode;
@@ -257,7 +283,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     if (variant != null) {
       return variant.stockQuantity <= 0;
     }
-    if (_productDetails!.isProductMode) {
+    if (_productDetails!.isProductMode || _productDetails!.variants.isEmpty) {
       return _productDetails!.totalStock <= 0;
     }
     return false;
@@ -273,11 +299,38 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     if (variant != null) {
       return variant.stockQuantity;
     }
-    if (_productDetails!.isProductMode) {
+    if (_productDetails!.isProductMode || _productDetails!.variants.isEmpty) {
       return _productDetails!.totalStock > 0
           ? _productDetails!.totalStock
           : _productDetails!.stockQuantity;
     }
+
+    final variants = _productDetails!.variants;
+    final hasColors = variants.any((v) => v.colorCode.isNotEmpty);
+    final hasSizes = variants.any((v) => v.size.isNotEmpty);
+
+    if (_selectedColorCode != null && hasSizes && _selectedSize == null) {
+      final colorVariants = variants.where(
+        (v) => v.colorCode == _selectedColorCode,
+      );
+      if (colorVariants.isNotEmpty) {
+        return colorVariants.fold<int>(
+          0,
+          (max, v) => v.stockQuantity > max ? v.stockQuantity : max,
+        );
+      }
+    }
+
+    if (_selectedSize != null && hasColors && _selectedColorCode == null) {
+      final sizeVariants = variants.where((v) => v.size == _selectedSize);
+      if (sizeVariants.isNotEmpty) {
+        return sizeVariants.fold<int>(
+          0,
+          (max, v) => v.stockQuantity > max ? v.stockQuantity : max,
+        );
+      }
+    }
+
     return _productDetails!.totalStock;
   }
 
@@ -432,6 +485,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           }
         });
         _notifyVariant();
+        if (_isUnassignedSelected) {
+          _clampQuantityToMaxStock();
+        }
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -496,9 +552,37 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         setState(() {
           _isUnassignedSelected = false; // Deselect "Sans préférence"
           _selectedColorCode = colorCode;
-          _selectedSize = null; // Reset size when color changes
+
+          // Check if current _selectedSize is valid for this new color
+          if (_productDetails != null && _selectedSize != null) {
+            final matchingVariants = _productDetails!.variants.where(
+              (v) => v.colorCode == colorCode && v.size == _selectedSize,
+            );
+            if (matchingVariants.isEmpty) {
+              final availableSizes = _productDetails!.variants
+                  .where((v) => v.colorCode == colorCode && v.size.isNotEmpty)
+                  .map((v) => v.size)
+                  .toSet()
+                  .toList();
+              if (availableSizes.length == 1) {
+                _selectedSize = availableSizes.first;
+              } else {
+                _selectedSize = null;
+              }
+            }
+          } else if (_productDetails != null) {
+            final availableSizes = _productDetails!.variants
+                .where((v) => v.colorCode == colorCode && v.size.isNotEmpty)
+                .map((v) => v.size)
+                .toSet()
+                .toList();
+            if (availableSizes.length == 1) {
+              _selectedSize = availableSizes.first;
+            }
+          }
         });
         _notifyVariant();
+        _clampQuantityToMaxStock();
       },
       child: Padding(
         padding: const EdgeInsets.only(right: 12, top: 5),
@@ -540,6 +624,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           _selectedSize = text;
         });
         _notifyVariant();
+        _clampQuantityToMaxStock();
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

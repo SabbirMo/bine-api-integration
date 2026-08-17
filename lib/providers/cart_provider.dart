@@ -156,6 +156,32 @@ class CartProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateQuantity(int itemId, int newQuantity) async {
+    final item = _getItem(itemId);
+    if (item == null || newQuantity < 1 || item.quantity == newQuantity) return;
+
+    final oldQuantity = item.quantity;
+    final price = _getPrice(item);
+
+    item.quantity = newQuantity;
+    if (_cart != null) {
+      _cart!.total += price * (newQuantity - oldQuantity);
+    }
+    notifyListeners();
+
+    try {
+      await _apiServices.patch(
+        '/api/mobile/cart/$itemId/',
+        data: {'quantity': newQuantity},
+        requireAuth: true,
+      );
+      await fetchCart(showLoading: false);
+    } catch (e) {
+      debugPrint("Error updating cart quantity: $e");
+      await fetchCart(showLoading: false);
+    }
+  }
+
   Future<void> decrement(int itemId) async {
     final item = _getItem(itemId);
     if (item == null || item.quantity <= 1) return;

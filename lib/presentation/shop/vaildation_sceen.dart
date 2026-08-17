@@ -94,6 +94,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   (item) => Padding(
                     padding: const EdgeInsets.only(bottom: 12.0),
                     child: CartItemValidationCard(
+                      key: ValueKey(item.id),
                       item: item,
                       onSelectionChanged: (isValid, variantId) {
                         setState(() {
