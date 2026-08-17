@@ -28,20 +28,27 @@ class _ProfileViewState extends State<ProfileView> {
   }
 
   Future<void> _loadProfileData() async {
-    final storedName = await TokenStorage.getName();
-    final storedEmail = await TokenStorage.getEmail();
-    final storedImage = await TokenStorage.getProfileImage();
+    final results = await Future.wait([
+      TokenStorage.getName(),
+      TokenStorage.getEmail(),
+      TokenStorage.getProfileImage(),
+    ]);
+    final storedName = results[0];
+    final storedEmail = results[1];
+    final storedImage = results[2];
 
-    setState(() {
-      name = (storedName == null || storedName == "null" || storedName.isEmpty)
-          ? "Utilisateur"
-          : storedName;
-      email = (storedEmail == null || storedEmail == "null") ? "" : storedEmail;
-      profileImage =
-          (storedImage == "null" || storedImage == null || storedImage.isEmpty)
-          ? null
-          : storedImage;
-    });
+    if (mounted) {
+      setState(() {
+        name = (storedName == null || storedName == "null" || storedName.isEmpty)
+            ? "Utilisateur"
+            : storedName;
+        email = (storedEmail == null || storedEmail == "null") ? "" : storedEmail;
+        profileImage =
+            (storedImage == "null" || storedImage == null || storedImage.isEmpty)
+            ? null
+            : storedImage;
+      });
+    }
   }
 
   @override

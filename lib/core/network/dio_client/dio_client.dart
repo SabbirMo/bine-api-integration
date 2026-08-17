@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 class DioClient {
   static Dio? _dio;
+  static Dio? _dioWithoutAuth;
 
   // Singleton pattern to ensure only one instance of Dio is used throughout the app
   static Dio get instance {
@@ -20,41 +21,58 @@ class DioClient {
       );
 
       _dio!.interceptors.add(AuthInterceptor(_dio!));
+      if (kDebugMode) {
+        _dio!.interceptors.add(
+          LogInterceptor(
+            requestBody: true,
+            responseBody: true,
+            error: true,
+            requestHeader: true,
+            responseHeader: false,
+          ),
+        );
+      }
     }
     return _dio!;
   }
 
-  //login and signup api calls should not have auth interceptor
+  // Login and signup api calls should not have auth interceptor.
+  // Cached as singleton to enable TCP/TLS connection reuse and HTTP Keep-Alive.
   static Dio get instanceWithoutAuth {
-    final dio = Dio(
-      BaseOptions(
-        baseUrl: BaseUrl.baseUrl,
-        connectTimeout: const Duration(seconds: 60),
-        receiveTimeout: const Duration(seconds: 60),
-        sendTimeout: const Duration(seconds: 60),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      ),
-    );
-
-    if (kDebugMode) {
-      dio.interceptors.add(
-        LogInterceptor(
-          requestBody: true,
-          responseBody: true,
-          error: true,
-          requestHeader: true,
-          responseHeader: false,
+    if (_dioWithoutAuth == null) {
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: BaseUrl.baseUrl,
+          connectTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 60),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
         ),
       );
+
+      if (kDebugMode) {
+        dio.interceptors.add(
+          LogInterceptor(
+            requestBody: true,
+            responseBody: true,
+            error: true,
+            requestHeader: true,
+            responseHeader: false,
+          ),
+        );
+      }
+      _dioWithoutAuth = dio;
     }
-    return dio;
+    return _dioWithoutAuth!;
   }
 
   static void reset() {
     _dio?.close();
     _dio = null;
+    _dioWithoutAuth?.close();
+    _dioWithoutAuth = null;
   }
 }

@@ -16,6 +16,7 @@ class LoginProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
 
   Future<bool> loginWithApple() async {
+    final stopwatch = Stopwatch()..start();
     try {
       isAppleLoading = true;
       errorMessage = null;
@@ -26,13 +27,14 @@ class LoginProvider extends ChangeNotifier {
       if (appleAuthData != null) {
         final firebaseIdToken = appleAuthData['firebaseIdToken'];
 
+        final apiStart = stopwatch.elapsedMilliseconds;
         final response = await apiServices.post(
           '/api/auth/auth/google/',
           data: {"id_token": firebaseIdToken},
           requireAuth: false,
         );
-
-        log("Apple Login Response: $response");
+        final apiEnd = stopwatch.elapsedMilliseconds;
+        log("Apple login backend API returned in ${apiEnd - apiStart}ms: $response");
 
         final data = response.data;
 
@@ -44,21 +46,20 @@ class LoginProvider extends ChangeNotifier {
             data['user']?['profile_photo_url'] ??
             appleAuthData['photoUrl'] ??
             '';
-
         final userId = data['user']?['id']?.toString() ?? '';
 
-        await TokenStorage.saveAccessToken(data['access']);
-        await TokenStorage.saveRefreshToken(data['refresh']);
-        await TokenStorage.saveName(name.toString());
-        await TokenStorage.saveEmail(userEmail.toString());
-        await TokenStorage.saveProfileImage(profileImage.toString());
-        if (userId.isNotEmpty) {
-          await TokenStorage.saveUserId(userId);
-        }
+        await TokenStorage.saveUserSession(
+          accessToken: data['access']?.toString() ?? '',
+          refreshToken: data['refresh']?.toString() ?? '',
+          name: name.toString(),
+          email: userEmail.toString(),
+          profileImage: profileImage.toString(),
+          userId: userId.isNotEmpty ? userId : null,
+        );
 
-        await FirebaseService.instance.registerCurrentToken();
+        FirebaseService.instance.registerCurrentToken();
 
-        log("Apple Login Successful");
+        log("Apple Login Successful (total: ${stopwatch.elapsedMilliseconds}ms)");
         return true;
       }
 
@@ -66,7 +67,7 @@ class LoginProvider extends ChangeNotifier {
       errorMessage = null;
       return false;
     } catch (e, stack) {
-      log("Apple Login Failed $e");
+      log("Apple Login Failed after ${stopwatch.elapsedMilliseconds}ms: $e");
       debugPrint("Stacktrace: $stack");
       errorMessage = "Connexion Apple échouée: ${e.toString()}";
       return false;
@@ -77,6 +78,7 @@ class LoginProvider extends ChangeNotifier {
   }
 
   Future<bool> loginWithGoogle() async {
+    final stopwatch = Stopwatch()..start();
     try {
       isGoogleLoading = true;
       errorMessage = null;
@@ -88,13 +90,14 @@ class LoginProvider extends ChangeNotifier {
         final tokenToSend =
             googleAuthData['firebaseIdToken'] ?? googleAuthData['idToken'];
 
+        final apiStart = stopwatch.elapsedMilliseconds;
         final response = await apiServices.post(
           '/api/auth/auth/google/',
           data: {"id_token": tokenToSend},
           requireAuth: false,
         );
-
-        debugPrint("Google Login Response: $response");
+        final apiEnd = stopwatch.elapsedMilliseconds;
+        debugPrint("Google login backend API returned in ${apiEnd - apiStart}ms: $response");
 
         final data = response.data;
 
@@ -106,22 +109,24 @@ class LoginProvider extends ChangeNotifier {
             data['user']?['profile_photo_url'] ??
             googleAuthData['photoUrl'] ??
             '';
-
         final userId = data['user']?['id']?.toString() ?? '';
 
-        await TokenStorage.saveAccessToken(data['access']);
-        await TokenStorage.saveRefreshToken(data['refresh']);
-        await TokenStorage.saveName(name.toString());
-        await TokenStorage.saveEmail(userEmail.toString());
-        await TokenStorage.saveProfileImage(profileImage.toString());
-        if (userId.isNotEmpty) {
-          await TokenStorage.saveUserId(userId);
-        }
+        final storageStart = stopwatch.elapsedMilliseconds;
+        await TokenStorage.saveUserSession(
+          accessToken: data['access']?.toString() ?? '',
+          refreshToken: data['refresh']?.toString() ?? '',
+          name: name.toString(),
+          email: userEmail.toString(),
+          profileImage: profileImage.toString(),
+          userId: userId.isNotEmpty ? userId : null,
+        );
+        final storageEnd = stopwatch.elapsedMilliseconds;
+        debugPrint("Session tokens saved in ${storageEnd - storageStart}ms");
 
         // Register token in the background so it doesn't block the login flow
         FirebaseService.instance.registerCurrentToken();
 
-        debugPrint("Google Login Successful");
+        debugPrint("Google Login Successful (total: ${stopwatch.elapsedMilliseconds}ms)");
         return true;
       }
 
@@ -129,7 +134,7 @@ class LoginProvider extends ChangeNotifier {
       errorMessage = null;
       return false;
     } catch (e, stack) {
-      debugPrint("Google Login Failed: $e");
+      debugPrint("Google Login Failed after ${stopwatch.elapsedMilliseconds}ms: $e");
       debugPrint("Stacktrace: $stack");
       errorMessage = "Connexion Google échouée: ${e.toString()}";
       return false;
@@ -155,23 +160,21 @@ class LoginProvider extends ChangeNotifier {
       final name = data['user']['name'];
       final userEmail = data['user']['email'];
       final profileImage = data['user']['profile_photo_url'];
-
       final userId = data['user']['id'];
 
-      await TokenStorage.saveAccessToken(data['access']);
-
-      await TokenStorage.saveRefreshToken(data['refresh']);
-      await TokenStorage.saveName(name.toString());
-      await TokenStorage.saveEmail(userEmail.toString());
-      await TokenStorage.saveProfileImage(profileImage.toString());
-      if (userId != null) {
-        await TokenStorage.saveUserId(userId.toString());
-      }
+      await TokenStorage.saveUserSession(
+        accessToken: data['access']?.toString() ?? '',
+        refreshToken: data['refresh']?.toString() ?? '',
+        name: name?.toString() ?? '',
+        email: userEmail?.toString() ?? '',
+        profileImage: profileImage?.toString() ?? '',
+        userId: userId?.toString(),
+      );
 
       // Register token in the background so it doesn't block the login flow
       FirebaseService.instance.registerCurrentToken();
 
-      log("Login Successfull $response");
+      log("Login Successful $response");
     } catch (e) {
       log("Login Failed $e");
       rethrow;

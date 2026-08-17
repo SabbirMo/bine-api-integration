@@ -193,20 +193,23 @@ class CartProvider extends ChangeNotifier {
   }
 
   Future<void> addToCart(ProductModel product, {int quantity = 1}) async {
-    if (product.status == "out_of_stock") {
-      log("Cannot add to cart: Product is out of stock.");
-      return;
+    if (product.isOutOfStock) {
+      debugPrint("❌ Cannot add to cart: Product is out of stock (ID: ${product.id}, TotalStock: ${product.totalStock}, Status: ${product.status})");
+      throw Exception("Ce produit est en rupture de stock !");
     }
     try {
+      debugPrint("🛒 [AddToCart Request]: POST /api/mobile/cart/ with {'product_id': ${product.id}, 'quantity': $quantity}");
       final response = await _apiServices.post(
         '/api/mobile/cart/',
         data: {'product_id': product.id, 'quantity': quantity},
         requireAuth: true,
       );
+      debugPrint("✅ [AddToCart Success]: ${response.data}");
       await fetchCart(showLoading: false);
-      log("Response: ${response.data}");
     } catch (e) {
+      debugPrint("❌ [AddToCart Error]: $e");
       _errorMessage = e.toString();
+      rethrow;
     }
   }
 

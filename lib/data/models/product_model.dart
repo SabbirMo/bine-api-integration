@@ -66,7 +66,18 @@ class ProductModel {
   bool get isMixedMode =>
       stockMode == 'mixed' || (variants.isNotEmpty && unassignedStock > 0);
   bool get isOutOfStock =>
-      status == 'out_of_stock' || (totalStock <= 0 && status != 'pre_order');
+      status == 'out_of_stock' ||
+      (totalStock <= 0 && status != 'pre_order' && status != 'in_stock');
+
+  static double _parsePrice(dynamic value, [double fallback = 0.0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final clean = value.replaceAll(' ', '').replaceAll(',', '.').trim();
+      return double.tryParse(clean) ?? fallback;
+    }
+    return fallback;
+  }
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
     final parsedVariants = json['variants'] != null && json['variants'] is List
@@ -80,7 +91,29 @@ class ProductModel {
               .toList()
         : <ProductVariantModel>[];
 
-    final rawStockQuantity = json['stock_quantity'] is num
+    final rawMediaList = json['product_media'] ?? json['media'];
+    final parsedMedia = rawMediaList is List
+        ? rawMediaList
+              .where((i) => i != null)
+              .map(
+                (i) => MediaModel.fromJson(
+                  Map<String, dynamic>.from(i is Map ? i : {}),
+                ),
+              )
+              .toList()
+        : <MediaModel>[];
+
+    String? mainImg = json['main_image']?.toString();
+    if (mainImg == null || mainImg.isEmpty) {
+      for (var m in parsedMedia) {
+        if (m.mediaType == 'image' && m.effectiveMediaUrl.isNotEmpty) {
+          mainImg = m.effectiveMediaUrl;
+          break;
+        }
+      }
+    }
+
+    int rawStockQuantity = json['stock_quantity'] is num
         ? (json['stock_quantity'] as num).toInt()
         : int.tryParse(json['stock_quantity']?.toString() ?? '0') ?? 0;
 
@@ -88,18 +121,24 @@ class ProductModel {
         ? (json['unassigned_stock'] as num).toInt()
         : int.tryParse(json['unassigned_stock']?.toString() ?? '0') ?? 0;
 
-    final rawTotalStock = json['total_stock'] is num
+    if (rawStockQuantity == 0 && rawUnassigned > 0) {
+      rawStockQuantity = rawUnassigned;
+    }
+
+    int rawTotalStock = json['total_stock'] is num
         ? (json['total_stock'] as num).toInt()
-        : int.tryParse(json['total_stock']?.toString() ?? '') ??
-              (json['stock'] is num
-                  ? (json['stock'] as num).toInt()
-                  : (parsedVariants.isEmpty
-                        ? rawStockQuantity
-                        : parsedVariants.fold<int>(
-                                0,
-                                (sum, v) => sum + v.stockQuantity,
-                              ) +
-                              rawUnassigned));
+        : (int.tryParse(json['total_stock']?.toString() ?? '') ??
+              (json['stock'] is num ? (json['stock'] as num).toInt() : 0));
+
+    if (rawTotalStock == 0) {
+      if (parsedVariants.isEmpty) {
+        rawTotalStock = rawStockQuantity > 0 ? rawStockQuantity : rawUnassigned;
+      } else {
+        rawTotalStock =
+            parsedVariants.fold<int>(0, (sum, v) => sum + v.stockQuantity) +
+            rawUnassigned;
+      }
+    }
 
     final rawStock = json['stock'] is num
         ? (json['stock'] as num).toInt()
@@ -118,6 +157,28 @@ class ProductModel {
 
     final bool noVar = json['no_variant'] == true || mode == 'product';
 
+    final sellingNum = _parsePrice(json['selling_price']);
+    final discountNum = _parsePrice(json['discount_percentage']);
+
+    double pad = 0.0;
+    if (json['price_after_discount'] != null) {
+      pad = _parsePrice(json['price_after_discount'], sellingNum);
+    } else if (discountNum > 0 && sellingNum > 0) {
+      pad = sellingNum * (1.0 - (discountNum / 100.0));
+    } else {
+      pad = sellingNum;
+    }
+
+    final catIdRaw = json['category_id'] ?? json['category'];
+    final int categoryId = catIdRaw is num
+        ? catIdRaw.toInt()
+        : (int.tryParse(catIdRaw?.toString() ?? '0') ?? 0);
+
+    final subCatIdRaw = json['subcategory_id'] ?? json['subcategory'];
+    final int? subcategoryId = subCatIdRaw is num
+        ? subCatIdRaw.toInt()
+        : int.tryParse(subCatIdRaw?.toString() ?? '');
+
     debugPrint(
       "🏷️ [ProductModel]: ID=${json['id']}, Name=${json['product_name']}, Mode=$mode, TotalStock=$rawTotalStock, Unassigned=$rawUnassigned, Variants=${parsedVariants.length}",
     );
@@ -127,32 +188,16 @@ class ProductModel {
           ? (json['id'] as num).toInt()
           : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
       productName: json['product_name']?.toString() ?? '',
-      categoryId: json['category_id'] is num
-          ? (json['category_id'] as num).toInt()
-          : (int.tryParse(json['category_id']?.toString() ?? '0') ?? 0),
+      categoryId: categoryId,
       categoryName: json['category_name']?.toString() ?? '',
-      subcategoryId: json['subcategory_id'] is num
-          ? (json['subcategory_id'] as num).toInt()
-          : int.tryParse(json['subcategory_id']?.toString() ?? ''),
+      subcategoryId: subcategoryId,
       subcategoryName: json['subcategory_name']?.toString(),
       sellingPrice: json['selling_price']?.toString() ?? '0',
       discountPercentage: json['discount_percentage']?.toString() ?? '0',
-      priceAfterDiscount:
-          (json['price_after_discount'] as num?)?.toDouble() ??
-          (double.tryParse(json['price_after_discount']?.toString() ?? '0') ??
-              0.0),
+      priceAfterDiscount: pad,
       status: json['status']?.toString() ?? '',
-      mainImage: json['main_image']?.toString(),
-      media: json['media'] != null && json['media'] is List
-          ? (json['media'] as List)
-                .where((i) => i != null)
-                .map(
-                  (i) => MediaModel.fromJson(
-                    Map<String, dynamic>.from(i is Map ? i : {}),
-                  ),
-                )
-                .toList()
-          : [],
+      mainImage: mainImg,
+      media: parsedMedia,
       actualPrice: json['actual_price']?.toString(),
       deliveryPrice: json['delivery_price']?.toString(),
       description: json['description']?.toString(),
@@ -174,25 +219,40 @@ class MediaModel {
   final String mediaType; // "image", "video", "audio"
   final String mediaUrl;
   final String? hlsUrl;
+  final String? thumbnailUrl;
+  final String? videoStatus;
+  final double? videoDuration;
 
   MediaModel({
     required this.id,
     required this.mediaType,
     required this.mediaUrl,
     this.hlsUrl,
+    this.thumbnailUrl,
+    this.videoStatus,
+    this.videoDuration,
   });
 
-  String get effectiveMediaUrl =>
-      (mediaUrl.trim().isNotEmpty) ? mediaUrl : (hlsUrl ?? '');
+  String get effectiveMediaUrl {
+    if (mediaUrl.trim().isNotEmpty) return mediaUrl;
+    if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) return hlsUrl!;
+    return '';
+  }
 
   factory MediaModel.fromJson(Map<String, dynamic> json) {
+    final rawUrl = json['media_url'] ?? json['media_file'];
     return MediaModel(
       id: json['id'] is num
           ? (json['id'] as num).toInt()
           : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
       mediaType: json['media_type']?.toString() ?? '',
-      mediaUrl: json['media_url']?.toString() ?? '',
+      mediaUrl: rawUrl?.toString() ?? '',
       hlsUrl: json['hls_url']?.toString(),
+      thumbnailUrl: json['thumbnail_url']?.toString(),
+      videoStatus: json['video_status']?.toString(),
+      videoDuration: json['video_duration'] is num
+          ? (json['video_duration'] as num).toDouble()
+          : double.tryParse(json['video_duration']?.toString() ?? ''),
     );
   }
 }

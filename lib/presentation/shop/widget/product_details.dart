@@ -349,32 +349,52 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     return;
                   }
 
-                  context.read<CartProvider>().addToCart(_product);
-                  FireworksOverlay.show(context);
+                  try {
+                    await context.read<CartProvider>().addToCart(_product);
+                    if (!mounted) return;
+                    FireworksOverlay.show(context);
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text(
-                        "Produit ajouté au panier avec succès !",
-                        textAlign: TextAlign.center, // Optional: center text
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                          "Produit ajouté au panier avec succès !",
+                          textAlign: TextAlign.center,
+                        ),
+                        backgroundColor: const Color(0xFFFF6900),
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        margin: const EdgeInsets.all(20),
                       ),
-                      backgroundColor: const Color(0xFFFF6900),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                    );
+                    await Future.delayed(const Duration(seconds: 1));
+                    if (!mounted) return;
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true, // Allows it to take more height
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const CartBottomSheet(),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          "Impossible d'ajouter au panier : $e",
+                          textAlign: TextAlign.center,
+                        ),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 3),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        margin: const EdgeInsets.all(20),
                       ),
-                      margin: const EdgeInsets.all(20),
-                    ),
-                  );
-                  await Future.delayed(const Duration(seconds: 2));
-                  if (!mounted) return;
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true, // Allows it to take more height
-                    backgroundColor: Colors.transparent,
-                    builder: (context) => const CartBottomSheet(),
-                  );
+                    );
+                  }
                 },
                 child: _buildActionIcon(Icons.add, "Panier"),
               ),
@@ -599,19 +619,38 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                           ),
                         );
 
+                        bool success = false;
                         try {
                           await context.read<CartProvider>().addToCart(
                             _product,
                           );
+                          success = true;
                         } catch (e) {
                           debugPrint("Error adding product to cart: $e");
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  "Impossible de passer la commande : $e",
+                                  textAlign: TextAlign.center,
+                                ),
+                                backgroundColor: Colors.red,
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 3),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                margin: const EdgeInsets.all(20),
+                              ),
+                            );
+                          }
                         } finally {
                           if (context.mounted) {
                             Navigator.pop(context); // Dismiss loading dialog
                           }
                         }
 
-                        if (!context.mounted) return;
+                        if (!context.mounted || !success) return;
                         Navigator.push(
                           context,
                           MaterialPageRoute(

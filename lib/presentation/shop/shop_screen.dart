@@ -176,135 +176,140 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
           // Wait briefly to allow loading indicators to show.
           await Future.delayed(const Duration(milliseconds: 800));
         },
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Horizontal Category Selector
-                  SizedBox(
-                    height: 100,
-                    child: isLoading
-                        ? const Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.orange,
+        child: SafeArea(
+          bottom: true,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Horizontal Category Selector
+                    SizedBox(
+                      height: 100,
+                      child: isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.orange,
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _categoryScrollController,
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              itemCount: categories.length,
+                              itemBuilder: (context, index) =>
+                                  _buildCategoryItem(categories[index], index),
                             ),
-                          )
-                        : ListView.builder(
-                            controller: _categoryScrollController,
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: categories.length,
-                            itemBuilder: (context, index) =>
-                                _buildCategoryItem(categories[index], index),
-                          ),
-                  ),
-
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            "$selectedCategoryName catégori",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: () {
-                            setState(() {
-                              isSubcategoryShow = !isSubcategoryShow;
-                            });
-                          },
-                          constraints: const BoxConstraints(),
-                          padding: EdgeInsets.zero,
-                          icon: const Icon(
-                            Icons.close_rounded,
-                            color: Colors.black,
-                            size: 24,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
 
-                  //sub category show here
-                  if (currentSubCategories.isNotEmpty)
-                    isSubcategoryShow
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            child: Wrap(
-                              spacing: 10.0,
-                              runSpacing: 10.0,
-                              children: List.generate(
-                                currentSubCategories.length,
-                                (index) => _buildSubCategoryItem(
-                                  currentSubCategories[index],
-                                  index,
-                                ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              "$selectedCategoryName catégori",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          )
-                        : const SizedBox(),
-                  const SizedBox(height: 10),
-                ],
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                isSubcategoryShow = !isSubcategoryShow;
+                              });
+                            },
+                            constraints: const BoxConstraints(),
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.black,
+                              size: 24,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    //sub category show here
+                    if (currentSubCategories.isNotEmpty)
+                      isSubcategoryShow
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              child: Wrap(
+                                spacing: 10.0,
+                                runSpacing: 10.0,
+                                children: List.generate(
+                                  currentSubCategories.length,
+                                  (index) => _buildSubCategoryItem(
+                                    currentSubCategories[index],
+                                    index,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : const SizedBox(),
+                    const SizedBox(height: 10),
+                  ],
+                ),
               ),
-            ),
-            // Product Grid
-            isProductsLoading
-                ? const SliverFillRemaining(
-                    child: Center(
-                      child: CircularProgressIndicator(color: Colors.orange),
-                    ),
-                  )
-                : filteredProductCards.isEmpty
-                ? const SliverFillRemaining(
-                    child: Center(child: Text("Aucun produit trouvé")),
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.75,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                          ),
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        return InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ProductDetailsScreen(
-                                  allProducts: filteredProducts,
-                                  initialProductIndex: index,
+              // Product Grid
+              isProductsLoading
+                  ? const SliverFillRemaining(
+                      child: Center(
+                        child: CircularProgressIndicator(color: Colors.orange),
+                      ),
+                    )
+                  : filteredProductCards.isEmpty
+                  ? const SliverFillRemaining(
+                      child: Center(child: Text("Aucun produit trouvé")),
+                    )
+                  : SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      sliver: SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 0.75,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                            ),
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          return InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ProductDetailsScreen(
+                                    allProducts: filteredProducts,
+                                    initialProductIndex: index,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                          child: filteredProductCards[index],
-                        );
-                      }, childCount: filteredProductCards.length),
+                              );
+                            },
+                            child: filteredProductCards[index],
+                          );
+                        }, childCount: filteredProductCards.length),
+                      ),
                     ),
-                  ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -9,6 +9,32 @@ class TokenStorage {
   static const String _profileImageKey = 'profile_photo_url';
   static const String _userIdKey = 'user_id';
 
+  // Batch save user session in parallel with a single SharedPreferences instance
+  static Future<bool> saveUserSession({
+    required String accessToken,
+    required String refreshToken,
+    required String name,
+    required String email,
+    required String profileImage,
+    String? userId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await Future.wait([
+        prefs.setString(_accessTokenKey, accessToken),
+        prefs.setString(_refreshTokenKey, refreshToken),
+        prefs.setString(_nameKey, name),
+        prefs.setString(_emailKey, email),
+        prefs.setString(_profileImageKey, profileImage),
+        if (userId != null && userId.isNotEmpty)
+          prefs.setString(_userIdKey, userId),
+      ]);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Save access token
   static Future<bool> saveAccessToken(String token) async {
     try {
@@ -160,13 +186,18 @@ class TokenStorage {
     }
   }
 
-  // Clear all tokens (for logout)
+  // Clear all session tokens & profile data (for logout)
   static Future<bool> clearTokens() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_accessTokenKey);
-      await prefs.remove(_refreshTokenKey);
-      await prefs.remove(_userIdKey);
+      await Future.wait([
+        prefs.remove(_accessTokenKey),
+        prefs.remove(_refreshTokenKey),
+        prefs.remove(_userIdKey),
+        prefs.remove(_nameKey),
+        prefs.remove(_emailKey),
+        prefs.remove(_profileImageKey),
+      ]);
       return true;
     } catch (e) {
       return false;

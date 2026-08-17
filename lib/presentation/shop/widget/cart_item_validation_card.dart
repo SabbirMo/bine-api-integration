@@ -52,7 +52,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         _isUnassignedSelected = false;
       });
 
-      if (details == null || details.isProductMode || details.variants.isEmpty) {
+      if (details == null ||
+          details.isProductMode ||
+          details.variants.isEmpty) {
         // Product mode: automatically valid, no variant_id
         _notify(isValid: true, variantId: null);
       } else {
@@ -281,49 +283,6 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
 
   Widget _buildStockAndVariantsSection(ProductModel product) {
     // Mode 1: Product Mode (no variants)
-    if (product.isProductMode || product.variants.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 12.0),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: product.totalStock > 0
-                    ? const Color(0xFFE8F5E9)
-                    : const Color(0xFFFFEBEE),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    product.totalStock > 0 ? Icons.check_circle : Icons.cancel,
-                    size: 14,
-                    color: product.totalStock > 0
-                        ? const Color(0xFF2E7D32)
-                        : const Color(0xFFC62828),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    product.totalStock > 0
-                        ? "En stock (${product.totalStock} disponible${product.totalStock > 1 ? 's' : ''})"
-                        : "Rupture de stock",
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: product.totalStock > 0
-                          ? const Color(0xFF2E7D32)
-                          : const Color(0xFFC62828),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
 
     // Mode 2 & Mode 3: Variant or Mixed Mode
     final variants = product.variants;
@@ -341,8 +300,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     // Filter sizes based on selected color
     final List<ProductVariantModel> filteredVariants;
     if (_selectedColorCode != null) {
-      filteredVariants =
-          variants.where((v) => v.colorCode == _selectedColorCode).toList();
+      filteredVariants = variants
+          .where((v) => v.colorCode == _selectedColorCode)
+          .toList();
     } else {
       filteredVariants = variants;
     }
@@ -377,7 +337,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                   "🎨 Couleur",
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
-                if (_selectedColorCode != null && uniqueColors.containsKey(_selectedColorCode))
+                if (_selectedColorCode != null &&
+                    uniqueColors.containsKey(_selectedColorCode))
                   Text(
                     uniqueColors[_selectedColorCode]!,
                     style: const TextStyle(
@@ -433,8 +394,11 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded,
-                      color: Colors.red, size: 18),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.red,
+                    size: 18,
+                  ),
                   SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -524,7 +488,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   }
 
   Widget _colorDot(Color color, String colorCode, String name) {
-    final bool isSelected = _selectedColorCode == colorCode && !_isUnassignedSelected;
+    final bool isSelected =
+        _selectedColorCode == colorCode && !_isUnassignedSelected;
 
     return GestureDetector(
       onTap: () {
@@ -605,16 +570,16 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                 decoration: isOutOfStock ? TextDecoration.lineThrough : null,
               ),
             ),
-            if (stockQuantity > 0) ...[
-              const SizedBox(width: 4),
-              Text(
-                "($stockQuantity)",
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isSelected ? const Color(0xFFFF6900) : Colors.grey,
-                ),
-              ),
-            ],
+            // if (stockQuantity > 0) ...[
+            //   const SizedBox(width: 4),
+            //   Text(
+            //     "($stockQuantity)",
+            //     style: TextStyle(
+            //       fontSize: 10,
+            //       color: isSelected ? const Color(0xFFFF6900) : Colors.grey,
+            //     ),
+            //   ),
+            // ],
             if (isOutOfStock) ...[
               const SizedBox(width: 4),
               Icon(Icons.block, size: 14, color: Colors.red.shade300),

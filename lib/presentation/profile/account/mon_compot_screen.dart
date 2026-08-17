@@ -33,7 +33,7 @@ class _MonCompteScreenState extends State<MonCompteScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final newProvider = Provider.of<LoginProvider>(context);
+    final newProvider = Provider.of<LoginProvider>(context, listen: false);
     if (_loginProvider != newProvider) {
       _loginProvider?.removeListener(_checkLoginStatus);
       _loginProvider = newProvider;
