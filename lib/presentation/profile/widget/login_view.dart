@@ -97,7 +97,7 @@ class LoginView extends StatelessWidget {
                       ), // Use a local asset in production
                       const SizedBox(width: 12),
                       const Text(
-                        "Se Continuer avec Google",
+                        "Continuer avec Google",
                         style: TextStyle(color: Colors.black, fontSize: 16),
                       ),
                     ],
@@ -108,6 +108,21 @@ class LoginView extends StatelessWidget {
             onPressed: loginProvider.isAppleLoading
                 ? null
                 : () async {
+                    // If not iOS (e.g. Android), show friendly guidance message instead of error
+                    if (Theme.of(context).platform != TargetPlatform.iOS) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "La connexion avec Apple est disponible sur les appareils iOS. Veuillez continuer avec Google.",
+                          ),
+                          backgroundColor: Color(0xFFFF8A00),
+                          behavior: SnackBarBehavior.floating,
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                      return;
+                    }
+
                     final success = await loginProvider.loginWithApple();
                     if (success) {
                       if (context.mounted) {
