@@ -53,18 +53,30 @@ class CartItemModel {
   });
 
   factory CartItemModel.fromJson(Map<String, dynamic> json) {
+    final variantData = json['variant'] is Map<String, dynamic>
+        ? json['variant'] as Map<String, dynamic>
+        : null;
+
+    final rawVariantId = variantData != null
+        ? variantData['id']
+        : json['variant_id'];
+
+    final int? parsedVariantId = rawVariantId != null && rawVariantId != 0
+        ? (rawVariantId is num ? rawVariantId.toInt() : int.tryParse(rawVariantId.toString()))
+        : null;
+
     return CartItemModel(
       id: json['id'] ?? 0,
-      productId: json['product_id'] ?? 0,
-      variantId: json['variant_id'],
-      productName: json['product_name'] ?? '',
-      sellingPrice: CartModel._parseDouble(json['selling_price']),
-      priceAfterDiscount: CartModel._parseDouble(json['price_after_discount']),
-      mainImage: json['main_image'],
+      productId: json['product_id'] ?? (json['product'] is Map ? json['product']['id'] ?? 0 : 0),
+      variantId: parsedVariantId,
+      productName: json['product_name'] ?? (json['product'] is Map ? json['product']['product_name'] ?? '' : ''),
+      sellingPrice: CartModel._parseDouble(json['selling_price'] ?? (json['product'] is Map ? json['product']['selling_price'] : null)),
+      priceAfterDiscount: CartModel._parseDouble(json['price_after_discount'] ?? (json['product'] is Map ? json['product']['price_after_discount'] : null)),
+      mainImage: json['main_image'] ?? (json['product'] is Map ? json['product']['main_image'] : null),
       quantity: json['quantity'] ?? 0,
-      colorName: json['color_name'],
-      colorCode: json['color_code'],
-      size: json['size'],
+      colorName: variantData != null ? variantData['color_name'] : json['color_name'],
+      colorCode: variantData != null ? variantData['color_code'] : json['color_code'],
+      size: variantData != null ? variantData['size'] : json['size'],
     );
   }
 }

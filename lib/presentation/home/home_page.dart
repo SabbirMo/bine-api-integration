@@ -10,6 +10,7 @@ import 'package:binetatour/presentation/shop/widget/shop_product_card.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/home_provider.dart';
@@ -120,7 +121,7 @@ class _AccueilScreenState extends State<AccueilScreen>
         actions: [
           GestureDetector(
             onTap: () async {
-              const String phoneNumber = "+221771635015";
+              final String phoneNumber = dotenv.env["WHATSAPP_PHONE"] ?? "";
 
               final String cleanPhone = phoneNumber.replaceAll(
                 RegExp(r'[^\d]'),

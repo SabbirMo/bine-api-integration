@@ -216,6 +216,14 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                if ((item.colorName != null && item.colorName!.isNotEmpty) ||
+                    (item.size != null && item.size!.isNotEmpty)) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    "${item.colorName ?? ''} ${item.size != null && item.size!.isNotEmpty ? '(${item.size})' : ''}".trim(),
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 // Counter UI
                 Container(

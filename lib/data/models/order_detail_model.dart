@@ -108,10 +108,10 @@ class OrderItemModel {
   final int productId;
   final String productName;
   final String mainImage;
-  final int variantId;
-  final String colorName;
-  final String colorCode;
-  final String size;
+  final int? variantId;
+  final String? colorName;
+  final String? colorCode;
+  final String? size;
   final int quantity;
   final String unitPrice;
   final double subtotal;
@@ -121,25 +121,49 @@ class OrderItemModel {
     required this.productId,
     required this.productName,
     required this.mainImage,
-    required this.variantId,
-    required this.colorName,
-    required this.colorCode,
-    required this.size,
+    this.variantId,
+    this.colorName,
+    this.colorCode,
+    this.size,
     required this.quantity,
     required this.unitPrice,
     required this.subtotal,
   });
 
+  bool get hasVariant =>
+      (colorName != null && colorName!.isNotEmpty) ||
+      (size != null && size!.isNotEmpty) ||
+      (variantId != null && variantId! > 0);
+
+  String get variantDescription {
+    final parts = <String>[];
+    if (colorName != null && colorName!.isNotEmpty) parts.add(colorName!);
+    if (size != null && size!.isNotEmpty) parts.add("Taille: $size");
+    return parts.isNotEmpty ? parts.join(" ") : "Sans préférence";
+  }
+
   factory OrderItemModel.fromJson(Map<String, dynamic> json) {
+    final variantData = json['variant'] is Map<String, dynamic>
+        ? json['variant'] as Map<String, dynamic>
+        : null;
+
+    final rawVariantId = variantData != null
+        ? variantData['id']
+        : json['variant_id'];
+
+    final int? parsedVariantId = rawVariantId != null && rawVariantId != 0
+        ? (rawVariantId is num ? rawVariantId.toInt() : int.tryParse(rawVariantId.toString()))
+        : null;
+
     return OrderItemModel(
       id: json['id'] ?? 0,
-      productId: json['product_id'] ?? 0,
-      productName: json['product_name'] ?? '',
-      mainImage: json['main_image'] ?? '',
-      variantId: json['variant_id'] ?? 0,
-      colorName: json['color_name'] ?? '',
-      colorCode: json['color_code'] ?? '',
-      size: json['size'] ?? '',
+      productId: json['product_id'] ?? (json['product'] is Map ? json['product']['id'] ?? 0 : 0),
+      productName: json['product_name'] ?? (json['product'] is Map ? json['product']['product_name'] ?? '' : ''),
+      mainImage: json['main_image'] ?? (json['product'] is Map ? json['product']['main_image'] ?? '' : ''),
+      variantId: parsedVariantId,
+      colorName: variantData != null ? variantData['color_name'] : json['color_name'],
+      colorCode: variantData != null ? variantData['color_code'] : json['color_code'],
+      size: variantData != null ? variantData['size'] : json['size'],
       quantity: json['quantity'] ?? 0,
       unitPrice: json['unit_price']?.toString() ?? '0.00',
       subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,

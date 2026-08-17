@@ -21,8 +21,11 @@ class _ValidationScreenState extends State<ValidationScreen> {
   bool _isAvailableNow = true;
   String _formattedDate = "dd/mm/yyyy";
 
-  /// Maps cartItemId -> selected variantId (null means not yet selected)
+  /// Maps cartItemId -> selected variantId (null means no variant selected or "Sans préférence")
   final Map<int, int?> _selectedVariantIds = {};
+
+  /// Maps cartItemId -> whether the item is valid for order
+  final Map<int, bool> _validItems = {};
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _surnameController = TextEditingController();
@@ -92,8 +95,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
                     padding: const EdgeInsets.only(bottom: 12.0),
                     child: CartItemValidationCard(
                       item: item,
-                      onVariantSelected: (variantId) {
+                      onSelectionChanged: (isValid, variantId) {
                         setState(() {
+                          _validItems[item.id] = isValid;
                           _selectedVariantIds[item.id] = variantId;
                         });
                       },
@@ -373,17 +377,14 @@ class _ValidationScreenState extends State<ValidationScreen> {
                       onPressed: orderProvider.isLoading
                           ? null
                           : () async {
-                              // ── Validate: every item with variants must have a variant selected ──
+                              // ── Validate: every item must have a valid selection ──
                               final cartItems = cartProvider.cart?.items ?? [];
                               final List<String> missingVariantProducts = [];
 
                               for (final cartItem in cartItems) {
-                                final selectedVariant =
-                                    _selectedVariantIds[cartItem.id];
-                                if (!_selectedVariantIds.containsKey(
-                                      cartItem.id,
-                                    ) ||
-                                    selectedVariant == null) {
+                                final isValid =
+                                    _validItems[cartItem.id] ?? false;
+                                if (!isValid) {
                                   missingVariantProducts.add(
                                     cartItem.productName,
                                   );
@@ -410,7 +411,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            "$names : couleur ou taille non sélectionnée",
+                                            "$names : Veuillez choisir une option (variante ou sans préférence)",
                                             style: const TextStyle(
                                               color: Colors.white,
                                               fontSize: 13,
@@ -463,13 +464,18 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 }
                               }
 
-                              // Build items list with selected variant_id
+                              // Build items list with product_id and conditional variant_id
                               final items = cartItems.map((cartItem) {
-                                return {
-                                  "variant_id":
-                                      _selectedVariantIds[cartItem.id] ?? 0,
+                                final variantId =
+                                    _selectedVariantIds[cartItem.id];
+                                final itemMap = <String, dynamic>{
+                                  "product_id": cartItem.productId,
                                   "quantity": cartItem.quantity,
                                 };
+                                if (variantId != null && variantId > 0) {
+                                  itemMap["variant_id"] = variantId;
+                                }
+                                return itemMap;
                               }).toList();
 
                               String orderPaymentMethod;

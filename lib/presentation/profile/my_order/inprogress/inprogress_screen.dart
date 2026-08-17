@@ -630,15 +630,19 @@ class _InprogressScreenState extends State<InprogressScreen> {
               ),
               Row(
                 children: [
-                  Icon(
-                    Icons.circle,
-                    size: 8,
-                    color: _hexToColor(item.colorCode),
-                  ),
-                  const SizedBox(width: 4),
+                  if (item.colorCode != null && item.colorCode!.isNotEmpty) ...[
+                    Icon(
+                      Icons.circle,
+                      size: 8,
+                      color: _hexToColor(item.colorCode),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   Expanded(
                     child: Text(
-                      "${item.colorName}  Taille: ${item.size}  Qté: ${item.quantity}",
+                      item.hasVariant
+                          ? "${item.colorName ?? ''} ${item.size != null && item.size!.isNotEmpty ? 'Taille: ${item.size}' : ''}  Qté: ${item.quantity}".trim()
+                          : "Sans préférence  Qté: ${item.quantity}",
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 10, color: Colors.grey),
@@ -653,8 +657,8 @@ class _InprogressScreenState extends State<InprogressScreen> {
     );
   }
 
-  Color _hexToColor(String hexString) {
-    if (hexString.isEmpty) return Colors.transparent;
+  Color _hexToColor(String? hexString) {
+    if (hexString == null || hexString.isEmpty) return Colors.transparent;
     try {
       var hexColor = hexString.replaceAll("#", "");
       if (hexColor.length == 6) {

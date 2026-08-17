@@ -28,20 +28,32 @@ class ProductProvider extends ChangeNotifier {
       );
 
       final dynamic data = response.data;
+      debugPrint("📦 [API Response - Products List]: $data");
 
       if (data != null &&
           data is Map<String, dynamic> &&
           data.containsKey('results')) {
         _allProducts = (data['results'] as List)
-            .map((e) => ProductModel.fromJson(e))
+            .map(
+              (e) => ProductModel.fromJson(
+                Map<String, dynamic>.from(e is Map ? e : {}),
+              ),
+            )
             .toList();
       } else if (data is List) {
-        _allProducts = data.map((e) => ProductModel.fromJson(e)).toList();
+        _allProducts = data
+            .map(
+              (e) => ProductModel.fromJson(
+                Map<String, dynamic>.from(e is Map ? e : {}),
+              ),
+            )
+            .toList();
       } else {
         _allProducts = [];
       }
     } catch (e) {
       _errorMessage = e.toString();
+      debugPrint("❌ [Error Products List]: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -81,13 +93,14 @@ class ProductProvider extends ChangeNotifier {
         requireAuth: false,
       );
       final data = response.data;
+      debugPrint("📦 [API Response - Product Details ID: $id]: $data");
       if (data != null && data is Map<String, dynamic>) {
         final product = ProductModel.fromJson(data);
         _productDetailsCache[id] = product;
         return product;
       }
     } catch (e) {
-      debugPrint('Failed to fetch product details: $e');
+      debugPrint('❌ Failed to fetch product details ID: $id: $e');
     }
     return null;
   }

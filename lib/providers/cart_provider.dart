@@ -85,16 +85,26 @@ class CartProvider extends ChangeNotifier {
     }
 
     if (product != null) {
-      ProductVariantModel? matchingVariant;
-      // Search by variantId first
-      for (var v in product.variants) {
-        if (item.variantId != null && v.id == item.variantId) {
-          matchingVariant = v;
-          break;
+      int maxStock = product.totalStock;
+
+      if (item.variantId != null && item.variantId! > 0) {
+        ProductVariantModel? matchingVariant;
+        for (var v in product.variants) {
+          if (v.id == item.variantId) {
+            matchingVariant = v;
+            break;
+          }
         }
-      }
-      // If not found, try to match by color/size
-      if (matchingVariant == null && product.variants.isNotEmpty) {
+        if (matchingVariant != null) {
+          maxStock = matchingVariant.stockQuantity;
+        }
+      } else if (product.isMixedMode && product.unassignedStock > 0) {
+        maxStock = product.unassignedStock;
+      } else if (product.isProductMode) {
+        maxStock = product.totalStock > 0 ? product.totalStock : product.stockQuantity;
+      } else if (product.variants.isNotEmpty) {
+        // Variant mode with no variant yet or fallback
+        ProductVariantModel? matchingVariant;
         for (var v in product.variants) {
           bool colorMatch = (v.colorCode == item.colorCode) || (v.colorName == item.colorName);
           bool sizeMatch = v.size == item.size;
@@ -103,35 +113,30 @@ class CartProvider extends ChangeNotifier {
             break;
           }
         }
-      }
-
-      // Fallback: use first variant if still not matched
-      if (matchingVariant == null && product.variants.isNotEmpty) {
-        matchingVariant = product.variants.first;
-      }
-
-      if (matchingVariant != null) {
-        final maxStock = matchingVariant.stockQuantity;
-        if (item.quantity >= maxStock) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  "Stock disponible : $maxStock",
-                  textAlign: TextAlign.center,
-                ),
-                backgroundColor: const Color(0xFFFF6900),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 2),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                margin: const EdgeInsets.all(20),
-              ),
-            );
-          }
-          return;
+        if (matchingVariant != null) {
+          maxStock = matchingVariant.stockQuantity;
         }
+      }
+
+      if (maxStock > 0 && item.quantity >= maxStock) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "Stock disponible : $maxStock",
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: const Color(0xFFFF6900),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              margin: const EdgeInsets.all(20),
+            ),
+          );
+        }
+        return;
       }
     }
 

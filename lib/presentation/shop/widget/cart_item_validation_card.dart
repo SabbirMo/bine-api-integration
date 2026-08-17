@@ -9,13 +9,17 @@ class CartItemValidationCard extends StatefulWidget {
   final CartItemModel item;
 
   /// Called whenever the selected variant changes.
-  /// [variantId] is null if no matching variant is found.
+  /// [variantId] is null if no matching variant is found or if "Sans préférence" / product mode is active.
   final ValueChanged<int?>? onVariantSelected;
+
+  /// Enhanced callback providing both validity flag and variantId
+  final void Function(bool isValid, int? variantId)? onSelectionChanged;
 
   const CartItemValidationCard({
     super.key,
     required this.item,
     this.onVariantSelected,
+    this.onSelectionChanged,
   });
 
   @override
@@ -27,6 +31,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   bool _isLoading = true;
   String? _selectedColorCode;
   String? _selectedSize;
+  bool _isUnassignedSelected = false; // "Sans préférence" for mixed mode
 
   @override
   void initState() {
@@ -42,37 +47,51 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       setState(() {
         _productDetails = details;
         _isLoading = false;
-        // No default selection — user must explicitly choose
         _selectedColorCode = null;
         _selectedSize = null;
+        _isUnassignedSelected = false;
       });
 
-      // If product has NO variants, mark as valid automatically (variant_id = 0)
-      if (details == null || details.variants.isEmpty) {
-        widget.onVariantSelected?.call(0);
+      if (details == null || details.isProductMode || details.variants.isEmpty) {
+        // Product mode: automatically valid, no variant_id
+        _notify(isValid: true, variantId: null);
+      } else {
+        // Variant mode or mixed mode: user needs to make a selection
+        _notify(isValid: false, variantId: null);
       }
     }
+  }
+
+  void _notify({required bool isValid, required int? variantId}) {
+    widget.onVariantSelected?.call(variantId);
+    widget.onSelectionChanged?.call(isValid, variantId);
   }
 
   /// Find the variant that matches selected color + size and notify parent.
   void _notifyVariant() {
     if (_productDetails == null) return;
 
+    if (_productDetails!.isProductMode || _productDetails!.variants.isEmpty) {
+      _notify(isValid: true, variantId: null);
+      return;
+    }
+
+    if (_isUnassignedSelected) {
+      // "Sans préférence" chosen in mixed mode
+      final hasStock = _productDetails!.unassignedStock > 0;
+      _notify(isValid: hasStock, variantId: null);
+      return;
+    }
+
     final variants = _productDetails!.variants;
-
-    // If product has no variants, nothing to select
-    if (variants.isEmpty) return;
-
     final hasColors = variants.any((v) => v.colorCode.isNotEmpty);
     final hasSizes = variants.any((v) => v.size.isNotEmpty);
 
-    // Try to find the best matching variant
     ProductVariantModel? match;
 
     if (hasColors && hasSizes) {
-      // Only valid if both are selected
       if (_selectedColorCode == null || _selectedSize == null) {
-        widget.onVariantSelected?.call(null);
+        _notify(isValid: false, variantId: null);
         return;
       }
       match = variants.firstWhere(
@@ -81,7 +100,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       );
     } else if (hasColors) {
       if (_selectedColorCode == null) {
-        widget.onVariantSelected?.call(null);
+        _notify(isValid: false, variantId: null);
         return;
       }
       match = variants.firstWhere(
@@ -90,7 +109,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       );
     } else if (hasSizes) {
       if (_selectedSize == null) {
-        widget.onVariantSelected?.call(null);
+        _notify(isValid: false, variantId: null);
         return;
       }
       match = variants.firstWhere(
@@ -99,13 +118,11 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       );
     }
 
-    // If selected variant is out of stock, don't allow ordering
-    if (match != null && match.stockQuantity <= 0) {
-      widget.onVariantSelected?.call(null);
-      return;
+    if (match != null && match.stockQuantity > 0) {
+      _notify(isValid: true, variantId: match.id);
+    } else {
+      _notify(isValid: false, variantId: match?.id);
     }
-
-    widget.onVariantSelected?.call(match?.id);
   }
 
   Color _hexToColor(String code) {
@@ -206,9 +223,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                 ),
               ),
             )
-          else if (_productDetails != null &&
-              _productDetails!.variants.isNotEmpty)
-            _buildVariantsSelection(_productDetails!.variants),
+          else if (_productDetails != null)
+            _buildStockAndVariantsSection(_productDetails!),
         ],
       ),
     );
@@ -216,26 +232,104 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
 
   /// Get the selected variant (matching both color and size)
   ProductVariantModel? get _selectedVariant {
-    if (_productDetails == null) return null;
+    if (_productDetails == null || _isUnassignedSelected) return null;
     final variants = _productDetails!.variants;
     if (variants.isEmpty) return null;
 
     for (var v in variants) {
-      bool colorMatch = _selectedColorCode == null || v.colorCode == _selectedColorCode;
+      bool colorMatch =
+          _selectedColorCode == null || v.colorCode == _selectedColorCode;
       bool sizeMatch = _selectedSize == null || v.size == _selectedSize;
       if (colorMatch && sizeMatch) return v;
     }
     return null;
   }
 
-  /// Check if the currently selected variant is out of stock
-  bool get _isSelectedVariantOutOfStock {
+  /// Check if the currently selected choice is out of stock
+  bool get _isCurrentChoiceOutOfStock {
+    if (_productDetails == null) return false;
+    if (_isUnassignedSelected) {
+      return _productDetails!.unassignedStock <= 0;
+    }
     final variant = _selectedVariant;
-    if (variant == null) return false;
-    return variant.stockQuantity <= 0;
+    if (variant != null) {
+      return variant.stockQuantity <= 0;
+    }
+    if (_productDetails!.isProductMode) {
+      return _productDetails!.totalStock <= 0;
+    }
+    return false;
   }
 
-  Widget _buildVariantsSelection(List<ProductVariantModel> variants) {
+  /// Get maximum stock for current selection
+  int get _maxAvailableStock {
+    if (_productDetails == null) return 999;
+    if (_isUnassignedSelected) {
+      return _productDetails!.unassignedStock;
+    }
+    final variant = _selectedVariant;
+    if (variant != null) {
+      return variant.stockQuantity;
+    }
+    if (_productDetails!.isProductMode) {
+      return _productDetails!.totalStock > 0
+          ? _productDetails!.totalStock
+          : _productDetails!.stockQuantity;
+    }
+    return _productDetails!.totalStock;
+  }
+
+  Widget _buildStockAndVariantsSection(ProductModel product) {
+    // Mode 1: Product Mode (no variants)
+    if (product.isProductMode || product.variants.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: product.totalStock > 0
+                    ? const Color(0xFFE8F5E9)
+                    : const Color(0xFFFFEBEE),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    product.totalStock > 0 ? Icons.check_circle : Icons.cancel,
+                    size: 14,
+                    color: product.totalStock > 0
+                        ? const Color(0xFF2E7D32)
+                        : const Color(0xFFC62828),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    product.totalStock > 0
+                        ? "En stock (${product.totalStock} disponible${product.totalStock > 1 ? 's' : ''})"
+                        : "Rupture de stock",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: product.totalStock > 0
+                          ? const Color(0xFF2E7D32)
+                          : const Color(0xFFC62828),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Mode 2 & Mode 3: Variant or Mixed Mode
+    final variants = product.variants;
+    final bool showUnassignedOption =
+        product.isMixedMode && product.unassignedStock > 0;
+
     // Extract unique colors
     final uniqueColors = <String, String>{}; // colorCode -> colorName
     for (var v in variants) {
@@ -245,17 +339,15 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     }
 
     // Filter sizes based on selected color
-    // If a color is selected, only show sizes that exist for that color
     final List<ProductVariantModel> filteredVariants;
     if (_selectedColorCode != null) {
-      filteredVariants = variants
-          .where((v) => v.colorCode == _selectedColorCode)
-          .toList();
+      filteredVariants =
+          variants.where((v) => v.colorCode == _selectedColorCode).toList();
     } else {
       filteredVariants = variants;
     }
 
-    // Build unique sizes from filtered variants (preserving order)
+    // Build unique sizes
     final uniqueSizes = <String>[];
     for (var v in filteredVariants) {
       if (v.size.isNotEmpty && !uniqueSizes.contains(v.size)) {
@@ -270,10 +362,31 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         children: [
           const Divider(),
           const SizedBox(height: 8),
+
+          // Mixed Mode "Sans préférence" option
+          if (showUnassignedOption) ...[
+            _buildUnassignedOption(product.unassignedStock),
+            const SizedBox(height: 12),
+          ],
+
           if (uniqueColors.isNotEmpty) ...[
-            const Text(
-              "🎨 Couleur",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "🎨 Couleur",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                if (_selectedColorCode != null && uniqueColors.containsKey(_selectedColorCode))
+                  Text(
+                    uniqueColors[_selectedColorCode]!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFFFF6900),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -285,6 +398,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
             ),
             const SizedBox(height: 12),
           ],
+
           if (uniqueSizes.isNotEmpty) ...[
             const Text(
               "Dimensions",
@@ -295,19 +409,20 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               spacing: 8,
               runSpacing: 8,
               children: uniqueSizes.map((size) {
-                // Find the stock for this size (with selected color)
                 final variantForSize = filteredVariants.firstWhere(
                   (v) => v.size == size,
                   orElse: () => filteredVariants.first,
                 );
-                return _choiceChip(size, stockQuantity: variantForSize.stockQuantity);
+                return _choiceChip(
+                  size,
+                  stockQuantity: variantForSize.stockQuantity,
+                );
               }).toList(),
             ),
           ],
-          // Show out of stock warning if selected variant has 0 stock
-          if (_selectedColorCode != null &&
-              _selectedSize != null &&
-              _isSelectedVariantOutOfStock) ...[
+
+          // Out of stock banner
+          if (_isCurrentChoiceOutOfStock) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -318,11 +433,12 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 18),
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.red, size: 18),
                   SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      "Rupture de stock – Ce produit ne peut pas être commandé",
+                      "Rupture de stock – Cette variante ne peut pas être commandée",
                       style: TextStyle(
                         color: Colors.red,
                         fontSize: 12,
@@ -339,21 +455,88 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     );
   }
 
-  Widget _colorDot(Color color, String colorCode, String name) {
-    final bool isSelected = _selectedColorCode == colorCode;
+  Widget _buildUnassignedOption(int unassignedStock) {
+    final bool isSelected = _isUnassignedSelected;
 
     return GestureDetector(
       onTap: () {
         setState(() {
+          _isUnassignedSelected = !_isUnassignedSelected;
+          if (_isUnassignedSelected) {
+            _selectedColorCode = null;
+            _selectedSize = null;
+          }
+        });
+        _notifyVariant();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFFF3E6) : const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF6900) : Colors.grey.shade300,
+            width: isSelected ? 1.8 : 1.0,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: isSelected ? const Color(0xFFFF6900) : Colors.grey,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                "Sans préférence (Toutes couleurs)",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? const Color(0xFFFF6900)
+                    : Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                "$unassignedStock en stock",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _colorDot(Color color, String colorCode, String name) {
+    final bool isSelected = _selectedColorCode == colorCode && !_isUnassignedSelected;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isUnassignedSelected = false; // Deselect "Sans préférence"
           _selectedColorCode = colorCode;
-          // Reset size selection when color changes,
-          // because available sizes may differ per color
-          _selectedSize = null;
+          _selectedSize = null; // Reset size when color changes
         });
         _notifyVariant();
       },
       child: Padding(
-        padding: const EdgeInsets.only(right: 15, top: 5),
+        padding: const EdgeInsets.only(right: 12, top: 5),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.all(2.5),
@@ -371,8 +554,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               color: color,
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.black.withValues(alpha: 0.1),
-                width: 0.5,
+                color: Colors.black.withValues(alpha: 0.15),
+                width: 0.8,
               ),
             ),
           ),
@@ -382,19 +565,20 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   }
 
   Widget _choiceChip(String text, {required int stockQuantity}) {
-    final bool isSelected = _selectedSize == text;
+    final bool isSelected = _selectedSize == text && !_isUnassignedSelected;
     final bool isOutOfStock = stockQuantity <= 0;
 
     return GestureDetector(
       onTap: () {
         setState(() {
+          _isUnassignedSelected = false; // Deselect "Sans préférence"
           _selectedSize = text;
         });
         _notifyVariant();
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected
               ? (isOutOfStock ? Colors.red.shade50 : const Color(0xFFFEF3E7))
@@ -421,6 +605,16 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                 decoration: isOutOfStock ? TextDecoration.lineThrough : null,
               ),
             ),
+            if (stockQuantity > 0) ...[
+              const SizedBox(width: 4),
+              Text(
+                "($stockQuantity)",
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isSelected ? const Color(0xFFFF6900) : Colors.grey,
+                ),
+              ),
+            ],
             if (isOutOfStock) ...[
               const SizedBox(width: 4),
               Icon(Icons.block, size: 14, color: Colors.red.shade300),
@@ -432,6 +626,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   }
 
   Widget _quantityStepper(CartItemModel item) {
+    final bool isBlocked = _isCurrentChoiceOutOfStock;
+    final int maxStock = _maxAvailableStock;
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade300),
@@ -441,7 +638,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            onPressed: _isSelectedVariantOutOfStock
+            onPressed: isBlocked
                 ? null
                 : () {
                     if (item.quantity > 1) {
@@ -451,71 +648,43 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
             icon: Icon(
               Icons.remove_circle_outline,
               size: 22,
-              color: (_isSelectedVariantOutOfStock || item.quantity <= 1)
+              color: (isBlocked || item.quantity <= 1)
                   ? Colors.grey.shade400
                   : Colors.black,
             ),
           ),
           Text(
-            _isSelectedVariantOutOfStock ? "0" : "${item.quantity}",
+            isBlocked ? "0" : "${item.quantity}",
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           IconButton(
-            onPressed: _isSelectedVariantOutOfStock
+            onPressed: isBlocked
                 ? null
                 : () {
-                    if (_productDetails != null &&
-                        _productDetails!.variants.isNotEmpty) {
-                      final variant = _selectedVariant;
-
-                      if (variant != null) {
-                        final maxStock = variant.stockQuantity;
-                        if (maxStock <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                "Rupture de stock",
-                                textAlign: TextAlign.center,
-                              ),
-                              backgroundColor: Colors.red,
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 2),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              margin: const EdgeInsets.all(20),
-                            ),
-                          );
-                          return;
-                        }
-                        if (item.quantity >= maxStock) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                "Stock disponible : $maxStock",
-                                textAlign: TextAlign.center,
-                              ),
-                              backgroundColor: const Color(0xFFFF6900),
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 2),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              margin: const EdgeInsets.all(20),
-                            ),
-                          );
-                          return;
-                        }
-                      }
+                    if (maxStock > 0 && item.quantity >= maxStock) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            "Stock disponible : $maxStock",
+                            textAlign: TextAlign.center,
+                          ),
+                          backgroundColor: const Color(0xFFFF6900),
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 2),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          margin: const EdgeInsets.all(20),
+                        ),
+                      );
+                      return;
                     }
                     context.read<CartProvider>().increment(item.id, context);
                   },
             icon: Icon(
               Icons.add_circle_outline,
               size: 22,
-              color: _isSelectedVariantOutOfStock
-                  ? Colors.grey.shade400
-                  : Colors.black,
+              color: isBlocked ? Colors.grey.shade400 : Colors.black,
             ),
           ),
         ],

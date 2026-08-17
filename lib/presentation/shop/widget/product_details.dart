@@ -13,6 +13,7 @@ import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
@@ -329,7 +330,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
                   if (!mounted) return;
 
-                  if (_product.status == "out_of_stock") {
+                  if (_product.isOutOfStock) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: const Text(
@@ -392,7 +393,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                       ? "Bonjour, je souhaite commander ce produit : $productUrl.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?"
                       : "Bonjour, je souhaite commander ce produit.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?";
 
-                  const String phoneNumber = "+221771635015";
+                  final String phoneNumber = dotenv.env["WHATSAPP_PHONE"] ?? "+221771635015";
 
                   final whatsappAppUrl = Uri.parse(
                     "whatsapp://send?phone=$phoneNumber&text=${Uri.encodeComponent(shareText)}",
@@ -568,7 +569,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
                         if (!context.mounted) return;
 
-                        if (_product.status == "out_of_stock") {
+                        if (_product.isOutOfStock) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: const Text(
@@ -715,25 +716,42 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                               height: 1.4,
                             ),
                           ),
-                          if (widget.isExpanded &&
-                              _product.variants.isNotEmpty) ...[
+                          if (widget.isExpanded) ...[
                             const SizedBox(height: 10),
-                            Text(
-                              "Variantes:",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            ..._product.variants.map(
-                              (v) => Text(
-                                "• ${v.colorName} (${v.size}) : ${v.stockQuantity} en stock",
-                                style: TextStyle(
+                            if (_product.isProductMode) ...[
+                              Text(
+                                "Stock: ${_product.totalStock} en stock",
+                                style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 13,
                                 ),
                               ),
-                            ),
+                            ] else ...[
+                              const Text(
+                                "Variantes & Stock:",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (_product.isMixedMode && _product.unassignedStock > 0)
+                                Text(
+                                  "• Sans préférence : ${_product.unassignedStock} en stock",
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ..._product.variants.map(
+                                (v) => Text(
+                                  "• ${v.colorName} (${v.size}) : ${v.stockQuantity} en stock",
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                           if (widget.isExpanded &&
                               _product.deliveryMessage != null) ...[
