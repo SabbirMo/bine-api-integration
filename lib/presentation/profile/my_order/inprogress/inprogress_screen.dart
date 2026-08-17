@@ -49,12 +49,12 @@ class _InprogressScreenState extends State<InprogressScreen> {
       ),
       body: Consumer<OrderProvider>(
         builder: (context, provider, child) {
-          if (provider.isLoading) {
+          if (provider.isDetailLoading) {
             return const Center(
               child: CircularProgressIndicator(color: Color(0xFFFF6900)),
             );
           }
-          if (provider.errorMessage != null) {
+          if (provider.detailErrorMessage != null) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -68,7 +68,7 @@ class _InprogressScreenState extends State<InprogressScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      provider.errorMessage!,
+                      provider.detailErrorMessage!,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 14,

@@ -165,14 +165,45 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
   Widget _buildOrderList() {
     return Consumer<OrderProvider>(
       builder: (context, orderProvider, child) {
-        if (orderProvider.isLoading) {
+        if (orderProvider.isHistoryLoading && orderProvider.orderHistory.isEmpty) {
           return const Center(
             child: CircularProgressIndicator(color: Color(0xFFFF6900)),
           );
         }
 
-        if (orderProvider.errorMessage != null) {
-          return Center(child: Text("Erreur: ${orderProvider.errorMessage}"));
+        if (orderProvider.historyErrorMessage != null &&
+            orderProvider.orderHistory.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Color(0xFFFF6900),
+                    size: 48,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Erreur: ${orderProvider.historyErrorMessage}",
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      context.read<OrderProvider>().fetchOrderHistory();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6900),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text("Réessayer"),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
         // Filter logic

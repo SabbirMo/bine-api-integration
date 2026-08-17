@@ -12,8 +12,20 @@ import 'package:binetatour/data/models/order_detail_model.dart';
 class OrderProvider extends ChangeNotifier {
   final ApiServices _apiServices = ApiServices();
 
+  bool _isHistoryLoading = false;
+  bool get isHistoryLoading => _isHistoryLoading;
+
+  bool _isDetailLoading = false;
+  bool get isDetailLoading => _isDetailLoading;
+
   bool _isLoading = false;
-  bool get isLoading => _isLoading;
+  bool get isLoading => _isLoading || _isHistoryLoading || _isDetailLoading;
+
+  String? _historyErrorMessage;
+  String? get historyErrorMessage => _historyErrorMessage;
+
+  String? _detailErrorMessage;
+  String? get detailErrorMessage => _detailErrorMessage;
 
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
@@ -22,8 +34,8 @@ class OrderProvider extends ChangeNotifier {
   List<OrderHistoryModel> get orderHistory => _orderHistory;
 
   Future<void> fetchOrderHistory() async {
-    _isLoading = true;
-    _errorMessage = null;
+    _isHistoryLoading = true;
+    _historyErrorMessage = null;
     notifyListeners();
 
     try {
@@ -32,22 +44,40 @@ class OrderProvider extends ChangeNotifier {
         requireAuth: true,
       );
 
-      if (response.data != null) {
-        final List<dynamic> data = response.data;
-        _orderHistory = data
-            .map((json) => OrderHistoryModel.fromJson(json))
+      final dynamic raw = response.data;
+      log("📦 [OrderHistory Response]: $raw");
+
+      if (raw != null) {
+        List<dynamic> list = [];
+        if (raw is List) {
+          list = raw;
+        } else if (raw is Map) {
+          if (raw['orders'] is List) {
+            list = raw['orders'];
+          } else if (raw['results'] is List) {
+            list = raw['results'];
+          } else if (raw['data'] is List) {
+            list = raw['data'];
+          } else if (raw['history'] is List) {
+            list = raw['history'];
+          }
+        }
+
+        _orderHistory = list
+            .where((json) => json != null && json is Map)
+            .map((json) => OrderHistoryModel.fromJson(Map<String, dynamic>.from(json as Map)))
             .toList();
       }
 
-      _isLoading = false;
+      _isHistoryLoading = false;
       notifyListeners();
     } catch (e) {
-      _errorMessage = ApiErrorHandle.sanitizeMessage(
+      _historyErrorMessage = ApiErrorHandle.sanitizeMessage(
         e.toString().replaceAll('Exception: ', ''),
         null,
       );
       log("Error fetching order history: ${e.toString()}");
-      _isLoading = false;
+      _isHistoryLoading = false;
       notifyListeners();
     }
   }
@@ -56,8 +86,8 @@ class OrderProvider extends ChangeNotifier {
   OrderDetailModel? get orderDetail => _orderDetail;
 
   Future<void> fetchOrderDetail(String orderNumber) async {
-    _isLoading = true;
-    _errorMessage = null;
+    _isDetailLoading = true;
+    _detailErrorMessage = null;
     notifyListeners();
 
     try {
@@ -66,19 +96,32 @@ class OrderProvider extends ChangeNotifier {
         requireAuth: true,
       );
 
-      if (response.data != null) {
-        _orderDetail = OrderDetailModel.fromJson(response.data);
+      final dynamic raw = response.data;
+      log("📦 [OrderDetail Response]: $raw");
+
+      if (raw != null) {
+        Map<String, dynamic> map = {};
+        if (raw is Map<String, dynamic>) {
+          if (raw['order'] is Map<String, dynamic>) {
+            map = raw['order'];
+          } else if (raw['data'] is Map<String, dynamic>) {
+            map = raw['data'];
+          } else {
+            map = raw;
+          }
+        }
+        _orderDetail = OrderDetailModel.fromJson(map);
       }
 
-      _isLoading = false;
+      _isDetailLoading = false;
       notifyListeners();
     } catch (e) {
-      _errorMessage = ApiErrorHandle.sanitizeMessage(
+      _detailErrorMessage = ApiErrorHandle.sanitizeMessage(
         e.toString().replaceAll('Exception: ', ''),
         null,
       );
       log("Error fetching order detail: ${e.toString()}");
-      _isLoading = false;
+      _isDetailLoading = false;
       notifyListeners();
     }
   }
@@ -90,8 +133,19 @@ class OrderProvider extends ChangeNotifier {
         requireAuth: true,
       );
 
-      if (response.data != null) {
-        return OrderDetailModel.fromJson(response.data);
+      final dynamic raw = response.data;
+      if (raw != null) {
+        Map<String, dynamic> map = {};
+        if (raw is Map<String, dynamic>) {
+          if (raw['order'] is Map<String, dynamic>) {
+            map = raw['order'];
+          } else if (raw['data'] is Map<String, dynamic>) {
+            map = raw['data'];
+          } else {
+            map = raw;
+          }
+        }
+        return OrderDetailModel.fromJson(map);
       }
       return null;
     } catch (e) {
@@ -119,10 +173,19 @@ class OrderProvider extends ChangeNotifier {
         requireAuth: true,
       );
 
-      if (response.data != null) {
-        _orderDetailsMap[orderNumber] = OrderDetailModel.fromJson(
-          response.data,
-        );
+      final dynamic raw = response.data;
+      if (raw != null) {
+        Map<String, dynamic> map = {};
+        if (raw is Map<String, dynamic>) {
+          if (raw['order'] is Map<String, dynamic>) {
+            map = raw['order'];
+          } else if (raw['data'] is Map<String, dynamic>) {
+            map = raw['data'];
+          } else {
+            map = raw;
+          }
+        }
+        _orderDetailsMap[orderNumber] = OrderDetailModel.fromJson(map);
       }
     } catch (e) {
       log("Error fetching order detail data for card: ${e.toString()}");
