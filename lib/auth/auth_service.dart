@@ -15,12 +15,17 @@ class AuthService {
               : null),
     serverClientId:
         '74471662195-5ac9tsnhgn8emgkjpj3j94lek2a4cdgj.apps.googleusercontent.com',
-    scopes: ['email'],
+    scopes: ['email', 'profile'],
   );
 
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     final stopwatch = Stopwatch()..start();
     try {
+      // Clear any previous stale session so fresh account chooser is displayed
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
+
       // 1. Google sign-in dialog
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       final t1 = stopwatch.elapsedMilliseconds;
@@ -36,7 +41,6 @@ class AuthService {
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
       final t2 = stopwatch.elapsedMilliseconds;
-      log("Google authentication tokens retrieved in ${t2 - t1}ms (total: ${t2}ms)");
 
       // 3. Create Firebase credential
       final credential = GoogleAuthProvider.credential(
@@ -52,7 +56,9 @@ class AuthService {
 
       final String? firebaseIdToken = await userCredential.user?.getIdToken();
       final totalTime = stopwatch.elapsedMilliseconds;
-      log("Firebase ID token obtained in ${totalTime - t3}ms (total sign-in time: ${totalTime}ms)");
+      log(
+        "Firebase ID token obtained in ${totalTime - t3}ms (total sign-in time: ${totalTime}ms)",
+      );
 
       return {
         'idToken': googleAuth.idToken,
@@ -63,7 +69,9 @@ class AuthService {
         'photoUrl': googleUser.photoUrl,
       };
     } catch (e, stack) {
-      debugPrint("Error signing in with Google after ${stopwatch.elapsedMilliseconds}ms: $e");
+      debugPrint(
+        "Error signing in with Google after ${stopwatch.elapsedMilliseconds}ms: $e",
+      );
       debugPrint("Stacktrace: $stack");
       rethrow;
     }

@@ -97,7 +97,7 @@ class LoginView extends StatelessWidget {
                       ), // Use a local asset in production
                       const SizedBox(width: 12),
                       const Text(
-                        "Continuer avec Google",
+                        "Se Continuer avec Google",
                         style: TextStyle(color: Colors.black, fontSize: 16),
                       ),
                     ],
