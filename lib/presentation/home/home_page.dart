@@ -673,13 +673,8 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     String categoryName,
   ) {
     final double screenWidth = MediaQuery.of(context).size.width;
-    // Total padding of ListView: 16 * 2 = 32
-    // Spacing between cards: 12 * 2 = 24
-    // cardWidth = (screenWidth - 32 - 24) / 3
-    final double cardWidth = (screenWidth - 56) / 2.9;
-    final double cardHeight =
-        cardWidth *
-        1.72; // Adjusted height ratio to match ~0.58 aspect ratio (Figma)
+    final double cardWidth = (screenWidth - 40) / 2;
+    final double cardHeight = cardWidth * 1.48;
 
     return SizedBox(
       height: cardHeight,
@@ -758,7 +753,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                 content: productContents,
                 width: cardWidth,
                 height: cardHeight,
-                isCompact: true,
+                isCompact: false,
               ),
             ),
           );

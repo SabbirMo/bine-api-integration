@@ -40,7 +40,7 @@ class ShopProductCard extends StatelessWidget {
       height: height ?? (isCompact ? 150 : 300),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(
-          isCompact ? 16 : 16,
+          isCompact ? 16 : 20,
         ), // Match the rounded look in image
       ),
       clipBehavior: Clip.antiAlias,
@@ -96,22 +96,22 @@ class ShopProductCard extends StatelessWidget {
           // 3. Discount Badge (Conditional)
           if (showDiscountPercentage && discount != null)
             Positioned(
-              top: isCompact ? 8 : 15,
-              left: isCompact ? 8 : 15,
+              top: isCompact ? 8 : 12,
+              left: isCompact ? 8 : 12,
               child: Container(
                 padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 8 : 14,
-                  vertical: isCompact ? 4 : 8,
+                  horizontal: isCompact ? 8 : 10,
+                  vertical: isCompact ? 4 : 6,
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFF1111), // Bright red from image
-                  borderRadius: BorderRadius.circular(isCompact ? 12 : 25),
+                  borderRadius: BorderRadius.circular(isCompact ? 12 : 20),
                 ),
                 child: Text(
                   discount!,
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: isCompact ? 10 : 16,
+                    fontSize: isCompact ? 10 : 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -120,7 +120,7 @@ class ShopProductCard extends StatelessWidget {
 
           // 4. Product Details
           Padding(
-            padding: EdgeInsets.all(isCompact ? 8.0 : 16.0),
+            padding: EdgeInsets.all(isCompact ? 8.0 : 12.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.end,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,7 +130,7 @@ class ShopProductCard extends StatelessWidget {
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: isCompact ? 12 : 18,
+                    fontSize: isCompact ? 12 : 16,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
