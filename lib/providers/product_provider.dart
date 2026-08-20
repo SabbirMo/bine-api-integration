@@ -78,6 +78,13 @@ class ProductProvider extends ChangeNotifier {
 
   final Map<int, ProductModel> _productDetailsCache = {};
 
+  ProductModel? getCachedProduct(int id) {
+    if (_productDetailsCache.containsKey(id)) {
+      return _productDetailsCache[id];
+    }
+    return _allProducts.where((p) => p.id == id).firstOrNull;
+  }
+
   Future<ProductModel?> fetchProductDetails(int id) async {
     if (_productDetailsCache.containsKey(id)) {
       _fetchProductDetailsBackground(id);
@@ -97,6 +104,7 @@ class ProductProvider extends ChangeNotifier {
       if (data != null && data is Map<String, dynamic>) {
         final product = ProductModel.fromJson(data);
         _productDetailsCache[id] = product;
+        notifyListeners();
         return product;
       }
     } catch (e) {

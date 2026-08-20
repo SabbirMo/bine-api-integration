@@ -60,6 +60,8 @@ dependencies:
   top_snackbar_flutter: ^3.3.0
   sign_in_with_apple: ^8.1.0
   flutter_launcher_icons: ^0.14.4
+  visibility_detector: ^0.4.0+2
+  shimmer: ^3.0.0
 
 
 flutter_launcher_icons:

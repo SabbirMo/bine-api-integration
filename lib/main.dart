@@ -20,6 +20,8 @@ import 'providers/feedback_provider.dart';
 import 'providers/story_provider.dart';
 import 'providers/notification_provider.dart';
 
+import 'package:visibility_detector/visibility_detector.dart';
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -28,6 +30,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  VisibilityDetectorController.instance.updateInterval = Duration.zero;
 
   await dotenv.load(fileName: ".env");
 

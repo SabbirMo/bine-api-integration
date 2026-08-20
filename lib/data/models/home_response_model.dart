@@ -1,3 +1,5 @@
+import 'package:binetatour/data/models/product_model.dart' show MediaModel;
+
 class HomeResponseModel {
   final BannerModel? banner;
   final String? storeAddress;
@@ -168,6 +170,10 @@ class ProductModel {
   final double? priceAfterDiscount;
   final String? status;
   final String? mainImage;
+  final String? videoUrl;
+  final String? hlsUrl;
+  final String? thumbnailUrl;
+  final List<MediaModel>? media;
 
   ProductModel({
     required this.id,
@@ -177,19 +183,95 @@ class ProductModel {
     this.priceAfterDiscount,
     this.status,
     this.mainImage,
+    this.videoUrl,
+    this.hlsUrl,
+    this.thumbnailUrl,
+    this.media,
   });
 
+  List<MediaModel> get safeMedia => media ?? const <MediaModel>[];
+
+  String get effectiveVideoUrl {
+    if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
+      return videoUrl!;
+    }
+    if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
+      return hlsUrl!;
+    }
+    for (final m in safeMedia) {
+      if (m.mediaType.toLowerCase() == 'video' &&
+          m.effectiveMediaUrl.isNotEmpty) {
+        return m.effectiveMediaUrl;
+      }
+    }
+    if (mainImage != null) {
+      final imgLower = mainImage!.toLowerCase().trim();
+      if (imgLower.endsWith('.mp4') ||
+          imgLower.endsWith('.mov') ||
+          imgLower.endsWith('.m3u8') ||
+          imgLower.endsWith('.webm') ||
+          imgLower.contains('.mp4?')) {
+        return mainImage!;
+      }
+    }
+    return '';
+  }
+
+  String get effectiveThumbnailUrl {
+    if (mainImage != null && mainImage!.trim().isNotEmpty) {
+      return mainImage!;
+    }
+    if (thumbnailUrl != null && thumbnailUrl!.trim().isNotEmpty) {
+      return thumbnailUrl!;
+    }
+    for (final m in safeMedia) {
+      if (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty) {
+        return m.thumbnailUrl!;
+      }
+      if (m.mediaType.toLowerCase() == 'image' &&
+          m.effectiveMediaUrl.isNotEmpty) {
+        return m.effectiveMediaUrl;
+      }
+    }
+    return '';
+  }
+
   factory ProductModel.fromJson(Map<String, dynamic> json) {
+    final rawMedia = json['product_media'] ?? json['media'];
+    final List<MediaModel> parsedMedia = [];
+    if (rawMedia is List) {
+      for (final item in rawMedia) {
+        if (item != null && item is Map) {
+          try {
+            parsedMedia.add(
+              MediaModel.fromJson(Map<String, dynamic>.from(item)),
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    String? vUrl = json['video_url']?.toString() ?? json['video']?.toString();
+    String? hUrl = json['hls_url']?.toString();
+    String? tUrl =
+        json['thumbnail_url']?.toString() ?? json['thumbnail']?.toString();
+
     return ProductModel(
-      id: json['id'],
-      productName: json['product_name'],
-      sellingPrice: json['selling_price'],
-      discountPercentage: json['discount_percentage'],
+      id: json['id'] is num
+          ? (json['id'] as num).toInt()
+          : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
+      productName: json['product_name']?.toString(),
+      sellingPrice: json['selling_price']?.toString(),
+      discountPercentage: json['discount_percentage']?.toString(),
       priceAfterDiscount: json['price_after_discount'] != null
           ? double.tryParse(json['price_after_discount'].toString())
           : null,
-      status: json['status'],
-      mainImage: json['main_image'],
+      status: json['status']?.toString(),
+      mainImage: json['main_image']?.toString(),
+      videoUrl: vUrl,
+      hlsUrl: hUrl,
+      thumbnailUrl: tUrl,
+      media: parsedMedia,
     );
   }
 }

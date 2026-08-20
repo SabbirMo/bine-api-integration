@@ -92,16 +92,18 @@ class ProductModel {
         : <ProductVariantModel>[];
 
     final rawMediaList = json['product_media'] ?? json['media'];
-    final parsedMedia = rawMediaList is List
-        ? rawMediaList
-              .where((i) => i != null)
-              .map(
-                (i) => MediaModel.fromJson(
-                  Map<String, dynamic>.from(i is Map ? i : {}),
-                ),
-              )
-              .toList()
-        : <MediaModel>[];
+    final List<MediaModel> parsedMedia = [];
+    if (rawMediaList is List) {
+      for (final item in rawMediaList) {
+        if (item != null && item is Map) {
+          try {
+            parsedMedia.add(
+              MediaModel.fromJson(Map<String, dynamic>.from(item)),
+            );
+          } catch (_) {}
+        }
+      }
+    }
 
     String? mainImg = json['main_image']?.toString();
     if (mainImg == null || mainImg.isEmpty) {

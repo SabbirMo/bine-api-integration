@@ -1,14 +1,18 @@
+import 'package:binetatour/core/video/feed_video_manager.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:binetatour/presentation/home/widget/category_section_header.dart';
 import 'package:binetatour/presentation/home/widget/circular_story_avatar.dart';
 import 'package:binetatour/presentation/home/widget/notificaiton_screen.dart';
+import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/presentation/home/widget/video_widget.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
-import 'package:binetatour/presentation/shop/widget/shop_product_card.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
+import 'package:binetatour/providers/product_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/svg.dart';
@@ -35,6 +39,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     await Future.wait([
       context.read<HomeProvider>().fetchHomeData(),
       context.read<CartProvider>().fetchCart(),
+      context.read<ProductProvider>().fetchProducts(),
       context.read<NotificationProvider>().fetchNotifications(
         forceRefresh: true,
       ),
@@ -44,6 +49,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   @override
   void initState() {
     super.initState();
+    VideoCacheManager.instance.init();
     WidgetsBinding.instance.addObserver(this);
 
     // Auto-refresh notifications and update bell count when a foreground notification is received
@@ -62,6 +68,7 @@ class _AccueilScreenState extends State<AccueilScreen>
 
   @override
   void dispose() {
+    FeedVideoManager.instance.pauseAll();
     _storyScrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     FirebaseService.instance.onNotificationReceived = null;
@@ -71,6 +78,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      FeedVideoManager.instance.resume();
       debugPrint("App resumed from background: refreshing notifications...");
       if (mounted) {
         context
@@ -80,6 +88,9 @@ class _AccueilScreenState extends State<AccueilScreen>
               debugPrint("Error refreshing notifications on resume: $e");
             });
       }
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      FeedVideoManager.instance.pauseAll();
     }
   }
 
@@ -194,11 +205,13 @@ class _AccueilScreenState extends State<AccueilScreen>
                 clipBehavior: Clip.none,
                 children: [
                   IconButton(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      FeedVideoManager.instance.pauseAll();
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => NotificationScreen()),
                       );
+                      FeedVideoManager.instance.resume();
                     },
                     icon: const Icon(
                       Icons.notifications_none,
@@ -243,13 +256,15 @@ class _AccueilScreenState extends State<AccueilScreen>
           Stack(
             children: [
               IconButton(
-                onPressed: () {
-                  showModalBottomSheet(
+                onPressed: () async {
+                  FeedVideoManager.instance.pauseAll();
+                  await showModalBottomSheet(
                     context: context,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
                     builder: (context) => const CartBottomSheet(),
                   );
+                  FeedVideoManager.instance.resume();
                 },
                 icon: const Icon(
                   Icons.shopping_cart_outlined,
@@ -314,12 +329,26 @@ class _AccueilScreenState extends State<AccueilScreen>
             return const Center(child: Text("No Data Available"));
           }
 
+          if (homeData.productSections.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _precacheProductThumbnails(homeData.productSections);
+                _precacheProductVideos(homeData.productSections);
+              }
+            });
+          }
+
           return RefreshIndicator(
             color: const Color(0xFFE8500A),
             onRefresh: _refreshHomeData,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (scrollInfo) {
+                VisibilityDetectorController.instance.notifyNow();
+                return false;
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
                 children: [
                   // Banner Video
                   if (homeData.banner != null)
@@ -380,7 +409,8 @@ class _AccueilScreenState extends State<AccueilScreen>
                 ],
               ),
             ),
-          );
+          ),
+        );
         },
       ),
     );
@@ -488,6 +518,41 @@ class _AccueilScreenState extends State<AccueilScreen>
           precacheImage(NetworkImage(thumb), context).catchError((_) {});
         }
       }
+    }
+  }
+
+  void _precacheProductThumbnails(List<ProductSectionModel> sections) {
+    for (final sec in sections) {
+      for (final prod in sec.products) {
+        String thumb = prod.effectiveThumbnailUrl;
+        if (thumb.isNotEmpty && !thumb.startsWith('http')) {
+          final base = BaseUrl.baseUrl;
+          thumb = thumb.startsWith('/') ? '$base$thumb' : '$base/$thumb';
+        }
+        if (thumb.startsWith('http')) {
+          precacheImage(NetworkImage(thumb), context).catchError((_) {});
+        }
+      }
+    }
+  }
+
+  void _precacheProductVideos(List<ProductSectionModel> sections) {
+    final urls = <String>[];
+    for (final sec in sections) {
+      for (final prod in sec.products) {
+        final vUrl = prod.effectiveVideoUrl;
+        if (vUrl.isNotEmpty) {
+          String clean = vUrl.trim();
+          if (!clean.startsWith('http')) {
+            final base = BaseUrl.baseUrl;
+            clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+          }
+          urls.add(clean);
+        }
+      }
+    }
+    if (urls.isNotEmpty) {
+      VideoCacheManager.instance.preCacheBatch(urls);
     }
   }
 
@@ -603,9 +668,10 @@ class _AccueilScreenState extends State<AccueilScreen>
           );
 
           return InkWell(
-            onTap: () {
+            onTap: () async {
               if (mappedStories.isEmpty) return; // Prevent opening if empty
-              Navigator.push(
+              FeedVideoManager.instance.pauseAll();
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => StoryDetailScreen(
@@ -617,6 +683,7 @@ class _AccueilScreenState extends State<AccueilScreen>
                   ),
                 ),
               );
+              FeedVideoManager.instance.resume();
             },
             child: CircularStoryAvatar(item: sItem),
           );
@@ -636,41 +703,215 @@ class ProductSectionWidget extends StatefulWidget {
 }
 
 class _ProductSectionWidgetState extends State<ProductSectionWidget> {
+  final ScrollController _scrollController = ScrollController();
+  int _activeCardIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onHorizontalScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadMissingDetails();
+      _notifySectionActiveCard();
+    });
+  }
+
+  @override
+  void didUpdateWidget(ProductSectionWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.section.products != widget.section.products) {
+      _loadMissingDetails();
+      _notifySectionActiveCard();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onHorizontalScroll);
+    _scrollController.dispose();
+    FeedVideoManager.instance.unregisterSection(
+      widget.section.categoryId.toString(),
+    );
+    super.dispose();
+  }
+
+  void _onHorizontalScroll() {
+    if (!mounted || widget.section.products.isEmpty) return;
+    final totalCount = widget.section.products.length;
+    if (totalCount <= 1) return;
+
+    if (_scrollController.hasClients) {
+      final position = _scrollController.position;
+      final maxScroll = position.maxScrollExtent;
+      final offset = position.pixels;
+
+      int newIndex;
+      if (maxScroll <= 0) {
+        newIndex = 0;
+      } else if (offset <= 10) {
+        newIndex = 0;
+      } else if (offset >= maxScroll - 10) {
+        newIndex = totalCount - 1;
+      } else {
+        final progress = (offset / maxScroll).clamp(0.0, 1.0);
+        newIndex =
+            (progress * (totalCount - 1)).round().clamp(0, totalCount - 1);
+      }
+
+      if (newIndex != _activeCardIndex) {
+        setState(() {
+          _activeCardIndex = newIndex;
+        });
+        _notifySectionActiveCard();
+      }
+    }
+  }
+
+  void _notifySectionActiveCard() {
+    if (widget.section.products.isEmpty) return;
+    final productProvider = context.read<ProductProvider>();
+    final activeProd = widget.section.products[_activeCardIndex];
+    final vUrl = _resolveProductVideo(activeProd, productProvider);
+    final key = 'feed_prod_${widget.section.categoryId}_${activeProd.id}';
+    FeedVideoManager.instance.setActiveSectionCard(
+      widget.section.categoryId.toString(),
+      key,
+      vUrl,
+    );
+  }
+
+  void _reportSectionVisibility(double fraction) {
+    if (!mounted) return;
+    double centerY = 0.0;
+    try {
+      final renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox != null && renderBox.hasSize) {
+        final globalOffset = renderBox.localToGlobal(Offset.zero);
+        centerY = globalOffset.dy + (renderBox.size.height / 2);
+      }
+    } catch (_) {}
+
+    FeedVideoManager.instance.updateSectionVisibility(
+      widget.section.categoryId.toString(),
+      fraction,
+      centerY,
+    );
+  }
+
+  void _loadMissingDetails() {
+    final productProvider = context.read<ProductProvider>();
+    for (final prod in widget.section.products) {
+      if (prod.effectiveVideoUrl.isEmpty) {
+        productProvider.fetchProductDetails(prod.id);
+      }
+    }
+  }
+
+  String _resolveUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    String clean = url.trim();
+    if (!clean.startsWith('http')) {
+      final base = BaseUrl.baseUrl;
+      clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+    }
+    return clean;
+  }
+
+  bool _isVideoUrl(String url) {
+    final u = url.toLowerCase();
+    return u.endsWith('.mp4') ||
+        u.endsWith('.mov') ||
+        u.endsWith('.m3u8') ||
+        u.endsWith('.webm') ||
+        u.endsWith('.avi');
+  }
+
+  String _resolveProductVideo(
+    ProductModel product,
+    ProductProvider productProvider,
+  ) {
+    String vUrl = product.effectiveVideoUrl;
+    if (vUrl.isNotEmpty) {
+      return _resolveUrl(vUrl);
+    }
+
+    // Check if ProductProvider cached full product with video media
+    final matching = productProvider.getCachedProduct(product.id);
+    if (matching != null) {
+      for (final m in matching.media) {
+        final mType = m.mediaType.toLowerCase().trim();
+        final mUrl = m.effectiveMediaUrl;
+        if ((mType == 'video' || _isVideoUrl(mUrl)) && mUrl.isNotEmpty) {
+          return _resolveUrl(mUrl);
+        }
+      }
+      if (matching.mainImage != null && _isVideoUrl(matching.mainImage!)) {
+        return _resolveUrl(matching.mainImage!);
+      }
+    }
+
+    // Check if mainImage is a video
+    if (product.mainImage != null && _isVideoUrl(product.mainImage!)) {
+      return _resolveUrl(product.mainImage!);
+    }
+
+    return '';
+  }
+
+  String _resolveProductThumbnail(ProductModel product) {
+    String tUrl = product.effectiveThumbnailUrl;
+    if (tUrl.isNotEmpty) {
+      return _resolveUrl(tUrl);
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.section.products.isEmpty) {
       return const SizedBox(); // Don't show empty categories
     }
 
-    return Column(
-      children: [
-        const SizedBox(height: 10),
-        CategorySectionHeader(
-          title: widget.section.categoryName ?? 'Category',
-          imagePath: widget.section.categoryImageUrl,
-          onSeeMoreTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => BoutiqueScreen(
-                  initialCategoryId: widget.section.categoryId,
-                ),
-              ),
-            );
-          },
-        ),
+    final productProvider = context.watch<ProductProvider>();
 
-        _buildVideoHorizontalListDynamic(
-          widget.section.products,
-          widget.section.categoryName ?? 'Category',
-        ),
-      ],
+    return VisibilityDetector(
+      key: Key('sec_${widget.section.categoryId}'),
+      onVisibilityChanged: (info) =>
+          _reportSectionVisibility(info.visibleFraction),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          CategorySectionHeader(
+            title: widget.section.categoryName ?? 'Category',
+            imagePath: widget.section.categoryImageUrl,
+            onSeeMoreTap: () async {
+              FeedVideoManager.instance.pauseAll();
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BoutiqueScreen(
+                    initialCategoryId: widget.section.categoryId,
+                  ),
+                ),
+              );
+              FeedVideoManager.instance.resume();
+            },
+          ),
+
+          _buildVideoHorizontalListDynamic(
+            widget.section.products,
+            widget.section.categoryName ?? 'Category',
+            productProvider,
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildVideoHorizontalListDynamic(
     List<ProductModel> allProducts,
     String categoryName,
+    ProductProvider productProvider,
   ) {
     final double screenWidth = MediaQuery.of(context).size.width;
     final double cardWidth = (screenWidth - 40) / 2;
@@ -679,31 +920,17 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     return SizedBox(
       height: cardHeight,
       child: ListView.builder(
+        controller: _scrollController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: allProducts.length,
         itemBuilder: (context, index) {
           final product = allProducts[index];
-
-          List<ProductContent> productContents = [];
-          if (product.mainImage != null && product.mainImage!.isNotEmpty) {
-            productContents.add(
-              ProductContent(
-                url: product.mainImage!,
-                isVideo: false,
-                isImage: true,
-              ),
-            );
-          } else {
-            productContents.add(
-              ProductContent(
-                url:
-                    "https://images.pexels.com/photos/16479766/pexels-photo-16479766.jpeg",
-                isVideo: false,
-                isImage: true,
-              ),
-            );
-          }
+          final String resolvedVideo = _resolveProductVideo(
+            product,
+            productProvider,
+          );
+          final String resolvedThumbnail = _resolveProductThumbnail(product);
 
           double discPerc =
               double.tryParse(product.discountPercentage?.toString() ?? "0") ??
@@ -711,27 +938,61 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
           return Padding(
             padding: const EdgeInsets.only(right: 12.0),
-            child: InkWell(
-              onTap: () {
-                // Convert the lightweight ProductModel into the expected full ProductModel
-                final convertedProducts = allProducts
-                    .map(
-                      (p) => shop_model.ProductModel(
-                        id: p.id,
-                        productName: p.productName ?? '',
-                        categoryId: widget.section.categoryId,
-                        categoryName: widget.section.categoryName ?? '',
-                        sellingPrice: p.sellingPrice ?? '0',
-                        discountPercentage: p.discountPercentage ?? '0',
-                        priceAfterDiscount: p.priceAfterDiscount ?? 0.0,
-                        status: p.status ?? '',
-                        mainImage: p.mainImage,
-                        media: [],
-                      ),
-                    )
-                    .toList();
+            child: ShortsProductCard(
+              keyString: 'feed_prod_${widget.section.categoryId}_${product.id}',
+              videoUrl: resolvedVideo,
+              thumbnailUrl: resolvedThumbnail,
+              title: product.productName ?? "No Title",
+              price:
+                  "${product.priceAfterDiscount ?? product.sellingPrice} FCFA",
+              oldPrice: discPerc > 0 ? "${product.sellingPrice} FCFA" : null,
+              discount: discPerc > 0 ? "-${discPerc.toInt()}%" : null,
+              width: cardWidth,
+              height: cardHeight,
+              onTap: () async {
+                setState(() {
+                  _activeCardIndex = index;
+                });
+                _notifySectionActiveCard();
 
-                Navigator.push(
+                FeedVideoManager.instance.pauseAll();
+
+                final convertedProducts = allProducts.map((p) {
+                  final full = productProvider.getCachedProduct(p.id);
+
+                  if (full != null) {
+                    return full;
+                  }
+
+                  List<shop_model.MediaModel> mediaList = [];
+                  if (p.safeMedia.isNotEmpty) {
+                    mediaList = p.safeMedia;
+                  } else if (p.effectiveVideoUrl.isNotEmpty) {
+                    mediaList.add(
+                      shop_model.MediaModel(
+                        id: 0,
+                        mediaType: 'video',
+                        mediaUrl: p.effectiveVideoUrl,
+                        thumbnailUrl: p.mainImage,
+                      ),
+                    );
+                  }
+
+                  return shop_model.ProductModel(
+                    id: p.id,
+                    productName: p.productName ?? '',
+                    categoryId: widget.section.categoryId,
+                    categoryName: widget.section.categoryName ?? '',
+                    sellingPrice: p.sellingPrice ?? '0',
+                    discountPercentage: p.discountPercentage ?? '0',
+                    priceAfterDiscount: p.priceAfterDiscount ?? 0.0,
+                    status: p.status ?? '',
+                    mainImage: p.mainImage,
+                    media: mediaList,
+                  );
+                }).toList();
+
+                await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ProductDetailsScreen(
@@ -740,21 +1001,9 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                     ),
                   ),
                 );
+
+                FeedVideoManager.instance.resume();
               },
-              child: ShopProductCard(
-                title: product.productName ?? "No Title",
-                price:
-                    "${product.priceAfterDiscount ?? product.sellingPrice} FCFA",
-                oldPrice: discPerc > 0 ? "${product.sellingPrice} FCFA" : null,
-                discount: discPerc > 0 ? "-${discPerc.toInt()}%" : null,
-                showDiscountPercentage: discPerc > 0,
-                showOldPrice: discPerc > 0,
-                assetThumbnail: product.mainImage,
-                content: productContents,
-                width: cardWidth,
-                height: cardHeight,
-                isCompact: false,
-              ),
             ),
           );
         },
