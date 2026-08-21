@@ -34,10 +34,14 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   @override
   void initState() {
     super.initState();
+    FeedVideoManager.instance.setActiveTab(1);
     _categoryScrollController = ScrollController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      FeedVideoManager.instance.setActiveTab(1);
       context.read<CategoryProvider>().fetchCategories();
       context.read<ProductProvider>().fetchProducts();
+      VisibilityDetectorController.instance.notifyNow();
+      FeedVideoManager.instance.evaluatePlaybackNow();
     });
   }
 
@@ -58,12 +62,18 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   }
 
   bool _isVideoUrl(String url) {
-    final u = url.toLowerCase();
-    return u.endsWith('.mp4') ||
-        u.endsWith('.mov') ||
-        u.endsWith('.m3u8') ||
-        u.endsWith('.webm') ||
-        u.endsWith('.avi');
+    if (url.trim().isEmpty) return false;
+    final clean = url.trim().toLowerCase().split('?').first.split('#').first;
+    return clean.endsWith('.mp4') ||
+        clean.endsWith('.mov') ||
+        clean.endsWith('.m3u8') ||
+        clean.endsWith('.webm') ||
+        clean.endsWith('.avi') ||
+        clean.endsWith('.mkv') ||
+        clean.endsWith('.flv') ||
+        clean.endsWith('.3gp') ||
+        clean.contains('.mp4') ||
+        clean.contains('.m3u8');
   }
 
   String _resolveProductVideo(ProductModel product) {
@@ -74,6 +84,24 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
         return _resolveUrl(mUrl);
       }
     }
+
+    // Check if ProductProvider cached full product with video media
+    final matching = context.read<ProductProvider>().getCachedProduct(
+      product.id,
+    );
+    if (matching != null && matching != product) {
+      for (final m in matching.media) {
+        final mType = m.mediaType.toLowerCase().trim();
+        final mUrl = m.effectiveMediaUrl;
+        if ((mType == 'video' || _isVideoUrl(mUrl)) && mUrl.isNotEmpty) {
+          return _resolveUrl(mUrl);
+        }
+      }
+      if (matching.mainImage != null && _isVideoUrl(matching.mainImage!)) {
+        return _resolveUrl(matching.mainImage!);
+      }
+    }
+
     if (product.mainImage != null && _isVideoUrl(product.mainImage!)) {
       return _resolveUrl(product.mainImage!);
     }
@@ -97,11 +125,15 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
 
   void _precacheVideos(List<ProductModel> products) {
     final List<String> videoUrls = [];
+    final productProvider = context.read<ProductProvider>();
     for (final p in products) {
       final vUrl = _resolveProductVideo(p);
       if (vUrl.isNotEmpty) {
         videoUrls.add(vUrl);
         VideoCacheManager.instance.preCacheVideo(vUrl);
+      } else if (p.media.isEmpty &&
+          !productProvider.isProductDetailsCached(p.id)) {
+        productProvider.fetchProductDetails(p.id);
       }
     }
     if (videoUrls.isNotEmpty) {
@@ -221,6 +253,14 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
           child: NotificationListener<ScrollNotification>(
             onNotification: (scrollInfo) {
               VisibilityDetectorController.instance.notifyNow();
+              final maxScroll = scrollInfo.metrics.maxScrollExtent;
+              final pixels = scrollInfo.metrics.pixels;
+              final ratio = maxScroll > 0
+                  ? (pixels / maxScroll).clamp(0.0, 1.0)
+                  : 0.0;
+              FeedVideoManager.instance.updateScrollRatio(ratio);
+              final isBottom = maxScroll > 0 && pixels >= (maxScroll - 50);
+              FeedVideoManager.instance.setIsAtBottom(isBottom);
               return false;
             },
             child: CustomScrollView(
@@ -350,19 +390,23 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                             double.tryParse(product.discountPercentage) ?? 0;
                         final bool hasDiscount = discount > 0;
                         final String videoUrl = _resolveProductVideo(product);
-                        final String thumbnailUrl =
-                            _resolveProductThumbnail(product);
+                        final String thumbnailUrl = _resolveProductThumbnail(
+                          product,
+                        );
 
                         return ShortsProductCard(
+                          key: ValueKey('boutique_prod_${product.id}'),
                           keyString: 'boutique_prod_${product.id}',
                           videoUrl: videoUrl,
                           thumbnailUrl: thumbnailUrl,
                           title: product.productName,
                           price: "${product.priceAfterDiscount} FCFA",
-                          oldPrice:
-                              hasDiscount ? "${product.sellingPrice} FCFA" : null,
-                          discount:
-                              hasDiscount ? "-${discount.toInt()}%" : null,
+                          oldPrice: hasDiscount
+                              ? "${product.sellingPrice} FCFA"
+                              : null,
+                          discount: hasDiscount
+                              ? "-${discount.toInt()}%"
+                              : null,
                           width: double.infinity,
                           height: double.infinity,
                           onTap: () async {
@@ -430,8 +474,6 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                       }, childCount: filteredProducts.length),
                     ),
                   ),
-
-                const SliverToBoxAdapter(child: SizedBox(height: 30)),
               ],
             ),
           ),
@@ -443,11 +485,21 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   Widget _buildCategoryItem(CategoryModel category, int index) {
     bool isSelected = selectedCategory == index;
     return GestureDetector(
-      onTap: () => setState(() {
-        selectedCategory = index;
-        selectedCategoryName = category.name;
-        selectedSubCategoryIndex = -1;
-      }),
+      onTap: () {
+        if (selectedCategory == index) return;
+        FeedVideoManager.instance.setActiveTab(1);
+        FeedVideoManager.instance.clearCategoryCards('boutique_');
+        FeedVideoManager.instance.setIsAtBottom(false);
+        setState(() {
+          selectedCategory = index;
+          selectedCategoryName = category.name;
+          selectedSubCategoryIndex = -1;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          VisibilityDetectorController.instance.notifyNow();
+          FeedVideoManager.instance.evaluatePlaybackNow();
+        });
+      },
       child: Padding(
         padding: const EdgeInsets.only(right: 15),
         child: Column(
@@ -511,9 +563,18 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   Widget _buildSubCategoryItem(SubcategoryModel subcategory, int index) {
     bool isSelected = selectedSubCategoryIndex == index;
     return GestureDetector(
-      onTap: () => setState(() {
-        selectedSubCategoryIndex = index;
-      }),
+      onTap: () {
+        FeedVideoManager.instance.setActiveTab(1);
+        FeedVideoManager.instance.clearCategoryCards('boutique_');
+        FeedVideoManager.instance.setIsAtBottom(false);
+        setState(() {
+          selectedSubCategoryIndex = isSelected ? -1 : index;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          VisibilityDetectorController.instance.notifyNow();
+          FeedVideoManager.instance.evaluatePlaybackNow();
+        });
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(

@@ -29,7 +29,7 @@ class _MainDashboardState extends State<MainDashboard> {
         currentIndex: _currentIndex,
         onTap: (index) {
           if (index != _currentIndex) {
-            FeedVideoManager.instance.pauseAll();
+            FeedVideoManager.instance.setActiveTab(index);
             setState(() => _currentIndex = index);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               FeedVideoManager.instance.resume();

@@ -218,6 +218,9 @@ class FeedVideoManager extends ChangeNotifier {
     state ??= _playerPool.first;
 
     // Reassign state
+    final bool isKeyChanged = state.currentKey != key;
+    final bool isUrlChanged = state.currentUrl != url;
+
     if (state.currentKey != null && state.currentKey != key) {
       _keyToPlayer.remove(state.currentKey);
     }
@@ -225,7 +228,7 @@ class FeedVideoManager extends ChangeNotifier {
     state.currentKey = key;
     _keyToPlayer[key] = state;
 
-    if (state.currentUrl != url) {
+    if (isKeyChanged || isUrlChanged) {
       state.currentUrl = url;
       state.hasFirstFrame = false;
       state.isBuffering = true;
@@ -243,6 +246,28 @@ class FeedVideoManager extends ChangeNotifier {
     }
 
     return state;
+  }
+
+  /// Clear all cards starting with a prefix (e.g. 'boutique_')
+  void clearCategoryCards(String prefix) {
+    final keysToRemove =
+        _urlMap.keys.where((k) => k.startsWith(prefix)).toList();
+    for (final k in keysToRemove) {
+      _urlMap.remove(k);
+      _cardVisibility.remove(k);
+      _cardCenterY.remove(k);
+      if (_currentPlayingKey == k) {
+        try {
+          _keyToPlayer[k]?.player.pause();
+        } catch (_) {}
+        _currentPlayingKey = null;
+      }
+      final state = _keyToPlayer.remove(k);
+      if (state != null) {
+        state.stopAndReset();
+      }
+    }
+    _evaluatePlayback();
   }
 
   /// Register card's video URL & pre-cache to local storage
@@ -316,24 +341,117 @@ class FeedVideoManager extends ChangeNotifier {
     }
   }
 
+  int _activeTabIndex = 0;
+  int get activeTabIndex => _activeTabIndex;
+
+  double _viewportHeight = 800.0;
+  void updateViewportHeight(double height) {
+    if (height > 0 && (_viewportHeight - height).abs() > 1.0) {
+      _viewportHeight = height;
+    }
+  }
+
+  double _scrollRatio = 0.0;
+  double get scrollRatio => _scrollRatio;
+
+  void updateScrollRatio(double ratio) {
+    final clamped = ratio.clamp(0.0, 1.0);
+    if ((_scrollRatio - clamped).abs() > 0.02) {
+      _scrollRatio = clamped;
+      if (!_isGloballyPaused) {
+        _evaluatePlayback();
+      }
+    }
+  }
+
+  bool _isAtBottom = false;
+  bool get isAtBottom => _isAtBottom;
+
+  void setIsAtBottom(bool atBottom) {
+    if (_isAtBottom != atBottom) {
+      _isAtBottom = atBottom;
+      if (atBottom) {
+        _scrollRatio = 1.0;
+      }
+      if (!_isGloballyPaused) {
+        _evaluatePlayback();
+      }
+    }
+  }
+
+  void setActiveTab(int tabIndex) {
+    if (_activeTabIndex != tabIndex) {
+      _activeTabIndex = tabIndex;
+      _isAtBottom = false;
+      _scrollRatio = 0.0;
+      pauseAll();
+      if (tabIndex != 2) {
+        _isGloballyPaused = false;
+        _evaluatePlayback();
+      }
+    }
+  }
+
+  void evaluatePlaybackNow() {
+    if (!_isGloballyPaused) {
+      _evaluatePlayback();
+    }
+  }
+
   void _evaluatePlayback() {
+    if (_isGloballyPaused) return;
+
+    // Compte tab - pause all
+    if (_activeTabIndex == 2) {
+      if (_currentPlayingKey != null) {
+        try {
+          _keyToPlayer[_currentPlayingKey]?.player.pause();
+        } catch (_) {}
+        _currentPlayingKey = null;
+        notifyListeners();
+      }
+      return;
+    }
+
     String? bestKey;
+    final double vHeight = _viewportHeight > 0 ? _viewportHeight : 800.0;
+    // Dynamic optical focus shifts smoothly from top rows (0.32) to bottom rows (0.72) based on scroll progress
+    final double topTargetY = vHeight * 0.30;
+    final double bottomTargetY = vHeight * 0.72;
+    final double targetCenterY =
+        topTargetY + (_scrollRatio * (bottomTargetY - topTargetY));
 
-    // 1. If sections are active (Home page)
-    if (_sectionVisibility.isNotEmpty) {
+    // 1. If currently on Home page (tab 0)
+    if (_activeTabIndex == 0 && _sectionVisibility.isNotEmpty) {
       String? bestSectionId;
-      double bestScore = -99999.0;
+      double bestScore = -999999.0;
 
-      for (final entry in _sectionVisibility.entries) {
-        final secId = entry.key;
-        final fraction = entry.value;
-        final centerY = _sectionCenterY[secId] ?? 0.0;
-
-        if (fraction >= 0.25) {
-          final score = (fraction * 1000.0) + (centerY * 0.1);
-          if (score > bestScore) {
-            bestScore = score;
+      if (_isAtBottom || _scrollRatio >= 0.85) {
+        double maxCenterY = -1.0;
+        for (final entry in _sectionVisibility.entries) {
+          final secId = entry.key;
+          final fraction = entry.value;
+          final centerY = _sectionCenterY[secId] ?? 0.0;
+          if (fraction >= 0.20 && centerY > maxCenterY) {
+            maxCenterY = centerY;
             bestSectionId = secId;
+          }
+        }
+      }
+
+      if (bestSectionId == null) {
+        for (final entry in _sectionVisibility.entries) {
+          final secId = entry.key;
+          final fraction = entry.value;
+          final centerY = _sectionCenterY[secId] ?? 0.0;
+
+          if (fraction >= 0.15) {
+            final double distFromCenter = (centerY - targetCenterY).abs();
+            final score = (fraction * 1000.0) - (distFromCenter * 1.5);
+            if (score > bestScore) {
+              bestScore = score;
+              bestSectionId = secId;
+            }
           }
         }
       }
@@ -342,21 +460,56 @@ class FeedVideoManager extends ChangeNotifier {
         bestKey = _sectionActiveKey[bestSectionId];
       }
     }
-    // 2. Else if grid cards are active (Boutique page)
-    else if (_cardVisibility.isNotEmpty) {
-      double bestCardScore = -99999.0;
+    // 2. If currently on Boutique page (tab 1) or no sections active
+    else if (_activeTabIndex == 1 || _cardVisibility.isNotEmpty) {
+      double bestCardScore = -999999.0;
 
-      for (final entry in _cardVisibility.entries) {
-        final key = entry.key;
-        final fraction = entry.value;
-        final centerY = _cardCenterY[key] ?? 0.0;
-        final url = _urlMap[key] ?? '';
+      // If at bottom of page or scrolled near the bottom, give priority to the lowest visible card (highest centerY)
+      if (_isAtBottom || _scrollRatio >= 0.65) {
+        String? bottomMostKey;
+        double maxCenterY = -1.0;
+        for (final entry in _cardVisibility.entries) {
+          final key = entry.key;
+          final fraction = entry.value;
+          final centerY = _cardCenterY[key] ?? 0.0;
+          final url = _urlMap[key] ?? '';
 
-        if (url.isNotEmpty && fraction >= 0.25) {
-          final score = (fraction * 1000.0) + (centerY * 0.1);
-          if (score > bestCardScore) {
-            bestCardScore = score;
-            bestKey = key;
+          if (url.isNotEmpty && fraction >= 0.20) {
+            if (centerY > maxCenterY) {
+              maxCenterY = centerY;
+              bottomMostKey = key;
+            }
+          }
+        }
+        if (bottomMostKey != null) {
+          bestKey = bottomMostKey;
+        }
+      }
+
+      if (bestKey == null) {
+        for (final entry in _cardVisibility.entries) {
+          final key = entry.key;
+          final fraction = entry.value;
+          final centerY = _cardCenterY[key] ?? 0.0;
+          final url = _urlMap[key] ?? '';
+
+          if (url.isNotEmpty && fraction >= 0.15) {
+            final double distFromCenter = (centerY - targetCenterY).abs();
+            final score = (fraction * 1000.0) - (distFromCenter * 1.5);
+            if (score > bestCardScore) {
+              bestCardScore = score;
+              bestKey = key;
+            }
+          }
+        }
+      }
+
+      // Fallback if visibility hasn't fired yet but cards are registered for Boutique
+      if (bestKey == null && _activeTabIndex == 1 && _urlMap.isNotEmpty) {
+        for (final entry in _urlMap.entries) {
+          if (entry.key.startsWith('boutique_') && entry.value.isNotEmpty) {
+            bestKey = entry.key;
+            break;
           }
         }
       }
@@ -365,25 +518,17 @@ class FeedVideoManager extends ChangeNotifier {
     if (bestKey != null) {
       final url = _urlMap[bestKey];
       if (url != null && url.isNotEmpty) {
-        if (bestKey != _currentPlayingKey) {
-          if (_currentPlayingKey != null &&
-              _keyToPlayer.containsKey(_currentPlayingKey)) {
-            try {
-              _keyToPlayer[_currentPlayingKey]!.player.pause();
-            } catch (_) {}
-          }
-          _currentPlayingKey = bestKey;
-          final playerState = _getOrCreatePlayer(bestKey, url, autoPlay: true);
+        if (_currentPlayingKey != null && _currentPlayingKey != bestKey) {
+          try {
+            _keyToPlayer[_currentPlayingKey]?.player.pause();
+          } catch (_) {}
+        }
+        _currentPlayingKey = bestKey;
+        final playerState = _getOrCreatePlayer(bestKey, url, autoPlay: true);
+        if (!playerState.isPlaying) {
           try {
             playerState.player.play();
           } catch (_) {}
-        } else {
-          final playerState = _keyToPlayer[bestKey];
-          if (playerState != null && !playerState.isPlaying) {
-            try {
-              playerState.player.play();
-            } catch (_) {}
-          }
         }
       }
     } else if (_currentPlayingKey != null) {

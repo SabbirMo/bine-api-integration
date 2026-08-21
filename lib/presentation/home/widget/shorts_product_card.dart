@@ -43,6 +43,8 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
       if (renderBox != null && renderBox.hasSize) {
         final globalOffset = renderBox.localToGlobal(Offset.zero);
         cardCenterY = globalOffset.dy + (renderBox.size.height / 2);
+        final screenHeight = MediaQuery.sizeOf(context).height;
+        FeedVideoManager.instance.updateViewportHeight(screenHeight);
       }
     } catch (_) {}
 
@@ -63,19 +65,33 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
         widget.videoUrl,
       );
       VideoFrameManager.instance.extractFirstFrame(widget.videoUrl);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _reportVisibility(1.0);
+        }
+      });
     }
   }
 
   @override
   void didUpdateWidget(covariant ShortsProductCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoUrl != widget.videoUrl) {
+    if (oldWidget.keyString != widget.keyString ||
+        oldWidget.videoUrl != widget.videoUrl) {
+      if (oldWidget.keyString != widget.keyString) {
+        FeedVideoManager.instance.unregisterCard(oldWidget.keyString);
+      }
       if (widget.videoUrl.trim().isNotEmpty) {
         FeedVideoManager.instance.registerCardUrl(
           widget.keyString,
           widget.videoUrl,
         );
         VideoFrameManager.instance.extractFirstFrame(widget.videoUrl);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _reportVisibility(1.0);
+          }
+        });
       } else {
         FeedVideoManager.instance.unregisterCard(widget.keyString);
       }
@@ -203,8 +219,7 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                         playerState != null &&
                         playerState.currentUrl == widget.videoUrl;
 
-                    if (isAttached &&
-                        (playerState.isPlaying || playerState.hasFirstFrame)) {
+                    if (isAttached) {
                       return Stack(
                         fit: StackFit.expand,
                         children: [

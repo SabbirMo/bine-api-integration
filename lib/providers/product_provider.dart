@@ -77,6 +77,9 @@ class ProductProvider extends ChangeNotifier {
   }
 
   final Map<int, ProductModel> _productDetailsCache = {};
+  final Set<int> _fetchingDetailIds = {};
+
+  bool isProductDetailsCached(int id) => _productDetailsCache.containsKey(id);
 
   ProductModel? getCachedProduct(int id) {
     if (_productDetailsCache.containsKey(id)) {
@@ -87,9 +90,12 @@ class ProductProvider extends ChangeNotifier {
 
   Future<ProductModel?> fetchProductDetails(int id) async {
     if (_productDetailsCache.containsKey(id)) {
-      _fetchProductDetailsBackground(id);
       return _productDetailsCache[id];
     }
+    if (_fetchingDetailIds.contains(id)) {
+      return null;
+    }
+    _fetchingDetailIds.add(id);
     return await _fetchProductDetailsBackground(id);
   }
 
@@ -109,6 +115,8 @@ class ProductProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('❌ Failed to fetch product details ID: $id: $e');
+    } finally {
+      _fetchingDetailIds.remove(id);
     }
     return null;
   }

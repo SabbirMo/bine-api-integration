@@ -105,6 +105,33 @@ class ProductModel {
       }
     }
 
+    final rawVideoUrl = json['video_url']?.toString() ??
+        json['video']?.toString() ??
+        json['video_file']?.toString() ??
+        json['file']?.toString() ??
+        json['media_url']?.toString();
+    final rawHlsUrl = json['hls_url']?.toString();
+    if ((rawVideoUrl != null && rawVideoUrl.isNotEmpty) ||
+        (rawHlsUrl != null && rawHlsUrl.isNotEmpty)) {
+      final hasVideoMedia = parsedMedia.any(
+        (m) => m.mediaType.toLowerCase() == 'video',
+      );
+      if (!hasVideoMedia) {
+        parsedMedia.insert(
+          0,
+          MediaModel(
+            id: 0,
+            mediaType: 'video',
+            mediaUrl: rawVideoUrl ?? '',
+            hlsUrl: rawHlsUrl,
+            thumbnailUrl: json['thumbnail_url']?.toString() ??
+                json['thumbnail']?.toString() ??
+                json['main_image']?.toString(),
+          ),
+        );
+      }
+    }
+
     String? mainImg = json['main_image']?.toString();
     if (mainImg == null || mainImg.isEmpty) {
       for (var m in parsedMedia) {
@@ -242,15 +269,44 @@ class MediaModel {
   }
 
   factory MediaModel.fromJson(Map<String, dynamic> json) {
-    final rawUrl = json['media_url'] ?? json['media_file'];
+    final rawUrl = json['media_url'] ??
+        json['media_file'] ??
+        json['file'] ??
+        json['video'] ??
+        json['video_url'] ??
+        json['url'];
+    String mType = json['media_type']?.toString().toLowerCase().trim() ?? '';
+    final urlStr = (rawUrl?.toString() ?? '').toLowerCase().trim();
+    if (mType.isEmpty) {
+      if (urlStr.endsWith('.mp4') ||
+          urlStr.endsWith('.mov') ||
+          urlStr.endsWith('.m3u8') ||
+          urlStr.endsWith('.webm') ||
+          urlStr.endsWith('.avi') ||
+          urlStr.endsWith('.mkv') ||
+          urlStr.contains('.mp4') ||
+          urlStr.contains('.m3u8')) {
+        mType = 'video';
+      } else if (urlStr.endsWith('.mp3') ||
+          urlStr.endsWith('.wav') ||
+          urlStr.endsWith('.aac') ||
+          urlStr.endsWith('.m4a')) {
+        mType = 'audio';
+      } else {
+        mType = 'image';
+      }
+    }
+
     return MediaModel(
       id: json['id'] is num
           ? (json['id'] as num).toInt()
           : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
-      mediaType: json['media_type']?.toString() ?? '',
+      mediaType: mType,
       mediaUrl: rawUrl?.toString() ?? '',
       hlsUrl: json['hls_url']?.toString(),
-      thumbnailUrl: json['thumbnail_url']?.toString(),
+      thumbnailUrl: json['thumbnail_url']?.toString() ??
+          json['thumbnail']?.toString() ??
+          json['thumb_url']?.toString(),
       videoStatus: json['video_status']?.toString(),
       videoDuration: json['video_duration'] is num
           ? (json['video_duration'] as num).toDouble()

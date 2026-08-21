@@ -346,6 +346,12 @@ class _AccueilScreenState extends State<AccueilScreen>
             child: NotificationListener<ScrollNotification>(
               onNotification: (scrollInfo) {
                 VisibilityDetectorController.instance.notifyNow();
+                final maxScroll = scrollInfo.metrics.maxScrollExtent;
+                final pixels = scrollInfo.metrics.pixels;
+                final ratio = maxScroll > 0 ? (pixels / maxScroll).clamp(0.0, 1.0) : 0.0;
+                FeedVideoManager.instance.updateScrollRatio(ratio);
+                final isBottom = maxScroll > 0 && pixels >= (maxScroll - 50);
+                FeedVideoManager.instance.setIsAtBottom(isBottom);
                 return false;
               },
               child: SingleChildScrollView(
@@ -841,12 +847,18 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
   }
 
   bool _isVideoUrl(String url) {
-    final u = url.toLowerCase();
-    return u.endsWith('.mp4') ||
-        u.endsWith('.mov') ||
-        u.endsWith('.m3u8') ||
-        u.endsWith('.webm') ||
-        u.endsWith('.avi');
+    if (url.trim().isEmpty) return false;
+    final clean = url.trim().toLowerCase().split('?').first.split('#').first;
+    return clean.endsWith('.mp4') ||
+        clean.endsWith('.mov') ||
+        clean.endsWith('.m3u8') ||
+        clean.endsWith('.webm') ||
+        clean.endsWith('.avi') ||
+        clean.endsWith('.mkv') ||
+        clean.endsWith('.flv') ||
+        clean.endsWith('.3gp') ||
+        clean.contains('.mp4') ||
+        clean.contains('.m3u8');
   }
 
   String _resolveProductVideo(

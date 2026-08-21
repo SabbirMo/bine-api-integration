@@ -164,14 +164,21 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   @override
   void didUpdateWidget(ProductVideoItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isMuted != widget.isMuted && _player != null) {
-      _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
-    }
-    if (oldWidget.isActive != widget.isActive && _player != null) {
-      if (widget.isActive) {
-        _player!.play();
-      } else {
-        _player!.pause();
+    if (oldWidget.videoUrl != widget.videoUrl) {
+      _player?.dispose();
+      _player = null;
+      _controller = null;
+      _initPlayer();
+    } else {
+      if (oldWidget.isMuted != widget.isMuted && _player != null) {
+        _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
+      }
+      if (oldWidget.isActive != widget.isActive && _player != null) {
+        if (widget.isActive) {
+          _player!.play();
+        } else {
+          _player!.pause();
+        }
       }
     }
   }

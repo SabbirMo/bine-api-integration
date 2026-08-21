@@ -175,13 +175,18 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
   }
 
   bool _isVideoUrl(String url) {
-    final u = url.toLowerCase();
-    return u.endsWith('.mp4') ||
-        u.endsWith('.mov') ||
-        u.endsWith('.m3u8') ||
-        u.endsWith('.webm') ||
-        u.endsWith('.avi') ||
-        u.contains('.mp4?');
+    if (url.trim().isEmpty) return false;
+    final clean = url.trim().toLowerCase().split('?').first.split('#').first;
+    return clean.endsWith('.mp4') ||
+        clean.endsWith('.mov') ||
+        clean.endsWith('.m3u8') ||
+        clean.endsWith('.webm') ||
+        clean.endsWith('.avi') ||
+        clean.endsWith('.mkv') ||
+        clean.endsWith('.flv') ||
+        clean.endsWith('.3gp') ||
+        clean.contains('.mp4') ||
+        clean.contains('.m3u8');
   }
 
   List<ProductContent> get _mediaContent {
