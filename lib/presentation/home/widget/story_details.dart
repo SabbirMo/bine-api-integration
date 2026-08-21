@@ -1,7 +1,9 @@
 import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/providers/story_provider.dart';
 import 'package:binetatour/providers/story_detail_provider.dart';
 
@@ -134,67 +136,125 @@ class _StoryDetailContent extends StatelessWidget {
     }
     if (story.isAudio) return _buildAudioPlaceholder(provider);
     if (story.isVideo && provider.videoController != null) {
-      final String thumb = (story.thumbnailUrl != null &&
-              story.thumbnailUrl!.trim().isNotEmpty)
-          ? story.thumbnailUrl!
-          : userProfile;
+      final double videoWidth =
+          provider.player!.state.width?.toDouble() ?? 16.0;
+      final double videoHeight =
+          provider.player!.state.height?.toDouble() ?? 9.0;
+      final cleanUrl = story.url;
 
       return Stack(
         alignment: Alignment.center,
         children: [
+          // 1. Video Player with blurred background (fills the entire screen seamlessly)
           SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.contain,
-              child: SizedBox(
-                width: provider.player!.state.width?.toDouble() ?? 16.0,
-                height: provider.player!.state.height?.toDouble() ?? 9.0,
-                child: Video(
-                  key: ValueKey(provider.currentIndex),
-                  controller: provider.videoController!,
-                  controls: NoVideoControls,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Blurred Background Video
+                Positioned.fill(
+                  child: ClipRect(
+                    child: ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: videoWidth,
+                          height: videoHeight,
+                          child: Video(
+                            key: ValueKey('blur_${provider.currentIndex}'),
+                            controller: provider.videoController!,
+                            controls: NoVideoControls,
+                            fill: Colors.transparent,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                // Dark overlay to dim the background
+                Positioned.fill(
+                  child: Container(color: Colors.black.withValues(alpha: 0.25)),
+                ),
+                // Foreground Clear Video
+                Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: videoWidth,
+                      height: videoHeight,
+                      child: Video(
+                        key: ValueKey('fg_${provider.currentIndex}'),
+                        controller: provider.videoController!,
+                        controls: NoVideoControls,
+                        fill: Colors.transparent,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          Positioned.fill(
-            child: AnimatedOpacity(
-              opacity: isLoading ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: IgnorePointer(
-                ignoring: !isLoading,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (thumb.startsWith('http'))
-                      Image.network(
-                        thumb,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Container(color: Colors.black),
-                      )
-                    else if (thumb.isNotEmpty)
-                      Image.asset(
-                        thumb,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Container(color: Colors.black),
-                      )
-                    else
-                      Container(color: Colors.black),
-                    Container(
-                      color: Colors.black.withValues(alpha: 0.35),
-                    ),
-                    const Center(
+
+          // 2. Pre-decoded Video First Frame (Extracted strictly from video file, NO external catalog thumbnail!)
+          if (isLoading)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black,
+                child: ListenableBuilder(
+                  listenable: VideoFrameManager.instance,
+                  builder: (context, _) {
+                    final frameBytes = VideoFrameManager.instance
+                        .getCachedFrame(cleanUrl);
+
+                    if (frameBytes != null && frameBytes.isNotEmpty) {
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Blurred first frame background
+                          Positioned.fill(
+                            child: ClipRect(
+                              child: ImageFiltered(
+                                imageFilter: ImageFilter.blur(
+                                  sigmaX: 15.0,
+                                  sigmaY: 15.0,
+                                ),
+                                child: Image.memory(
+                                  frameBytes,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: Container(
+                              color: Colors.black.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          // Clear first frame foreground
+                          Center(
+                            child: Image.memory(
+                              frameBytes,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    // Trigger extraction if not already cached
+                    VideoFrameManager.instance.extractFirstFrame(cleanUrl);
+
+                    return const Center(
                       child: CircularProgressIndicator(
                         color: Color(0xFFFF6900),
                         strokeWidth: 3,
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
             ),
-          ),
         ],
       );
     }

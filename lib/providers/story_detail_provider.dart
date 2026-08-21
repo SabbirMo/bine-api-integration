@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/providers/story_provider.dart';
 
@@ -142,23 +144,38 @@ class StoryDetailProvider extends ChangeNotifier {
       final activePlayer = player!;
       activePlayer.setVolume(_isMuted ? 0.0 : 100.0);
 
+      final cleanUrl = story.url;
+      final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanUrl);
+      final playPath = cachedPath ?? cleanUrl;
+
+      // Extract first frame
+      VideoFrameManager.instance.extractFirstFrame(cleanUrl);
+
       // Check if active player was already pre-buffered with this URL!
       final currentSource = activePlayer.state.playlist.medias.isNotEmpty
           ? activePlayer.state.playlist.medias.first.uri
           : '';
 
-      final bool isAlreadyPrebuffered =
-          currentSource == story.url || currentSource == 'file://${story.url}';
+      final bool isAlreadyPrebuffered = currentSource == playPath ||
+          currentSource == cleanUrl ||
+          currentSource == 'file://$playPath' ||
+          currentSource == 'file://$cleanUrl';
 
       if (isAlreadyPrebuffered) {
         _isLoading = activePlayer.state.position == Duration.zero;
         activePlayer.play();
       } else {
         _isLoading = true;
-        if (story.isNetwork) {
-          activePlayer.open(Media(story.url), play: true);
+        if (story.isNetwork && cachedPath == null) {
+          activePlayer.open(Media(cleanUrl), play: true);
+          VideoCacheManager.instance.preCacheVideo(cleanUrl);
         } else {
-          activePlayer.open(Media('asset://${story.url}'), play: true);
+          final mediaUri = (cachedPath != null || playPath.startsWith('/'))
+              ? playPath
+              : (playPath.startsWith('http')
+                  ? playPath
+                  : 'asset://$playPath');
+          activePlayer.open(Media(mediaUri), play: true);
         }
       }
       notifyListeners();
@@ -184,21 +201,39 @@ class StoryDetailProvider extends ChangeNotifier {
     final nextP = _nextPlayer;
     if (nextP == null) return;
 
+    final cleanNext = nextStory.url;
+    final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanNext);
+    final playPath = cachedPath ?? cleanNext;
+
     final currentSource = nextP.state.playlist.medias.isNotEmpty
         ? nextP.state.playlist.medias.first.uri
         : '';
 
-    if (currentSource != nextStory.url) {
+    final bool isAlreadyPreloaded = currentSource == playPath ||
+        currentSource == cleanNext ||
+        currentSource == 'file://$playPath' ||
+        currentSource == 'file://$cleanNext';
+
+    if (!isAlreadyPreloaded) {
       debugPrint(
-        "Pre-buffering next story index $nextIndex in background: ${nextStory.url}",
+        "Pre-buffering next story index $nextIndex in background: $cleanNext",
       );
       nextP.setVolume(_isMuted ? 0.0 : 100.0);
-      if (nextStory.isNetwork) {
-        nextP.open(Media(nextStory.url), play: false);
+      if (nextStory.isNetwork && cachedPath == null) {
+        nextP.open(Media(cleanNext), play: false);
+        VideoCacheManager.instance.preCacheVideo(cleanNext);
       } else {
-        nextP.open(Media('asset://${nextStory.url}'), play: false);
+        final mediaUri = (cachedPath != null || playPath.startsWith('/'))
+            ? playPath
+            : (playPath.startsWith('http')
+                ? playPath
+                : 'asset://$playPath');
+        nextP.open(Media(mediaUri), play: false);
       }
     }
+
+    // Pre-extract first frame
+    VideoFrameManager.instance.extractFirstFrame(cleanNext);
   }
 
   void startImageTimer() {

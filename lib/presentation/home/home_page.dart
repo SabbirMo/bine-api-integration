@@ -617,9 +617,12 @@ class _AccueilScreenState extends State<AccueilScreen>
                 final String lowerUrl = url.toLowerCase();
                 bool isVid =
                     cType == 'video' ||
+                    isVideo ||
                     lowerUrl.contains('.m3u8') ||
-                    lowerUrl.endsWith('.mp4') ||
+                    lowerUrl.contains('.mp4') ||
                     lowerUrl.endsWith('.mov') ||
+                    lowerUrl.endsWith('.webm') ||
+                    lowerUrl.endsWith('.mkv') ||
                     lowerUrl.endsWith('.avi');
                 bool isImg =
                     cType == 'image' ||
@@ -650,11 +653,16 @@ class _AccueilScreenState extends State<AccueilScreen>
                       : '$base/$storyThumb';
                 }
 
+                if (isVid && url.isNotEmpty) {
+                  VideoCacheManager.instance.preCacheVideo(url);
+                  VideoFrameManager.instance.extractFirstFrame(url);
+                }
+
                 return StoryContent(
                   id: s.id,
                   url: url,
                   fallbackUrl: s.mediaUrl,
-                  thumbnailUrl: storyThumb,
+                  thumbnailUrl: null, // No external catalog thumbnail
                   isVideo: isVid,
                   isAudio: isAud,
                   isImage: isImg,
