@@ -367,11 +367,59 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                           height: double.infinity,
                           onTap: () async {
                             FeedVideoManager.instance.pauseAll();
+
+                            final convertedProducts = filteredProducts.map((p) {
+                              final cachedFull = context
+                                  .read<ProductProvider>()
+                                  .getCachedProduct(p.id);
+                              if (cachedFull != null &&
+                                  cachedFull.media.isNotEmpty) {
+                                return cachedFull;
+                              }
+
+                              final pVideo = _resolveProductVideo(p);
+                              if (p.media.isEmpty && pVideo.isNotEmpty) {
+                                return ProductModel(
+                                  id: p.id,
+                                  productName: p.productName,
+                                  categoryId: p.categoryId,
+                                  categoryName: p.categoryName,
+                                  subcategoryId: p.subcategoryId,
+                                  subcategoryName: p.subcategoryName,
+                                  sellingPrice: p.sellingPrice,
+                                  discountPercentage: p.discountPercentage,
+                                  priceAfterDiscount: p.priceAfterDiscount,
+                                  status: p.status,
+                                  mainImage: p.mainImage,
+                                  media: [
+                                    MediaModel(
+                                      id: 0,
+                                      mediaType: 'video',
+                                      mediaUrl: pVideo,
+                                      thumbnailUrl: p.mainImage,
+                                    ),
+                                  ],
+                                  actualPrice: p.actualPrice,
+                                  deliveryPrice: p.deliveryPrice,
+                                  description: p.description,
+                                  deliveryMessage: p.deliveryMessage,
+                                  variants: p.variants,
+                                  stockMode: p.stockMode,
+                                  stockQuantity: p.stockQuantity,
+                                  unassignedStock: p.unassignedStock,
+                                  totalStock: p.totalStock,
+                                  noVariant: p.noVariant,
+                                  stock: p.stock,
+                                );
+                              }
+                              return p;
+                            }).toList();
+
                             await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => ProductDetailsScreen(
-                                  allProducts: filteredProducts,
+                                  allProducts: convertedProducts,
                                   initialProductIndex: index,
                                 ),
                               ),

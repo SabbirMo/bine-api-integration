@@ -995,7 +995,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                       shop_model.MediaModel(
                         id: 0,
                         mediaType: 'video',
-                        mediaUrl: p.effectiveVideoUrl,
+                        mediaUrl: _resolveUrl(p.effectiveVideoUrl),
                         thumbnailUrl: p.mainImage,
                       ),
                     );

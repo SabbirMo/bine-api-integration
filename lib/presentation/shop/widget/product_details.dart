@@ -1,7 +1,10 @@
 // ignore_for_file: must_be_immutable
 
 import 'dart:ui';
+import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/token_storage/token_storage.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
@@ -38,15 +41,60 @@ class ProductDetailsScreen extends StatefulWidget {
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   late PageController _verticalController;
   bool _isMuted = false;
+  int _currentPageIndex = 0;
 
   bool isExpanded = false;
 
   @override
   void initState() {
     super.initState();
+    _currentPageIndex = widget.initialProductIndex;
     _verticalController = PageController(
       initialPage: widget.initialProductIndex,
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _precacheAround(_currentPageIndex);
+    });
+  }
+
+  void _precacheAround(int index) {
+    if (!mounted) return;
+    final productProvider = context.read<ProductProvider>();
+    final indices = [index, index + 1, index + 2, index - 1];
+
+    for (final i in indices) {
+      if (i >= 0 && i < widget.allProducts.length) {
+        final p = widget.allProducts[i];
+        productProvider.fetchProductDetails(p.id);
+
+        for (final m in p.media) {
+          final mType = m.mediaType.toLowerCase().trim();
+          final mUrl = m.effectiveMediaUrl.isNotEmpty ? m.effectiveMediaUrl : m.mediaUrl;
+          if (mUrl.isNotEmpty && (mType == 'video' || mUrl.endsWith('.mp4') || mUrl.endsWith('.mov') || mUrl.endsWith('.m3u8'))) {
+            String clean = mUrl.trim();
+            if (!clean.startsWith('http')) {
+              final base = BaseUrl.baseUrl;
+              clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+            }
+            VideoCacheManager.instance.preCacheVideo(clean);
+            VideoFrameManager.instance.extractFirstFrame(clean);
+          }
+        }
+
+        if (p.mainImage != null && p.mainImage!.isNotEmpty) {
+          final mainImg = p.mainImage!.toLowerCase().trim();
+          if (mainImg.endsWith('.mp4') || mainImg.endsWith('.mov') || mainImg.endsWith('.m3u8')) {
+            String clean = p.mainImage!.trim();
+            if (!clean.startsWith('http')) {
+              final base = BaseUrl.baseUrl;
+              clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+            }
+            VideoCacheManager.instance.preCacheVideo(clean);
+            VideoFrameManager.instance.extractFirstFrame(clean);
+          }
+        }
+      }
+    }
   }
 
   @override
@@ -64,10 +112,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           controller: _verticalController,
           scrollDirection: Axis.vertical, // SWIPE UP FOR NEXT PRODUCT
           itemCount: widget.allProducts.length,
+          onPageChanged: (index) {
+            setState(() {
+              _currentPageIndex = index;
+            });
+            _precacheAround(index);
+          },
           itemBuilder: (context, index) {
             final product = widget.allProducts[index];
+            final isActive = index == _currentPageIndex;
             return ProductMediaGallery(
               product: product,
+              isActive: isActive,
               isMuted: _isMuted,
               onMuteToggle: () => setState(() => _isMuted = !_isMuted),
               isExpanded: isExpanded,
@@ -83,12 +139,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 class ProductMediaGallery extends StatefulWidget {
   final ProductModel product;
   final bool isMuted;
+  final bool isActive;
   bool isExpanded;
   final VoidCallback onMuteToggle;
 
   ProductMediaGallery({
     super.key,
     required this.product,
+    this.isActive = true,
     required this.isExpanded,
     required this.isMuted,
     required this.onMuteToggle,
@@ -104,17 +162,52 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
   late ProductModel _product;
   bool _isLoadingDetails = true;
 
+  String _resolveUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    String clean = url.trim();
+    if (!clean.startsWith('http') &&
+        !clean.startsWith('file://') &&
+        !clean.startsWith('/data')) {
+      final base = BaseUrl.baseUrl;
+      clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+    }
+    return clean;
+  }
+
+  bool _isVideoUrl(String url) {
+    final u = url.toLowerCase();
+    return u.endsWith('.mp4') ||
+        u.endsWith('.mov') ||
+        u.endsWith('.m3u8') ||
+        u.endsWith('.webm') ||
+        u.endsWith('.avi') ||
+        u.contains('.mp4?');
+  }
+
   List<ProductContent> get _mediaContent {
     if (_product.media.isNotEmpty) {
       final list = _product.media
           .map(
-            (m) => ProductContent(
-              url: m.mediaUrl,
-              isVideo: m.mediaType == 'video',
-              isImage: m.mediaType == 'image',
-              isAudio: m.mediaType == 'audio',
-              isNetwork: true,
-            ),
+            (m) {
+              final rawUrl = m.effectiveMediaUrl.isNotEmpty
+                  ? m.effectiveMediaUrl
+                  : m.mediaUrl;
+              final resolvedUrl = _resolveUrl(rawUrl);
+              final isVid =
+                  m.mediaType.toLowerCase() == 'video' ||
+                  _isVideoUrl(resolvedUrl);
+              final isAud = m.mediaType.toLowerCase() == 'audio';
+              final isImg =
+                  m.mediaType.toLowerCase() == 'image' && !isVid && !isAud;
+
+              return ProductContent(
+                url: resolvedUrl,
+                isVideo: isVid,
+                isImage: isImg,
+                isAudio: isAud,
+                isNetwork: true,
+              );
+            },
           )
           .toList();
 
@@ -127,11 +220,13 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
       return list;
     } else if (_product.mainImage != null && _product.mainImage!.isNotEmpty) {
+      final resolvedMain = _resolveUrl(_product.mainImage!);
+      final isVid = _isVideoUrl(resolvedMain);
       return [
         ProductContent(
-          url: _product.mainImage!,
-          isVideo: false,
-          isImage: true,
+          url: resolvedMain,
+          isVideo: isVid,
+          isImage: !isVid,
           isAudio: false,
           isNetwork: true,
         ),
@@ -145,8 +240,25 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
   void initState() {
     super.initState();
     _horizontalController = PageController();
-    _product = widget.product;
+    final cachedProduct = context.read<ProductProvider>().getCachedProduct(
+      widget.product.id,
+    );
+    _product = cachedProduct ?? widget.product;
+    if (cachedProduct != null && cachedProduct.media.isNotEmpty) {
+      _isLoadingDetails = false;
+    }
     _fetchDetails();
+  }
+
+  @override
+  void didUpdateWidget(ProductMediaGallery oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.product != widget.product) {
+      final cachedProduct = context.read<ProductProvider>().getCachedProduct(
+        widget.product.id,
+      );
+      _product = cachedProduct ?? widget.product;
+    }
   }
 
   Future<void> _fetchDetails() async {
@@ -185,12 +297,15 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                 onPageChanged: (i) => setState(() => _currentMediaIndex = i),
                 itemBuilder: (context, index) {
                   final media = _mediaContent[index];
+                  final isMediaActive =
+                      widget.isActive && index == _currentMediaIndex;
                   if (media.isVideo) {
                     return ProductVideoItem(
                       productId: _product.id,
                       videoUrl: media.url,
                       thumbnailUrl: _product.mainImage,
                       isMuted: widget.isMuted,
+                      isActive: isMediaActive,
                     );
                   } else if (media.isAudio) {
                     return ProductAudioItem(

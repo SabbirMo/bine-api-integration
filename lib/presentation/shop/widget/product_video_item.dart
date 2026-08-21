@@ -5,6 +5,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 
 class ProductVideoItem extends StatefulWidget {
   final int productId;
@@ -12,6 +14,7 @@ class ProductVideoItem extends StatefulWidget {
   final String? fallbackUrl;
   final String? thumbnailUrl;
   final bool isMuted;
+  final bool isActive;
 
   const ProductVideoItem({
     super.key,
@@ -20,6 +23,7 @@ class ProductVideoItem extends StatefulWidget {
     this.fallbackUrl,
     this.thumbnailUrl,
     required this.isMuted,
+    this.isActive = true,
   });
 
   @override
@@ -36,9 +40,15 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   bool _isBuffering = false;
   bool _hasStartedPlaying = false;
 
-  String get _resolvedThumbnailUrl {
-    String url = widget.thumbnailUrl ?? '';
-    if (url.isNotEmpty && !url.startsWith('http')) {
+  String get _resolvedVideoUrl {
+    String url = widget.videoUrl.trim();
+    if (url.isEmpty && widget.fallbackUrl != null) {
+      url = widget.fallbackUrl!.trim();
+    }
+    if (url.isNotEmpty &&
+        !url.startsWith('http') &&
+        !url.startsWith('file://') &&
+        !url.startsWith('/data')) {
       final base = BaseUrl.baseUrl;
       if (url.startsWith('/')) {
         url = '$base$url';
@@ -66,7 +76,18 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     });
 
     try {
-      _player = Player();
+      final cleanUrl = _resolvedVideoUrl;
+      if (cleanUrl.isEmpty) {
+        throw Exception('Empty video URL');
+      }
+
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          bufferSize: 15 * 1024 * 1024,
+          logLevel: MPVLogLevel.warn,
+        ),
+      );
+
       _controller = VideoController(
         _player!,
         configuration: const VideoControllerConfiguration(
@@ -74,7 +95,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         ),
       );
 
-      _player!.setPlaylistMode(PlaylistMode.single);
+      _player!.setPlaylistMode(PlaylistMode.loop);
       _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
 
       _player!.stream.playing.listen((playing) {
@@ -86,7 +107,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       });
 
       _player!.stream.position.listen((pos) {
-        if (mounted && pos > Duration.zero) {
+        if (mounted && pos > Duration.zero && !_hasStartedPlaying) {
           setState(() {
             _hasStartedPlaying = true;
             _isBuffering = false;
@@ -107,7 +128,17 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         }
       });
 
-      await _player!.open(Media(widget.videoUrl));
+      // 1. Get cached local file if already downloaded for instant 0ms playback
+      final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanUrl);
+      final playPath = cachedPath ?? cleanUrl;
+
+      // 2. Open media with autoPlay if active
+      await _player!.open(Media(playPath), play: widget.isActive);
+
+      // If not cached yet, trigger background caching
+      if (cachedPath == null) {
+        VideoCacheManager.instance.preCacheVideo(cleanUrl);
+      }
 
       if (mounted) {
         context.read<ProductProvider>().trackVideoView(widget.productId);
@@ -136,6 +167,13 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     if (oldWidget.isMuted != widget.isMuted && _player != null) {
       _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
     }
+    if (oldWidget.isActive != widget.isActive && _player != null) {
+      if (widget.isActive) {
+        _player!.play();
+      } else {
+        _player!.pause();
+      }
+    }
   }
 
   @override
@@ -161,7 +199,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
     final double videoWidth = _player?.state.width?.toDouble() ?? 16.0;
     final double videoHeight = _player?.state.height?.toDouble() ?? 9.0;
-    final String thumbUrl = _resolvedThumbnailUrl;
+    final cleanUrl = _resolvedVideoUrl;
 
     return GestureDetector(
       onTap: () {
@@ -175,6 +213,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         child: Stack(
           fit: StackFit.expand,
           children: [
+            // Video Player Layer
             if (_isVideoReady)
               Stack(
                 fit: StackFit.expand,
@@ -227,101 +266,67 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                 ],
               ),
 
-            // Thumbnail / Loading Placeholder until video frame is decoded and ready
-            Positioned.fill(
-              child: AnimatedOpacity(
-                opacity: (!_isVideoReady || !_hasStartedPlaying) ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: IgnorePointer(
-                  ignoring: _isVideoReady && _hasStartedPlaying,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFF2E2620),
-                          Color(0xFF1C1814),
-                          Color(0xFF12100E),
-                        ],
-                      ),
-                    ),
-                    child: thumbUrl.isNotEmpty
-                        ? Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              // Blurred background thumbnail
-                              Positioned.fill(
-                                child: ClipRect(
-                                  child: ImageFiltered(
-                                    imageFilter: ImageFilter.blur(
-                                      sigmaX: 15.0,
-                                      sigmaY: 15.0,
-                                    ),
-                                    child: Image.network(
-                                      thumbUrl,
-                                      fit: BoxFit.cover,
-                                      color: Colors.black.withValues(
-                                        alpha: 0.35,
-                                      ),
-                                      colorBlendMode: BlendMode.darken,
-                                      errorBuilder:
-                                          (_, _, _) => const SizedBox(),
-                                    ),
+            // Pre-decoded Video First Frame (No catalog image thumbnail!)
+            if (!_hasStartedPlaying)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black,
+                  child: ListenableBuilder(
+                    listenable: VideoFrameManager.instance,
+                    builder: (context, _) {
+                      final frameBytes = VideoFrameManager.instance
+                          .getCachedFrame(cleanUrl);
+
+                      if (frameBytes != null && frameBytes.isNotEmpty) {
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Positioned.fill(
+                              child: ClipRect(
+                                child: ImageFiltered(
+                                  imageFilter: ImageFilter.blur(
+                                    sigmaX: 15.0,
+                                    sigmaY: 15.0,
+                                  ),
+                                  child: Image.memory(
+                                    frameBytes,
+                                    fit: BoxFit.cover,
+                                    color: Colors.black.withValues(alpha: 0.35),
+                                    colorBlendMode: BlendMode.darken,
+                                    gaplessPlayback: true,
                                   ),
                                 ),
                               ),
-                              // Clear foreground thumbnail
-                              Center(
-                                child: Image.network(
-                                  thumbUrl,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, _, _) => const SizedBox(),
-                                ),
-                              ),
-                            ],
-                          )
-                        : Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.4),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const SizedBox(
-                                    width: 32,
-                                    height: 32,
-                                    child: CircularProgressIndicator(
-                                      color: Color(0xFFFF6900),
-                                      strokeWidth: 3,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  "Chargement de la vidéo...",
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(
-                                      alpha: 0.7,
-                                    ),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
                             ),
-                          ),
+                            Center(
+                              child: Image.memory(
+                                frameBytes,
+                                fit: BoxFit.contain,
+                                gaplessPlayback: true,
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      // Seamless minimal loading
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF6900),
+                          strokeWidth: 3,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
-            ),
 
             if (_hasStartedPlaying && _isBuffering)
               const Center(
-                child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+                child: CircularProgressIndicator(
+                  color: Color(0xFFFF6900),
+                  strokeWidth: 3,
+                ),
               ),
 
             // Play icon overlay when paused
