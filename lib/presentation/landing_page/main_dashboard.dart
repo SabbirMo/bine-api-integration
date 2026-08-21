@@ -1,3 +1,4 @@
+import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/presentation/home/home_page.dart';
 import 'package:binetatour/presentation/profile/account/mon_compot_screen.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
@@ -26,11 +27,17 @@ class _MainDashboardState extends State<MainDashboard> {
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: Colors.white,
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-
+        onTap: (index) {
+          if (index != _currentIndex) {
+            FeedVideoManager.instance.pauseAll();
+            setState(() => _currentIndex = index);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              FeedVideoManager.instance.resume();
+            });
+          }
+        },
         selectedItemColor: const Color(0xffFF6900),
         unselectedItemColor: const Color(0xFF7E848C),
-
         selectedLabelStyle: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
@@ -39,7 +46,6 @@ class _MainDashboardState extends State<MainDashboard> {
           fontSize: 12,
           fontWeight: FontWeight.w500,
         ),
-
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(

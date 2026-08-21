@@ -1,11 +1,17 @@
+import 'package:binetatour/core/base_url/base_url.dart';
+import 'package:binetatour/core/video/feed_video_manager.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
+import 'package:binetatour/data/models/product_model.dart';
+import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
-import 'package:binetatour/presentation/shop/widget/shop_product_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/category_provider.dart';
 import 'package:binetatour/data/models/category_model.dart';
 import 'package:binetatour/providers/product_provider.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class BoutiqueScreen extends StatefulWidget {
   final int? initialCategoryId;
@@ -22,7 +28,6 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   String selectedCategoryName = "Tous";
 
   bool isSubcategoryShow = true;
-
   int selectedSubCategoryIndex = -1;
   bool _initialCategorySet = false;
 
@@ -40,6 +45,68 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   void dispose() {
     _categoryScrollController.dispose();
     super.dispose();
+  }
+
+  String _resolveUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    String clean = url.trim();
+    if (!clean.startsWith('http')) {
+      final base = BaseUrl.baseUrl;
+      clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+    }
+    return clean;
+  }
+
+  bool _isVideoUrl(String url) {
+    final u = url.toLowerCase();
+    return u.endsWith('.mp4') ||
+        u.endsWith('.mov') ||
+        u.endsWith('.m3u8') ||
+        u.endsWith('.webm') ||
+        u.endsWith('.avi');
+  }
+
+  String _resolveProductVideo(ProductModel product) {
+    for (final m in product.media) {
+      final mType = m.mediaType.toLowerCase().trim();
+      final mUrl = m.effectiveMediaUrl;
+      if ((mType == 'video' || _isVideoUrl(mUrl)) && mUrl.isNotEmpty) {
+        return _resolveUrl(mUrl);
+      }
+    }
+    if (product.mainImage != null && _isVideoUrl(product.mainImage!)) {
+      return _resolveUrl(product.mainImage!);
+    }
+    return '';
+  }
+
+  String _resolveProductThumbnail(ProductModel product) {
+    if (product.mainImage != null && product.mainImage!.isNotEmpty) {
+      return _resolveUrl(product.mainImage!);
+    }
+    for (final m in product.media) {
+      if (m.thumbnailUrl != null && m.thumbnailUrl!.isNotEmpty) {
+        return _resolveUrl(m.thumbnailUrl!);
+      }
+      if (m.mediaType == 'image' && m.effectiveMediaUrl.isNotEmpty) {
+        return _resolveUrl(m.effectiveMediaUrl);
+      }
+    }
+    return '';
+  }
+
+  void _precacheVideos(List<ProductModel> products) {
+    final List<String> videoUrls = [];
+    for (final p in products) {
+      final vUrl = _resolveProductVideo(p);
+      if (vUrl.isNotEmpty) {
+        videoUrls.add(vUrl);
+        VideoCacheManager.instance.preCacheVideo(vUrl);
+      }
+    }
+    if (videoUrls.isNotEmpty) {
+      VideoFrameManager.instance.preExtractBatch(videoUrls);
+    }
   }
 
   @override
@@ -92,38 +159,13 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
       currentCategoryId,
       currentSubcategoryId,
     );
-    final List<ShopProductCard> filteredProductCards = filteredProducts.map((
-      p,
-    ) {
-      final double discount = double.tryParse(p.discountPercentage) ?? 0;
-      final bool hasDiscount = discount > 0;
 
-      return ShopProductCard(
-        title: p.productName,
-        price: "${p.priceAfterDiscount} FCFA",
-        oldPrice: "${p.sellingPrice} FCFA",
-        discount: "-${discount.toInt()}%",
-        showDiscountPercentage: hasDiscount,
-        showOldPrice: hasDiscount,
-        assetThumbnail: p.mainImage ?? '',
-        content: p.media
-            .map(
-              (m) => ProductContent(
-                url: m.effectiveMediaUrl,
-                isVideo: m.mediaType == 'video',
-                isImage: m.mediaType == 'image',
-                isAudio: m.mediaType == 'audio',
-                isNetwork: true,
-              ),
-            )
-            .toList(),
-      );
-    }).toList();
+    _precacheVideos(filteredProducts);
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           "Boutique",
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
@@ -132,12 +174,10 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
         elevation: 0,
         actions: [
           Padding(
-            padding: EdgeInsets.only(right: 6.0),
+            padding: const EdgeInsets.only(right: 6.0),
             child: InkWell(
               onTap: () {
                 double targetOffset = _categoryScrollController.offset + 250;
-
-                // Ensure we don't try to scroll past the maximum limits
                 double maxScroll =
                     _categoryScrollController.position.maxScrollExtent;
                 if (targetOffset > maxScroll) targetOffset = maxScroll;
@@ -152,7 +192,7 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                 width: 35,
                 height: 35,
                 decoration: BoxDecoration(
-                  color: Color(0xFFF5F5F5),
+                  color: const Color(0xFFF5F5F5),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: Colors.black.withValues(alpha: 0.1),
@@ -169,146 +209,183 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
         ],
       ),
       body: RefreshIndicator(
-        color: Colors.orange,
+        color: const Color(0xFFFF6900),
         onRefresh: () async {
-          context.read<CategoryProvider>().fetchCategories();
-          context.read<ProductProvider>().fetchProducts();
-          // Wait briefly to allow loading indicators to show.
-          await Future.delayed(const Duration(milliseconds: 800));
+          await Future.wait([
+            context.read<CategoryProvider>().fetchCategories(),
+            context.read<ProductProvider>().fetchProducts(),
+          ]);
         },
         child: SafeArea(
           bottom: true,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Horizontal Category Selector
-                    SizedBox(
-                      height: 100,
-                      child: isLoading
-                          ? const Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.orange,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (scrollInfo) {
+              VisibilityDetectorController.instance.notifyNow();
+              return false;
+            },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Horizontal Category Selector
+                      SizedBox(
+                        height: 100,
+                        child: isLoading
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFFFF6900),
+                                ),
+                              )
+                            : ListView.builder(
+                                controller: _categoryScrollController,
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                itemCount: categories.length,
+                                itemBuilder: (context, index) =>
+                                    _buildCategoryItem(
+                                      categories[index],
+                                      index,
+                                    ),
                               ),
-                            )
-                          : ListView.builder(
-                              controller: _categoryScrollController,
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              itemCount: categories.length,
-                              itemBuilder: (context, index) =>
-                                  _buildCategoryItem(categories[index], index),
-                            ),
-                    ),
-
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              "$selectedCategoryName catégori",
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: () {
-                              setState(() {
-                                isSubcategoryShow = !isSubcategoryShow;
-                              });
-                            },
-                            constraints: const BoxConstraints(),
-                            padding: EdgeInsets.zero,
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Colors.black,
-                              size: 24,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
 
-                    //sub category show here
-                    if (currentSubCategories.isNotEmpty)
-                      isSubcategoryShow
-                          ? Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              child: Wrap(
-                                spacing: 10.0,
-                                runSpacing: 10.0,
-                                children: List.generate(
-                                  currentSubCategories.length,
-                                  (index) => _buildSubCategoryItem(
-                                    currentSubCategories[index],
-                                    index,
-                                  ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                "$selectedCategoryName catégori",
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            )
-                          : const SizedBox(),
-                    const SizedBox(height: 10),
-                  ],
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  isSubcategoryShow = !isSubcategoryShow;
+                                });
+                              },
+                              icon: isSubcategoryShow
+                                  ? const Icon(Icons.close, color: Colors.black)
+                                  : const Icon(
+                                      Icons.arrow_drop_down,
+                                      color: Colors.black,
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      if (currentSubCategories.isNotEmpty)
+                        isSubcategoryShow
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                child: Wrap(
+                                  spacing: 10.0,
+                                  runSpacing: 10.0,
+                                  children: List.generate(
+                                    currentSubCategories.length,
+                                    (index) => _buildSubCategoryItem(
+                                      currentSubCategories[index],
+                                      index,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : const SizedBox(),
+                      const SizedBox(height: 10),
+                    ],
+                  ),
                 ),
-              ),
-              // Product Grid
-              isProductsLoading
-                  ? const SliverFillRemaining(
-                      child: Center(
-                        child: CircularProgressIndicator(color: Colors.orange),
-                      ),
-                    )
-                  : filteredProductCards.isEmpty
-                  ? const SliverFillRemaining(
-                      child: Center(child: Text("Aucun produit trouvé")),
-                    )
-                  : SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              childAspectRatio: 0.75,
-                              crossAxisSpacing: 16,
-                              mainAxisSpacing: 16,
-                            ),
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          return InkWell(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => ProductDetailsScreen(
-                                    allProducts: filteredProducts,
-                                    initialProductIndex: index,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: filteredProductCards[index],
-                          );
-                        }, childCount: filteredProductCards.length),
+
+                // 2-Column Product Grid with native video playback
+                if (isProductsLoading)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFF6900),
                       ),
                     ),
-            ],
+                  )
+                else if (filteredProducts.isEmpty)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: Text(
+                        "Aucun produit trouvé",
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 0.68,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 14,
+                          ),
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final product = filteredProducts[index];
+                        final double discount =
+                            double.tryParse(product.discountPercentage) ?? 0;
+                        final bool hasDiscount = discount > 0;
+                        final String videoUrl = _resolveProductVideo(product);
+                        final String thumbnailUrl =
+                            _resolveProductThumbnail(product);
+
+                        return ShortsProductCard(
+                          keyString: 'boutique_prod_${product.id}',
+                          videoUrl: videoUrl,
+                          thumbnailUrl: thumbnailUrl,
+                          title: product.productName,
+                          price: "${product.priceAfterDiscount} FCFA",
+                          oldPrice:
+                              hasDiscount ? "${product.sellingPrice} FCFA" : null,
+                          discount:
+                              hasDiscount ? "-${discount.toInt()}%" : null,
+                          width: double.infinity,
+                          height: double.infinity,
+                          onTap: () async {
+                            FeedVideoManager.instance.pauseAll();
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ProductDetailsScreen(
+                                  allProducts: filteredProducts,
+                                  initialProductIndex: index,
+                                ),
+                              ),
+                            );
+                            FeedVideoManager.instance.resume();
+                          },
+                        );
+                      }, childCount: filteredProducts.length),
+                    ),
+                  ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 30)),
+              ],
+            ),
           ),
         ),
       ),
@@ -335,11 +412,21 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                 category.imageUrl.endsWith('.svg') ? 15 : 5,
               ),
               decoration: BoxDecoration(
-                color: isSelected ? Colors.orange[800] : Colors.grey[100],
+                color: isSelected
+                    ? const Color(0xFFFF6900)
+                    : const Color(0xFFF5F5F5),
                 borderRadius: BorderRadius.circular(15),
               ),
               child: category.imageUrl.endsWith('.svg')
-                  ? SvgPicture.asset(category.imageUrl)
+                  ? SvgPicture.asset(
+                      category.imageUrl,
+                      colorFilter: isSelected
+                          ? const ColorFilter.mode(
+                              Colors.white,
+                              BlendMode.srcIn,
+                            )
+                          : null,
+                    )
                   : ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Image.network(
@@ -363,7 +450,7 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected ? Colors.orange[800] : Colors.black,
+                  color: isSelected ? const Color(0xFFFF6900) : Colors.black,
                 ),
               ),
             ),

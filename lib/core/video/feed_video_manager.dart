@@ -79,24 +79,29 @@ class FeedPlayerState {
   }
 }
 
-/// YouTube-style central video feed manager with 2-tier architecture:
-/// 1. Section-level vertical viewport tracking
-/// 2. Row-level horizontal active card indexing (Card 1 <-> 2 <-> 3)
+/// Robust, rock-solid central video manager:
+/// - Maximum 3 native players to strictly prevent OS codec saturation and app crashes
+/// - Zero delay instant auto-play on active card
+/// - Local disk cached playback
 class FeedVideoManager extends ChangeNotifier {
   static final FeedVideoManager _instance = FeedVideoManager._internal();
   static FeedVideoManager get instance => _instance;
 
   FeedVideoManager._internal();
 
-  /// 3 pooled native players for minimal memory footprint and zero lag
+  /// Strictly keep pool size <= 3 to ensure stability across all Android/iOS devices
   static const int maxPoolSize = 3;
 
   final Map<String, String> _urlMap = {};
 
-  // Section ID -> Active Card Key & Section Viewport info
+  // Section-level tracking (Home page)
   final Map<String, String> _sectionActiveKey = {};
   final Map<String, double> _sectionVisibility = {};
   final Map<String, double> _sectionCenterY = {};
+
+  // Card-level tracking (Boutique grid & individual cards)
+  final Map<String, double> _cardVisibility = {};
+  final Map<String, double> _cardCenterY = {};
 
   final List<FeedPlayerState> _playerPool = [];
   final Map<String, FeedPlayerState> _keyToPlayer = {};
@@ -113,7 +118,9 @@ class FeedVideoManager extends ChangeNotifier {
   void toggleFeedMute() {
     _isFeedMuted = !_isFeedMuted;
     for (final p in _playerPool) {
-      p.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
+      try {
+        p.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
+      } catch (_) {}
     }
     notifyListeners();
   }
@@ -133,8 +140,10 @@ class FeedVideoManager extends ChangeNotifier {
       ),
     );
 
-    player.setPlaylistMode(PlaylistMode.loop);
-    player.setVolume(_isFeedMuted ? 0.0 : 100.0);
+    try {
+      player.setPlaylistMode(PlaylistMode.loop);
+      player.setVolume(_isFeedMuted ? 0.0 : 100.0);
+    } catch (_) {}
 
     final state = FeedPlayerState(player: player, videoController: controller);
 
@@ -159,9 +168,17 @@ class FeedVideoManager extends ChangeNotifier {
         state.currentUrl = url;
         state.hasFirstFrame = false;
         state.isBuffering = true;
-        state.player.open(Media(targetUrl), play: autoPlay);
+        try {
+          state.player.open(Media(targetUrl), play: autoPlay);
+        } catch (_) {}
       } else if (autoPlay && !state.isPlaying) {
-        state.player.play();
+        try {
+          state.player.play();
+        } catch (_) {}
+      } else if (!autoPlay && state.isPlaying) {
+        try {
+          state.player.pause();
+        } catch (_) {}
       }
       return state;
     }
@@ -190,7 +207,9 @@ class FeedVideoManager extends ChangeNotifier {
           if (p.currentKey != null) {
             _keyToPlayer.remove(p.currentKey);
           }
-          state.player.pause();
+          try {
+            state.player.pause();
+          } catch (_) {}
           break;
         }
       }
@@ -210,22 +229,30 @@ class FeedVideoManager extends ChangeNotifier {
       state.currentUrl = url;
       state.hasFirstFrame = false;
       state.isBuffering = true;
-      state.player.open(Media(targetUrl), play: autoPlay);
+      try {
+        state.player.open(Media(targetUrl), play: autoPlay);
+      } catch (_) {}
     } else if (autoPlay && !state.isPlaying) {
-      state.player.play();
+      try {
+        state.player.play();
+      } catch (_) {}
+    } else if (!autoPlay && state.isPlaying) {
+      try {
+        state.player.pause();
+      } catch (_) {}
     }
 
     return state;
   }
 
-  /// Register card's video URL
+  /// Register card's video URL & pre-cache to local storage
   void registerCardUrl(String key, String url) {
     if (url.trim().isEmpty) return;
     _urlMap[key] = url;
     VideoCacheManager.instance.preCacheVideo(url);
   }
 
-  /// Update vertical visibility for a section
+  /// Update vertical visibility for a section (Home Page)
   void updateSectionVisibility(
     String sectionId,
     double visibleFraction,
@@ -244,7 +271,7 @@ class FeedVideoManager extends ChangeNotifier {
     }
   }
 
-  /// Set the active horizontal card for a section (from horizontal swipe or initial index)
+  /// Set the active horizontal card for a section (Home Page)
   void setActiveSectionCard(String sectionId, String cardKey, String url) {
     _sectionActiveKey[sectionId] = cardKey;
     if (url.trim().isNotEmpty) {
@@ -257,59 +284,112 @@ class FeedVideoManager extends ChangeNotifier {
     }
   }
 
-  void _evaluatePlayback() {
-    if (_sectionVisibility.isEmpty) {
-      if (_currentPlayingKey != null) {
-        _keyToPlayer[_currentPlayingKey]?.player.pause();
-        _currentPlayingKey = null;
-        notifyListeners();
+  /// Called when a card's visibility changes in a grid (Boutique Page)
+  void onCardVisibilityChanged(
+    String key,
+    String url,
+    double visibleFraction, {
+    double cardCenterY = 0.0,
+  }) {
+    if (url.trim().isEmpty) return;
+
+    if (visibleFraction <= 0.05) {
+      _cardVisibility.remove(key);
+      _cardCenterY.remove(key);
+      _urlMap.remove(key);
+      final state = _keyToPlayer.remove(key);
+      if (state != null) {
+        state.stopAndReset();
       }
-      return;
+      if (_currentPlayingKey == key) {
+        _currentPlayingKey = null;
+      }
+    } else {
+      _cardVisibility[key] = visibleFraction;
+      _cardCenterY[key] = cardCenterY;
+      _urlMap[key] = url;
+      VideoCacheManager.instance.preCacheVideo(url);
     }
 
-    // Find the most visible section on screen
-    String? bestSectionId;
-    double bestScore = -99999.0;
+    if (!_isGloballyPaused) {
+      _evaluatePlayback();
+    }
+  }
 
-    for (final entry in _sectionVisibility.entries) {
-      final secId = entry.key;
-      final fraction = entry.value;
-      final centerY = _sectionCenterY[secId] ?? 0.0;
+  void _evaluatePlayback() {
+    String? bestKey;
 
-      if (fraction >= 0.25) {
-        final score = (fraction * 1000.0) + (centerY * 0.1);
-        if (score > bestScore) {
-          bestScore = score;
-          bestSectionId = secId;
+    // 1. If sections are active (Home page)
+    if (_sectionVisibility.isNotEmpty) {
+      String? bestSectionId;
+      double bestScore = -99999.0;
+
+      for (final entry in _sectionVisibility.entries) {
+        final secId = entry.key;
+        final fraction = entry.value;
+        final centerY = _sectionCenterY[secId] ?? 0.0;
+
+        if (fraction >= 0.25) {
+          final score = (fraction * 1000.0) + (centerY * 0.1);
+          if (score > bestScore) {
+            bestScore = score;
+            bestSectionId = secId;
+          }
+        }
+      }
+
+      if (bestSectionId != null) {
+        bestKey = _sectionActiveKey[bestSectionId];
+      }
+    }
+    // 2. Else if grid cards are active (Boutique page)
+    else if (_cardVisibility.isNotEmpty) {
+      double bestCardScore = -99999.0;
+
+      for (final entry in _cardVisibility.entries) {
+        final key = entry.key;
+        final fraction = entry.value;
+        final centerY = _cardCenterY[key] ?? 0.0;
+        final url = _urlMap[key] ?? '';
+
+        if (url.isNotEmpty && fraction >= 0.25) {
+          final score = (fraction * 1000.0) + (centerY * 0.1);
+          if (score > bestCardScore) {
+            bestCardScore = score;
+            bestKey = key;
+          }
         }
       }
     }
 
-    if (bestSectionId != null) {
-      final bestKey = _sectionActiveKey[bestSectionId];
-      final url = bestKey != null ? _urlMap[bestKey] : null;
-
-      if (bestKey != null && url != null && url.isNotEmpty) {
+    if (bestKey != null) {
+      final url = _urlMap[bestKey];
+      if (url != null && url.isNotEmpty) {
         if (bestKey != _currentPlayingKey) {
-          // Pause previously playing player
           if (_currentPlayingKey != null &&
               _keyToPlayer.containsKey(_currentPlayingKey)) {
-            _keyToPlayer[_currentPlayingKey]!.player.pause();
+            try {
+              _keyToPlayer[_currentPlayingKey]!.player.pause();
+            } catch (_) {}
           }
-
           _currentPlayingKey = bestKey;
           final playerState = _getOrCreatePlayer(bestKey, url, autoPlay: true);
-          playerState.player.play();
+          try {
+            playerState.player.play();
+          } catch (_) {}
         } else {
-          // Ensure current active player is playing
           final playerState = _keyToPlayer[bestKey];
           if (playerState != null && !playerState.isPlaying) {
-            playerState.player.play();
+            try {
+              playerState.player.play();
+            } catch (_) {}
           }
         }
       }
     } else if (_currentPlayingKey != null) {
-      _keyToPlayer[_currentPlayingKey]?.player.pause();
+      try {
+        _keyToPlayer[_currentPlayingKey]?.player.pause();
+      } catch (_) {}
       _currentPlayingKey = null;
     }
 
@@ -328,21 +408,29 @@ class FeedVideoManager extends ChangeNotifier {
   void playSingle(String key, String url) {
     if (url.trim().isEmpty) return;
     if (_currentPlayingKey != null && _currentPlayingKey != key) {
-      _keyToPlayer[_currentPlayingKey]?.player.pause();
+      try {
+        _keyToPlayer[_currentPlayingKey]?.player.pause();
+      } catch (_) {}
     }
     _currentPlayingKey = key;
     _urlMap[key] = url;
     final state = _getOrCreatePlayer(key, url, autoPlay: true);
-    state.player.play();
+    try {
+      state.player.play();
+    } catch (_) {}
     notifyListeners();
   }
 
   /// Called when a card is unmounted from the widget tree
   void unregisterCard(String key) {
     _urlMap.remove(key);
+    _cardVisibility.remove(key);
+    _cardCenterY.remove(key);
 
     if (_currentPlayingKey == key) {
-      _keyToPlayer[key]?.player.pause();
+      try {
+        _keyToPlayer[key]?.player.pause();
+      } catch (_) {}
       _currentPlayingKey = null;
     }
 
@@ -366,13 +454,15 @@ class FeedVideoManager extends ChangeNotifier {
   void pauseAll() {
     _isGloballyPaused = true;
     for (final p in _playerPool) {
-      p.player.pause();
+      try {
+        p.player.pause();
+      } catch (_) {}
     }
     _currentPlayingKey = null;
     notifyListeners();
   }
 
-  /// Resume playback when returning to the home screen
+  /// Resume playback when returning to the screen
   void resume() {
     _isGloballyPaused = false;
     _evaluatePlayback();
@@ -408,6 +498,8 @@ class FeedVideoManager extends ChangeNotifier {
     _sectionActiveKey.clear();
     _sectionVisibility.clear();
     _sectionCenterY.clear();
+    _cardVisibility.clear();
+    _cardCenterY.clear();
     _currentPlayingKey = null;
     super.dispose();
   }

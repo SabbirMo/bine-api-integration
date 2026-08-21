@@ -1,5 +1,6 @@
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:binetatour/presentation/home/widget/category_section_header.dart';
 import 'package:binetatour/presentation/home/widget/circular_story_avatar.dart';
@@ -50,6 +51,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   void initState() {
     super.initState();
     VideoCacheManager.instance.init();
+    VideoFrameManager.instance.init();
     WidgetsBinding.instance.addObserver(this);
 
     // Auto-refresh notifications and update bell count when a foreground notification is received
@@ -349,68 +351,70 @@ class _AccueilScreenState extends State<AccueilScreen>
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
-                children: [
-                  // Banner Video
-                  if (homeData.banner != null)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: VideoPlaceholder(
-                          thumbnailUrl:
-                              (homeData.banner!.thumbnailUrl != null &&
-                                  homeData.banner!.thumbnailUrl!
-                                      .trim()
-                                      .isNotEmpty)
-                              ? homeData.banner!.thumbnailUrl
-                              : "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
-                          link: homeData.banner!.effectiveVideoUrl,
-                          fallbackLink: homeData.banner!.videoUrl,
+                  children: [
+                    // Banner Video
+                    if (homeData.banner != null)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: VideoPlaceholder(
+                            thumbnailUrl:
+                                (homeData.banner!.thumbnailUrl != null &&
+                                    homeData.banner!.thumbnailUrl!
+                                        .trim()
+                                        .isNotEmpty)
+                                ? homeData.banner!.thumbnailUrl
+                                : "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
+                            link: homeData.banner!.effectiveVideoUrl,
+                            fallbackLink: homeData.banner!.videoUrl,
+                          ),
                         ),
                       ),
+
+                    // Address Section
+                    if (homeData.storeAddress != null)
+                      _buildAddressBar(homeData.storeAddress!),
+
+                    _buildSectionHeader(
+                      "Clients Livrés 🙍‍♂️",
+                      "assets/icon/right.svg",
+                      titelIcon: true,
+                      showMore: true,
+                      onShowMoreTap: () {
+                        if (_storyScrollController.hasClients) {
+                          double targetOffset =
+                              _storyScrollController.offset + 250;
+                          double maxScroll =
+                              _storyScrollController.position.maxScrollExtent;
+                          if (targetOffset > maxScroll) {
+                            targetOffset = maxScroll;
+                          }
+
+                          _storyScrollController.animateTo(
+                            targetOffset,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        }
+                      },
                     ),
 
-                  // Address Section
-                  if (homeData.storeAddress != null)
-                    _buildAddressBar(homeData.storeAddress!),
+                    // Stories List
+                    if (homeData.storyCategories.isNotEmpty)
+                      _buildStoryListDynamic(homeData.storyCategories),
 
-                  _buildSectionHeader(
-                    "Clients Livrés 🙍‍♂️",
-                    "assets/icon/right.svg",
-                    titelIcon: true,
-                    showMore: true,
-                    onShowMoreTap: () {
-                      if (_storyScrollController.hasClients) {
-                        double targetOffset =
-                            _storyScrollController.offset + 250;
-                        double maxScroll =
-                            _storyScrollController.position.maxScrollExtent;
-                        if (targetOffset > maxScroll) targetOffset = maxScroll;
+                    // Product Sections
+                    ...homeData.productSections.map((section) {
+                      return ProductSectionWidget(section: section);
+                    }),
 
-                        _storyScrollController.animateTo(
-                          targetOffset,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      }
-                    },
-                  ),
-
-                  // Stories List
-                  if (homeData.storyCategories.isNotEmpty)
-                    _buildStoryListDynamic(homeData.storyCategories),
-
-                  // Product Sections
-                  ...homeData.productSections.map((section) {
-                    return ProductSectionWidget(section: section);
-                  }),
-
-                  const SizedBox(height: 20),
-                ],
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
+          );
         },
       ),
     );
@@ -712,6 +716,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     _scrollController.addListener(_onHorizontalScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadMissingDetails();
+      _precacheSectionVideos();
       _notifySectionActiveCard();
     });
   }
@@ -721,6 +726,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.section.products != widget.section.products) {
       _loadMissingDetails();
+      _precacheSectionVideos();
       _notifySectionActiveCard();
     }
   }
@@ -754,8 +760,10 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
         newIndex = totalCount - 1;
       } else {
         final progress = (offset / maxScroll).clamp(0.0, 1.0);
-        newIndex =
-            (progress * (totalCount - 1)).round().clamp(0, totalCount - 1);
+        newIndex = (progress * (totalCount - 1)).round().clamp(
+          0,
+          totalCount - 1,
+        );
       }
 
       if (newIndex != _activeCardIndex) {
@@ -796,6 +804,21 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       fraction,
       centerY,
     );
+  }
+
+  void _precacheSectionVideos() {
+    final productProvider = context.read<ProductProvider>();
+    final List<String> videoUrls = [];
+    for (final prod in widget.section.products) {
+      final vUrl = _resolveProductVideo(prod, productProvider);
+      if (vUrl.isNotEmpty) {
+        videoUrls.add(vUrl);
+        VideoCacheManager.instance.preCacheVideo(vUrl);
+      }
+    }
+    if (videoUrls.isNotEmpty) {
+      VideoFrameManager.instance.preExtractBatch(videoUrls);
+    }
   }
 
   void _loadMissingDetails() {
@@ -1010,27 +1033,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       ),
     );
   }
-}
-
-// Keep original dummy classes below so imports in other files don't break
-class Product {
-  final String title;
-  final String price;
-  final String? oldPrice;
-  final String? discount;
-  final String assetThumbnail;
-  final String videoUrl;
-  final String category;
-
-  Product({
-    required this.title,
-    required this.price,
-    this.oldPrice,
-    this.discount,
-    required this.assetThumbnail,
-    required this.videoUrl,
-    required this.category,
-  });
 }
 
 class StoryItem {
