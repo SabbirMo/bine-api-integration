@@ -921,21 +921,41 @@ class _ValidationScreenState extends State<ValidationScreen> {
   Widget _buildFooterInfo() {
     return Consumer<StoreSettingsProvider>(
       builder: (context, provider, child) {
+        final heading = provider.storeSettings?.deliveryHeading;
         final message =
             provider.storeSettings?.deliveryMessage?.isNotEmpty == true
             ? provider.storeSettings!.deliveryMessage!
             : "No Message ";
 
-        return Text(
-          message,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.black,
-            fontSize: 15.62,
-            fontFamily: 'Poppins',
-            fontWeight: FontWeight.w500,
-            height: 2.08,
-          ),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (heading != null && heading.trim().isNotEmpty) ...[
+              Text(
+                heading,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 15.62,
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w500,
+                height: 2.08,
+              ),
+            ),
+          ],
         );
       },
     );

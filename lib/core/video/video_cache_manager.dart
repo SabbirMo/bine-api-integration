@@ -116,6 +116,7 @@ class VideoCacheManager {
   /// Pre-cache a video in the background without blocking the UI
   Future<void> preCacheVideo(String url) async {
     if (url.trim().isEmpty || !url.startsWith('http')) return;
+    if (url.toLowerCase().contains('.m3u8')) return;
     if (isCached(url) || _downloadingUrls.contains(url)) return;
 
     _downloadingUrls.add(url);

@@ -24,7 +24,13 @@ class VideoPlaceholder extends StatefulWidget {
 
 class _VideoPlaceholderState extends State<VideoPlaceholder>
     with WidgetsBindingObserver {
-  late final Player _player = Player();
+  late final Player _player = Player(
+    configuration: const PlayerConfiguration(
+      bufferSize: 10 * 1024 * 1024,
+      logLevel: MPVLogLevel.warn,
+    ),
+  );
+
   late final VideoController _videoController = VideoController(
     _player,
     configuration: const VideoControllerConfiguration(
@@ -177,8 +183,26 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
             ? '$base$fallback'
             : '$base/$fallback';
       }
-      debugPrint("HLS playback failed, falling back to MP4: $fallback");
+      debugPrint("Playback failed, falling back to: $fallback");
       _player.open(Media(fallback));
+    }
+  }
+
+  /// Tap on Video Body:
+  /// - If video is muted (initial preview): restart from 0:00, auto-enable sound (100%), and play.
+  /// - If already unmuted: toggle play/pause.
+  void _handleVideoTap() {
+    if (_isMuted.value) {
+      _player.seek(Duration.zero);
+      _isMuted.value = false;
+      _player.setVolume(100.0);
+      _player.play();
+    } else {
+      if (_isPlaying.value) {
+        _player.pause();
+      } else {
+        _player.play();
+      }
     }
   }
 
@@ -286,105 +310,107 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
       color: Colors.black.withValues(alpha: 0.55),
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
-      child: PopupMenuButton<String>(
-        tooltip: "Options",
-        color: const Color(0xFF1E1E1E),
-        elevation: 8,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: Colors.white.withValues(alpha: 0.15),
-            width: 1,
+      child: SizedBox(
+        width: 36,
+        height: 36,
+        child: PopupMenuButton<String>(
+          tooltip: "Options",
+          color: const Color(0xFF1E1E1E),
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 1,
+            ),
           ),
-        ),
-        icon: const Icon(
-          Icons.more_vert_rounded,
-          color: Colors.white,
-          size: 20,
-        ),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 170),
-        onSelected: (value) {
-          if (value == 'play_pause') {
-            _isPlaying.value ? _player.pause() : _player.play();
-          } else if (value.startsWith('speed_')) {
-            final speed =
-                double.tryParse(value.replaceFirst('speed_', '')) ?? 1.0;
-            _player.setRate(speed);
-          }
-        },
-        itemBuilder: (context) {
-          final currentRate = _player.state.rate;
-          return [
-            PopupMenuItem<String>(
-              value: 'play_pause',
-              height: 40,
-              child: Row(
-                children: [
-                  Icon(
-                    _isPlaying.value
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _isPlaying.value ? "Mettre en pause" : "Lire la vidéo",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const PopupMenuDivider(height: 1),
-            const PopupMenuItem<String>(
-              enabled: false,
-              height: 28,
-              child: Text(
-                "Vitesse de lecture",
-                style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            ...[0.75, 1.0, 1.25, 1.5, 2.0].map((rate) {
-              final isSelected = (currentRate - rate).abs() < 0.05;
-              return PopupMenuItem<String>(
-                value: 'speed_$rate',
-                height: 36,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 155),
+          child: const Center(
+            child: Icon(Icons.more_vert_rounded, color: Colors.white, size: 18),
+          ),
+          onSelected: (value) {
+            if (value == 'play_pause') {
+              _isPlaying.value ? _player.pause() : _player.play();
+            } else if (value.startsWith('speed_')) {
+              final speed =
+                  double.tryParse(value.replaceFirst('speed_', '')) ?? 1.0;
+              _player.setRate(speed);
+            }
+          },
+          itemBuilder: (context) {
+            final currentRate = _player.state.rate;
+            return [
+              PopupMenuItem<String>(
+                value: 'play_pause',
+                height: 40,
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    Icon(
+                      _isPlaying.value
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
                     Text(
-                      rate == 1.0 ? "Normale (1.0x)" : "${rate}x",
-                      style: TextStyle(
-                        color:
-                            isSelected
-                                ? const Color(0xFFE8500A)
-                                : Colors.white,
+                      _isPlaying.value ? "Mettre en pause" : "Lire la vidéo",
+                      style: const TextStyle(
+                        color: Colors.white,
                         fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    if (isSelected)
-                      const Icon(
-                        Icons.check_rounded,
-                        color: Color(0xFFE8500A),
-                        size: 16,
-                      ),
                   ],
                 ),
-              );
-            }),
-          ];
-        },
+              ),
+              const PopupMenuDivider(height: 1),
+              const PopupMenuItem<String>(
+                enabled: false,
+                height: 28,
+                child: Text(
+                  "Vitesse de lecture",
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              ...[0.75, 1.0, 1.25, 1.5, 2.0].map((rate) {
+                final isSelected = (currentRate - rate).abs() < 0.05;
+                return PopupMenuItem<String>(
+                  value: 'speed_$rate',
+                  height: 36,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        rate == 1.0 ? "Normale (1.0x)" : "${rate}x",
+                        style: TextStyle(
+                          color: isSelected
+                              ? const Color(0xFFE8500A)
+                              : Colors.white,
+                          fontSize: 13,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      if (isSelected)
+                        const Icon(
+                          Icons.check_rounded,
+                          color: Color(0xFFE8500A),
+                          size: 16,
+                        ),
+                    ],
+                  ),
+                );
+              }),
+            ];
+          },
+        ),
       ),
     );
   }
@@ -401,21 +427,21 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 1. The Video Player (ALWAYS IN TREE so surface attaches)
+              // 1. The Video Player Surface
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  _isPlaying.value ? _player.pause() : _player.play();
-                },
+                onTap: _handleVideoTap,
                 child: SizedBox.expand(
                   child: FittedBox(
                     fit: BoxFit.cover,
                     clipBehavior: Clip.hardEdge,
                     child: SizedBox(
                       width:
-                          _videoController.player.state.width?.toDouble() ?? 16.0,
+                          _videoController.player.state.width?.toDouble() ??
+                          16.0,
                       height:
-                          _videoController.player.state.height?.toDouble() ?? 9.0,
+                          _videoController.player.state.height?.toDouble() ??
+                          9.0,
                       child: Video(
                         controller: _videoController,
                         controls: NoVideoControls,
@@ -444,22 +470,17 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                 Image.network(
                                   _resolvedThumbnailUrl,
                                   fit: BoxFit.cover,
-                                  loadingBuilder: (
-                                    context,
-                                    child,
-                                    loadingProgress,
-                                  ) {
-                                    if (loadingProgress == null) {
-                                      return child;
-                                    }
-                                    return _buildDefaultPlaceholder(
-                                      isLoading: true,
-                                    );
-                                  },
-                                  errorBuilder:
-                                      (_, _, _) => _buildDefaultPlaceholder(
-                                        isLoading: true,
-                                      ),
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
+                                        if (loadingProgress == null) {
+                                          return child;
+                                        }
+                                        return _buildDefaultPlaceholder(
+                                          isLoading: true,
+                                        );
+                                      },
+                                  errorBuilder: (_, _, _) =>
+                                      _buildDefaultPlaceholder(isLoading: true),
                                 )
                               else
                                 _buildDefaultPlaceholder(isLoading: true),
@@ -486,8 +507,8 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.35),
-                          Colors.black.withValues(alpha: 0.8),
+                          Colors.black.withValues(alpha: 0.4),
+                          Colors.black.withValues(alpha: 0.85),
                         ],
                       ),
                     ),
@@ -527,7 +548,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                 },
               ),
 
-              // 5. Fixed Bottom Controls (Timestamp, Fullscreen, Mute/Unmute, 3-dots, Progress Bar)
+              // 5. Fixed Bottom Controls (Exact Match with Screenshot: Timestamp, Fullscreen, Mute/Unmute, 3-dots, Progress Bar)
               Positioned(
                 left: 10,
                 right: 10,
@@ -538,20 +559,20 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                     final pos = snapshot.data ?? _player.state.position;
                     final dur = _player.state.duration;
 
-                    final double currentMs =
-                        _isSeeking ? _dragValue : pos.inMilliseconds.toDouble();
-                    final double maxMs =
-                        dur.inMilliseconds.toDouble() > 0
-                            ? dur.inMilliseconds.toDouble()
-                            : 1.0;
+                    final double currentMs = _isSeeking
+                        ? _dragValue
+                        : pos.inMilliseconds.toDouble();
+                    final double maxMs = dur.inMilliseconds.toDouble() > 0
+                        ? dur.inMilliseconds.toDouble()
+                        : 1.0;
                     final double clampedMs = currentMs.clamp(0.0, maxMs);
 
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Row: Time and Action Icons
+                        // Row: Time and 3 Action Icons (Fullscreen, Sound, 3-Dots)
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          padding: const EdgeInsets.symmetric(horizontal: 2.0),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -560,7 +581,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                 "${_formatDuration(_isSeeking ? Duration(milliseconds: clampedMs.toInt()) : pos)} / ${_formatDuration(dur)}",
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 13,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 0.3,
                                   shadows: [
@@ -574,7 +595,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                               ),
                               const Spacer(),
 
-                              // 1. Fullscreen Button
+                              // 1. Fullscreen Button (Crop free rounded)
                               _buildGlassIconButton(
                                 child: const Icon(
                                   Icons.crop_free_rounded,
@@ -586,8 +607,8 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder:
-                                          (context) => FullScreenVideoPlayer(
+                                      builder: (context) =>
+                                          FullScreenVideoPlayer(
                                             player: _player,
                                           ),
                                     ),
@@ -608,10 +629,9 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                       color: Colors.white,
                                       size: 20,
                                     ),
-                                    tooltip:
-                                        isMuted
-                                            ? "Activer le son"
-                                            : "Couper le son",
+                                    tooltip: isMuted
+                                        ? "Activer le son"
+                                        : "Couper le son",
                                     onTap: () {
                                       final newMuted = !isMuted;
                                       _isMuted.value = newMuted;
@@ -628,9 +648,9 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                           ),
                         ),
 
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
 
-                        // Progress Seek Line at bottom
+                        // Progress Seek Line at bottom (Clean white line as in screenshot)
                         SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             trackHeight: 3.0,
@@ -666,7 +686,9 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                 });
                               },
                               onChangeEnd: (val) {
-                                _player.seek(Duration(milliseconds: val.toInt()));
+                                _player.seek(
+                                  Duration(milliseconds: val.toInt()),
+                                );
                                 setState(() {
                                   _isSeeking = false;
                                 });
@@ -692,6 +714,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                           return const Center(
                             child: CircularProgressIndicator(
                               color: Color(0xFFFF6900),
+                              strokeWidth: 3,
                             ),
                           );
                         }

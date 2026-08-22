@@ -250,8 +250,9 @@ class FeedVideoManager extends ChangeNotifier {
 
   /// Clear all cards starting with a prefix (e.g. 'boutique_')
   void clearCategoryCards(String prefix) {
-    final keysToRemove =
-        _urlMap.keys.where((k) => k.startsWith(prefix)).toList();
+    final keysToRemove = _urlMap.keys
+        .where((k) => k.startsWith(prefix))
+        .toList();
     for (final k in keysToRemove) {
       _urlMap.remove(k);
       _cardVisibility.remove(k);

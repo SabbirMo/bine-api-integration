@@ -139,8 +139,14 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
           );
         }
 
-        // Trigger extraction if not already cached
+        // Trigger extraction in background if not already cached
         VideoFrameManager.instance.extractFirstFrame(widget.videoUrl);
+
+        // Immediately show the product thumbnail if available
+        if (widget.thumbnailUrl != null &&
+            widget.thumbnailUrl!.trim().isNotEmpty) {
+          return _buildFallbackImage();
+        }
 
         return Container(
           color: const Color(0xFF161616),
