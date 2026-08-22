@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
@@ -158,13 +159,32 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     return Color(int.tryParse(hexString, radix: 16) ?? 0xFF000000);
   }
 
-  Widget _sectionWrapper({String? title, required Widget child}) {
+  String _formatPrice(double price) {
+    if (price % 1 == 0) {
+      final formatter = NumberFormat('#,###', 'fr_FR');
+      return formatter.format(price.toInt()).replaceAll(',', ' ');
+    } else {
+      final formatter = NumberFormat('#,##0.00', 'fr_FR');
+      return formatter.format(price).replaceAll(',', ' ');
+    }
+  }
+
+  bool _hasVariantsOrOptions(ProductModel product) {
+    if (product.isMixedMode && product.unassignedStock > 0) return true;
+    if (product.isProductMode || product.variants.isEmpty) return false;
+    final hasColors = product.variants.any((v) => v.colorCode.isNotEmpty);
+    final hasSizes = product.variants.any((v) => v.size.isNotEmpty);
+    return hasColors || hasSizes;
+  }
+
+  Widget _cardWrapper({String? title, required Widget child}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF101828)),
-        borderRadius: BorderRadius.circular(15),
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFF101828), width: 1.0),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,9 +192,13 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           if (title != null) ...[
             Text(
               title,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              style: const TextStyle(
+                color: Color(0xFF344054),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
           ],
           child,
         ],
@@ -184,25 +208,32 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
 
   @override
   Widget build(BuildContext context) {
-    return _sectionWrapper(
-      title: "Article & Quantité",
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final hasVariantsOrOptions =
+        _productDetails != null && _hasVariantsOrOptions(_productDetails!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── CARD 1: Articles & Quantité ──
+        _cardWrapper(
+          title: "Articles & Quantité",
+          child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
                 child: Image.network(
                   widget.item.mainImage ?? "",
-                  width: 50,
-                  height: 50,
+                  width: 52,
+                  height: 52,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
-                      width: 50,
-                      height: 50,
-                      color: Colors.grey[200],
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       child: const Icon(
                         Icons.image_not_supported,
                         color: Colors.grey,
@@ -218,37 +249,62 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                   children: [
                     Text(
                       widget.item.productName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.black,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 3),
                     Text(
-                      "${widget.item.priceAfterDiscount} FCFA",
+                      "${_formatPrice(widget.item.priceAfterDiscount)} FCFA",
                       style: const TextStyle(
                         color: Color(0xFFFF6900),
                         fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               _quantityStepper(widget.item),
             ],
           ),
+        ),
 
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.only(top: 16.0),
-              child: Center(
-                child: SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+        // ── Loading indicator while fetching product variants ──
+        if (_isLoading)
+          Padding(
+            padding: const EdgeInsets.only(top: 12.0),
+            child: _cardWrapper(
+              child: const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFFFF6900),
+                    ),
+                  ),
                 ),
               ),
-            )
-          else if (_productDetails != null)
-            _buildStockAndVariantsSection(_productDetails!),
-        ],
-      ),
+            ),
+          ),
+
+        // ── CARD 2: Couleur & Dimensions (Separate Card) ──
+        if (!_isLoading && hasVariantsOrOptions)
+          Padding(
+            padding: const EdgeInsets.only(top: 12.0),
+            child: _cardWrapper(
+              child: _buildStockAndVariantsSection(_productDetails!),
+            ),
+          ),
+      ],
     );
   }
 
@@ -335,18 +391,16 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   }
 
   Widget _buildStockAndVariantsSection(ProductModel product) {
-    // Mode 1: Product Mode (no variants)
-
-    // Mode 2 & Mode 3: Variant or Mixed Mode
     final variants = product.variants;
     final bool showUnassignedOption =
         product.isMixedMode && product.unassignedStock > 0;
 
-    // Extract unique colors
-    final uniqueColors = <String, String>{}; // colorCode -> colorName
+    // Extract unique colors: colorCode -> colorName
+    final uniqueColors = <String, String>{};
     for (var v in variants) {
       if (v.colorCode.isNotEmpty) {
-        uniqueColors[v.colorCode] = v.colorName;
+        String name = v.colorName.trim();
+        uniqueColors[v.colorCode] = name;
       }
     }
 
@@ -368,107 +422,96 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       }
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Divider(),
-          const SizedBox(height: 8),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Mixed Mode "Sans préférence" option
+        if (showUnassignedOption) ...[
+          _buildUnassignedOption(product.unassignedStock),
+          const SizedBox(height: 14),
+        ],
 
-          // Mixed Mode "Sans préférence" option
-          if (showUnassignedOption) ...[
-            _buildUnassignedOption(product.unassignedStock),
-            const SizedBox(height: 12),
-          ],
+        // ── Couleur Section ──
+        if (uniqueColors.isNotEmpty) ...[
+          const Text(
+            "🎨 Couleur",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            children: uniqueColors.entries.map((e) {
+              return _colorDot(_hexToColor(e.key), e.key, e.value);
+            }).toList(),
+          ),
+          if (uniqueSizes.isNotEmpty) const SizedBox(height: 18),
+        ],
 
-          if (uniqueColors.isNotEmpty) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        // ── Dimensions Section ──
+        if (uniqueSizes.isNotEmpty) ...[
+          const Text(
+            "Dimensions",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: uniqueSizes.map((size) {
+              final variantForSize = filteredVariants.firstWhere(
+                (v) => v.size == size,
+                orElse: () => filteredVariants.first,
+              );
+              return _choiceChip(
+                size,
+                stockQuantity: variantForSize.stockQuantity,
+              );
+            }).toList(),
+          ),
+        ],
+
+        // ── Out of stock banner ──
+        if (_isCurrentChoiceOutOfStock) ...[
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: const Row(
               children: [
-                const Text(
-                  "🎨 Couleur",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.red,
+                  size: 18,
                 ),
-                if (_selectedColorCode != null &&
-                    uniqueColors.containsKey(_selectedColorCode))
-                  Text(
-                    uniqueColors[_selectedColorCode]!,
-                    style: const TextStyle(
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    "Rupture de stock – Cette variante ne peut pas être commandée",
+                    style: TextStyle(
+                      color: Colors.red,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFFFF6900),
                     ),
                   ),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: uniqueColors.entries.map((e) {
-                return _colorDot(_hexToColor(e.key), e.key, e.value);
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          if (uniqueSizes.isNotEmpty) ...[
-            const Text(
-              "Dimensions",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: uniqueSizes.map((size) {
-                final variantForSize = filteredVariants.firstWhere(
-                  (v) => v.size == size,
-                  orElse: () => filteredVariants.first,
-                );
-                return _choiceChip(
-                  size,
-                  stockQuantity: variantForSize.stockQuantity,
-                );
-              }).toList(),
-            ),
-          ],
-
-          // Out of stock banner
-          if (_isCurrentChoiceOutOfStock) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.shade200),
-              ),
-              child: const Row(
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.red,
-                    size: 18,
-                  ),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      "Rupture de stock – Cette variante ne peut pas être commandée",
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -546,6 +589,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   Widget _colorDot(Color color, String colorCode, String name) {
     final bool isSelected =
         _selectedColorCode == colorCode && !_isUnassignedSelected;
+    final bool isLightColor = color == Colors.white ||
+        color.toARGB32() == 0xFFFFFFFF ||
+        color.computeLuminance() > 0.85;
 
     return GestureDetector(
       onTap: () {
@@ -584,31 +630,49 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         _notifyVariant();
         _clampQuantityToMaxStock();
       },
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12, top: 5),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(2.5),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected ? color : Colors.transparent,
-              width: 2.5,
-            ),
-          ),
-          child: Container(
-            width: 32,
-            height: 32,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 38,
+            height: 38,
+            padding: EdgeInsets.all(isSelected ? 3.0 : 0.0),
             decoration: BoxDecoration(
-              color: color,
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.black.withValues(alpha: 0.15),
-                width: 0.8,
+                color: isSelected ? const Color(0xFFFF6900) : Colors.transparent,
+                width: 2.0,
+              ),
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isLightColor
+                      ? const Color(0xFFD0D5DD)
+                      : Colors.black.withValues(alpha: 0.08),
+                  width: 1.0,
+                ),
               ),
             ),
           ),
-        ),
+          if (name.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                color: isSelected
+                    ? const Color(0xFF101828)
+                    : const Color(0xFF475467),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -628,17 +692,17 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? (isOutOfStock ? Colors.red.shade50 : const Color(0xFFFEF3E7))
+              ? (isOutOfStock ? Colors.red.shade50 : const Color(0xFFFFECE5))
               : (isOutOfStock ? Colors.grey.shade100 : Colors.white),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
                 ? (isOutOfStock ? Colors.red : const Color(0xFFFF6900))
-                : Colors.grey.shade300,
-            width: isSelected ? 1.8 : 1.2,
+                : (isOutOfStock ? Colors.grey.shade300 : const Color(0xFF6B7280)),
+            width: isSelected ? 1.5 : 1.1,
           ),
         ),
         child: Row(
@@ -649,22 +713,14 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               style: TextStyle(
                 color: isOutOfStock
                     ? Colors.grey
-                    : (isSelected ? const Color(0xFFFF6900) : Colors.black),
+                    : (isSelected
+                        ? const Color(0xFFFF6900)
+                        : const Color(0xFF374151)),
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                 decoration: isOutOfStock ? TextDecoration.lineThrough : null,
               ),
             ),
-            // if (stockQuantity > 0) ...[
-            //   const SizedBox(width: 4),
-            //   Text(
-            //     "($stockQuantity)",
-            //     style: TextStyle(
-            //       fontSize: 10,
-            //       color: isSelected ? const Color(0xFFFF6900) : Colors.grey,
-            //     ),
-            //   ),
-            // ],
             if (isOutOfStock) ...[
               const SizedBox(width: 4),
               Icon(Icons.block, size: 14, color: Colors.red.shade300),
@@ -680,35 +736,46 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     final int maxStock = _maxAvailableStock;
 
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF101828), width: 1.1),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            onPressed: isBlocked
+          InkWell(
+            borderRadius: BorderRadius.circular(15),
+            onTap: (isBlocked || item.quantity <= 1)
                 ? null
                 : () {
-                    if (item.quantity > 1) {
-                      context.read<CartProvider>().decrement(item.id);
-                    }
+                    context.read<CartProvider>().decrement(item.id);
                   },
-            icon: Icon(
-              Icons.remove_circle_outline,
-              size: 22,
-              color: (isBlocked || item.quantity <= 1)
-                  ? Colors.grey.shade400
-                  : Colors.black,
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: Icon(
+                Icons.remove_circle_outline,
+                size: 22,
+                color: (isBlocked || item.quantity <= 1)
+                    ? Colors.grey.shade400
+                    : const Color(0xFF101828),
+              ),
             ),
           ),
-          Text(
-            isBlocked ? "0" : "${item.quantity}",
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            child: Text(
+              isBlocked ? "0" : "${item.quantity}",
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Color(0xFF101828),
+              ),
+            ),
           ),
-          IconButton(
-            onPressed: isBlocked
+          InkWell(
+            borderRadius: BorderRadius.circular(15),
+            onTap: isBlocked
                 ? null
                 : () {
                     if (maxStock > 0 && item.quantity >= maxStock) {
@@ -731,10 +798,14 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                     }
                     context.read<CartProvider>().increment(item.id, context);
                   },
-            icon: Icon(
-              Icons.add_circle_outline,
-              size: 22,
-              color: isBlocked ? Colors.grey.shade400 : Colors.black,
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: Icon(
+                Icons.add_circle_outline,
+                size: 22,
+                color:
+                    isBlocked ? Colors.grey.shade400 : const Color(0xFF101828),
+              ),
             ),
           ),
         ],
@@ -742,3 +813,4 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     );
   }
 }
+

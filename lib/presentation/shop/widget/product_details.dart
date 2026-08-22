@@ -38,16 +38,19 @@ class ProductDetailsScreen extends StatefulWidget {
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
 }
 
-class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
+class _ProductDetailsScreenState extends State<ProductDetailsScreen>
+    with WidgetsBindingObserver {
   late PageController _verticalController;
   bool _isMuted = false;
   int _currentPageIndex = 0;
+  bool _isScreenPaused = false;
 
   bool isExpanded = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentPageIndex = widget.initialProductIndex;
     _verticalController = PageController(
       initialPage: widget.initialProductIndex,
@@ -55,6 +58,21 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _precacheAround(_currentPageIndex);
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      if (!_isScreenPaused && mounted) {
+        setState(() => _isScreenPaused = true);
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      if (_isScreenPaused && mounted) {
+        setState(() => _isScreenPaused = false);
+      }
+    }
   }
 
   void _precacheAround(int index) {
@@ -69,8 +87,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
         for (final m in p.media) {
           final mType = m.mediaType.toLowerCase().trim();
-          final mUrl = m.effectiveMediaUrl.isNotEmpty ? m.effectiveMediaUrl : m.mediaUrl;
-          if (mUrl.isNotEmpty && (mType == 'video' || mUrl.endsWith('.mp4') || mUrl.endsWith('.mov') || mUrl.endsWith('.m3u8'))) {
+          final mUrl = m.effectiveMediaUrl.isNotEmpty
+              ? m.effectiveMediaUrl
+              : m.mediaUrl;
+          if (mUrl.isNotEmpty &&
+              (mType == 'video' ||
+                  mUrl.endsWith('.mp4') ||
+                  mUrl.endsWith('.mov') ||
+                  mUrl.endsWith('.m3u8'))) {
             String clean = mUrl.trim();
             if (!clean.startsWith('http')) {
               final base = BaseUrl.baseUrl;
@@ -83,7 +107,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
         if (p.mainImage != null && p.mainImage!.isNotEmpty) {
           final mainImg = p.mainImage!.toLowerCase().trim();
-          if (mainImg.endsWith('.mp4') || mainImg.endsWith('.mov') || mainImg.endsWith('.m3u8')) {
+          if (mainImg.endsWith('.mp4') ||
+              mainImg.endsWith('.mov') ||
+              mainImg.endsWith('.m3u8')) {
             String clean = p.mainImage!.trim();
             if (!clean.startsWith('http')) {
               final base = BaseUrl.baseUrl;
@@ -99,6 +125,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _verticalController.dispose();
     super.dispose();
   }
@@ -120,13 +147,19 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           },
           itemBuilder: (context, index) {
             final product = widget.allProducts[index];
-            final isActive = index == _currentPageIndex;
+            final isActive = index == _currentPageIndex && !_isScreenPaused;
             return ProductMediaGallery(
               product: product,
               isActive: isActive,
               isMuted: _isMuted,
               onMuteToggle: () => setState(() => _isMuted = !_isMuted),
               isExpanded: isExpanded,
+              onPause: () {
+                if (mounted) setState(() => _isScreenPaused = true);
+              },
+              onResume: () {
+                if (mounted) setState(() => _isScreenPaused = false);
+              },
             );
           },
         ),
@@ -142,6 +175,8 @@ class ProductMediaGallery extends StatefulWidget {
   final bool isActive;
   bool isExpanded;
   final VoidCallback onMuteToggle;
+  final VoidCallback? onPause;
+  final VoidCallback? onResume;
 
   ProductMediaGallery({
     super.key,
@@ -150,6 +185,8 @@ class ProductMediaGallery extends StatefulWidget {
     required this.isExpanded,
     required this.isMuted,
     required this.onMuteToggle,
+    this.onPause,
+    this.onResume,
   });
 
   @override
@@ -191,30 +228,24 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
   List<ProductContent> get _mediaContent {
     if (_product.media.isNotEmpty) {
-      final list = _product.media
-          .map(
-            (m) {
-              final rawUrl = m.effectiveMediaUrl.isNotEmpty
-                  ? m.effectiveMediaUrl
-                  : m.mediaUrl;
-              final resolvedUrl = _resolveUrl(rawUrl);
-              final isVid =
-                  m.mediaType.toLowerCase() == 'video' ||
-                  _isVideoUrl(resolvedUrl);
-              final isAud = m.mediaType.toLowerCase() == 'audio';
-              final isImg =
-                  m.mediaType.toLowerCase() == 'image' && !isVid && !isAud;
+      final list = _product.media.map((m) {
+        final rawUrl = m.effectiveMediaUrl.isNotEmpty
+            ? m.effectiveMediaUrl
+            : m.mediaUrl;
+        final resolvedUrl = _resolveUrl(rawUrl);
+        final isVid =
+            m.mediaType.toLowerCase() == 'video' || _isVideoUrl(resolvedUrl);
+        final isAud = m.mediaType.toLowerCase() == 'audio';
+        final isImg = m.mediaType.toLowerCase() == 'image' && !isVid && !isAud;
 
-              return ProductContent(
-                url: resolvedUrl,
-                isVideo: isVid,
-                isImage: isImg,
-                isAudio: isAud,
-                isNetwork: true,
-              );
-            },
-          )
-          .toList();
+        return ProductContent(
+          url: resolvedUrl,
+          isVideo: isVid,
+          isImage: isImg,
+          isAudio: isAud,
+          isNetwork: true,
+        );
+      }).toList();
 
       // Video priority: Videos appear first before images
       list.sort((a, b) {
@@ -316,6 +347,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     return ProductAudioItem(
                       audioUrl: media.url,
                       isMuted: widget.isMuted,
+                      isActive: isMediaActive,
                     );
                   } else {
                     return InteractiveViewer(
@@ -415,6 +447,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
             children: [
               InkWell(
                 onTap: () async {
+                  widget.onPause?.call();
                   final user = FirebaseAuth.instance.currentUser;
                   final token = await TokenStorage.getAccessToken();
 
@@ -444,13 +477,18 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     final tokenAfter = await TokenStorage.getAccessToken();
 
                     if (userAfter == null && tokenAfter == null) {
+                      widget.onResume?.call();
                       return; // Still not logged in
                     }
                   }
 
-                  if (!mounted) return;
+                  if (!mounted) {
+                    widget.onResume?.call();
+                    return;
+                  }
 
                   if (_product.isOutOfStock) {
+                    widget.onResume?.call();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: const Text(
@@ -471,7 +509,10 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
 
                   try {
                     await context.read<CartProvider>().addToCart(_product);
-                    if (!mounted) return;
+                    if (!mounted) {
+                      widget.onResume?.call();
+                      return;
+                    }
                     FireworksOverlay.show(context);
 
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -490,14 +531,19 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                       ),
                     );
                     await Future.delayed(const Duration(seconds: 1));
-                    if (!mounted) return;
-                    showModalBottomSheet(
+                    if (!mounted) {
+                      widget.onResume?.call();
+                      return;
+                    }
+                    await showModalBottomSheet(
                       context: context,
                       isScrollControlled: true, // Allows it to take more height
                       backgroundColor: Colors.transparent,
                       builder: (context) => const CartBottomSheet(),
                     );
+                    widget.onResume?.call();
                   } catch (e) {
+                    widget.onResume?.call();
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -533,7 +579,8 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                       ? "Bonjour, je souhaite commander ce produit : $productUrl.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?"
                       : "Bonjour, je souhaite commander ce produit.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?";
 
-                  final String phoneNumber = dotenv.env["WHATSAPP_PHONE"] ?? "+221771635015";
+                  final String phoneNumber =
+                      dotenv.env["WHATSAPP_PHONE"] ?? "+221771635015";
 
                   final whatsappAppUrl = Uri.parse(
                     "whatsapp://send?phone=$phoneNumber&text=${Uri.encodeComponent(shareText)}",
@@ -675,9 +722,13 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                     height: 50,
                     child: ElevatedButton.icon(
                       onPressed: () async {
+                        widget.onPause?.call();
                         final token = await TokenStorage.getAccessToken();
                         if (token == null || token.isEmpty) {
-                          if (!context.mounted) return;
+                          if (!context.mounted) {
+                            widget.onResume?.call();
+                            return;
+                          }
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -703,13 +754,18 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                           final tokenAfter =
                               await TokenStorage.getAccessToken();
                           if (tokenAfter == null || tokenAfter.isEmpty) {
+                            widget.onResume?.call();
                             return; // Still not logged in
                           }
                         }
 
-                        if (!context.mounted) return;
+                        if (!context.mounted) {
+                          widget.onResume?.call();
+                          return;
+                        }
 
                         if (_product.isOutOfStock) {
+                          widget.onResume?.call();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: const Text(
@@ -770,13 +826,19 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                           }
                         }
 
-                        if (!context.mounted || !success) return;
-                        Navigator.push(
+                        if (!context.mounted || !success) {
+                          widget.onResume?.call();
+                          return;
+                        }
+
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const ValidationScreen(),
                           ),
                         );
+
+                        widget.onResume?.call();
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFF6900),
@@ -893,7 +955,8 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (_product.isMixedMode && _product.unassignedStock > 0)
+                              if (_product.isMixedMode &&
+                                  _product.unassignedStock > 0)
                                 Text(
                                   "• Sans préférence : ${_product.unassignedStock} en stock",
                                   style: const TextStyle(

@@ -7,11 +7,13 @@ import 'package:dio/dio.dart';
 class ProductAudioItem extends StatefulWidget {
   final String audioUrl;
   final bool isMuted;
+  final bool isActive;
 
   const ProductAudioItem({
     super.key,
     required this.audioUrl,
     required this.isMuted,
+    this.isActive = true,
   });
 
   @override
@@ -61,7 +63,7 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
       }
 
       // Step 2: Play the local file
-      await _player.open(Media('file://$savePath'));
+      await _player.open(Media('file://$savePath'), play: widget.isActive);
 
       if (mounted) {
         setState(() {
@@ -78,6 +80,15 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isMuted != widget.isMuted) {
       _player.setVolume(widget.isMuted ? 0.0 : 100.0);
+    }
+    if (oldWidget.isActive != widget.isActive) {
+      if (widget.isActive) {
+        _player.play();
+        setState(() => _isPlaying = true);
+      } else {
+        _player.pause();
+        setState(() => _isPlaying = false);
+      }
     }
   }
 

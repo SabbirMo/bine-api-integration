@@ -322,8 +322,19 @@ class _ValidationScreenState extends State<ValidationScreen> {
     );
   }
 
+  String _formatTotal(double? total) {
+    if (total == null) return "0";
+    if (total % 1 == 0) {
+      final formatter = NumberFormat('#,###', 'fr_FR');
+      return formatter.format(total.toInt()).replaceAll(',', ' ');
+    } else {
+      final formatter = NumberFormat('#,##0.00', 'fr_FR');
+      return formatter.format(total).replaceAll(',', ' ');
+    }
+  }
+
   Widget _buildBottomCTA(CartProvider cartProvider) {
-    String totalAmount = cartProvider.cart?.total.toStringAsFixed(2) ?? "0.00";
+    String totalAmount = _formatTotal(cartProvider.cart?.total);
     return Consumer<OrderProvider>(
       builder: (context, orderProvider, child) {
         final bottomInset = MediaQuery.of(context).viewInsets.bottom;
