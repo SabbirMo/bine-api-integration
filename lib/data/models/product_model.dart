@@ -69,6 +69,48 @@ class ProductModel {
       status == 'out_of_stock' ||
       (totalStock <= 0 && status != 'pre_order' && status != 'in_stock');
 
+  String get effectiveVideoUrl {
+    for (final m in media) {
+      final mType = m.mediaType.toLowerCase().trim();
+      final mUrl = m.effectiveMediaUrl;
+      if ((mType == 'video' || _isLocalVideoUrl(mUrl)) && mUrl.isNotEmpty) {
+        return mUrl;
+      }
+    }
+    if (mainImage != null && _isLocalVideoUrl(mainImage!)) {
+      return mainImage!;
+    }
+    return '';
+  }
+
+  static bool _isLocalVideoUrl(String url) {
+    if (url.trim().isEmpty) return false;
+    final clean = url.trim().toLowerCase().split('?').first.split('#').first;
+    return clean.endsWith('.mp4') ||
+        clean.endsWith('.mov') ||
+        clean.endsWith('.m3u8') ||
+        clean.endsWith('.webm') ||
+        clean.endsWith('.avi') ||
+        clean.endsWith('.mkv') ||
+        clean.contains('.mp4') ||
+        clean.contains('.m3u8');
+  }
+
+  String get effectiveThumbnailUrl {
+    for (final m in media) {
+      if (m.thumbnailUrl != null && m.thumbnailUrl!.isNotEmpty) {
+        return m.thumbnailUrl!;
+      }
+      if (m.mediaType == 'image' && m.effectiveMediaUrl.isNotEmpty) {
+        return m.effectiveMediaUrl;
+      }
+    }
+    if (mainImage != null && !_isLocalVideoUrl(mainImage!)) {
+      return mainImage!;
+    }
+    return '';
+  }
+
   static double _parsePrice(dynamic value, [double fallback = 0.0]) {
     if (value == null) return fallback;
     if (value is num) return value.toDouble();

@@ -416,43 +416,27 @@ class FeedVideoManager extends ChangeNotifier {
 
     String? bestKey;
     final double vHeight = _viewportHeight > 0 ? _viewportHeight : 800.0;
-    // Dynamic optical focus shifts smoothly from top rows (0.32) to bottom rows (0.72) based on scroll progress
-    final double topTargetY = vHeight * 0.30;
-    final double bottomTargetY = vHeight * 0.72;
-    final double targetCenterY =
-        topTargetY + (_scrollRatio * (bottomTargetY - topTargetY));
+    // When reached the end of the scroll list, shift target to the bottom of viewport
+    final double targetCenterY = _isAtBottom
+        ? (vHeight * 0.72)
+        : (vHeight * 0.44);
 
     // 1. If currently on Home page (tab 0)
     if (_activeTabIndex == 0 && _sectionVisibility.isNotEmpty) {
       String? bestSectionId;
       double bestScore = -999999.0;
 
-      if (_isAtBottom || _scrollRatio >= 0.85) {
-        double maxCenterY = -1.0;
-        for (final entry in _sectionVisibility.entries) {
-          final secId = entry.key;
-          final fraction = entry.value;
-          final centerY = _sectionCenterY[secId] ?? 0.0;
-          if (fraction >= 0.20 && centerY > maxCenterY) {
-            maxCenterY = centerY;
+      for (final entry in _sectionVisibility.entries) {
+        final secId = entry.key;
+        final fraction = entry.value;
+        final centerY = _sectionCenterY[secId] ?? 0.0;
+
+        if (fraction >= 0.15) {
+          final double distFromCenter = (centerY - targetCenterY).abs();
+          final score = (fraction * 1000.0) - (distFromCenter * 2.0);
+          if (score > bestScore) {
+            bestScore = score;
             bestSectionId = secId;
-          }
-        }
-      }
-
-      if (bestSectionId == null) {
-        for (final entry in _sectionVisibility.entries) {
-          final secId = entry.key;
-          final fraction = entry.value;
-          final centerY = _sectionCenterY[secId] ?? 0.0;
-
-          if (fraction >= 0.15) {
-            final double distFromCenter = (centerY - targetCenterY).abs();
-            final score = (fraction * 1000.0) - (distFromCenter * 1.5);
-            if (score > bestScore) {
-              bestScore = score;
-              bestSectionId = secId;
-            }
           }
         }
       }
@@ -461,51 +445,28 @@ class FeedVideoManager extends ChangeNotifier {
         bestKey = _sectionActiveKey[bestSectionId];
       }
     }
-    // 2. If currently on Boutique page (tab 1) or no sections active
+    // 2. If currently on Boutique page (tab 1) or individual card tracking
     else if (_activeTabIndex == 1 || _cardVisibility.isNotEmpty) {
       double bestCardScore = -999999.0;
 
-      // If at bottom of page or scrolled near the bottom, give priority to the lowest visible card (highest centerY)
-      if (_isAtBottom || _scrollRatio >= 0.65) {
-        String? bottomMostKey;
-        double maxCenterY = -1.0;
-        for (final entry in _cardVisibility.entries) {
-          final key = entry.key;
-          final fraction = entry.value;
-          final centerY = _cardCenterY[key] ?? 0.0;
-          final url = _urlMap[key] ?? '';
+      for (final entry in _cardVisibility.entries) {
+        final key = entry.key;
+        final fraction = entry.value;
+        final centerY = _cardCenterY[key] ?? 0.0;
+        final url = _urlMap[key] ?? '';
 
-          if (url.isNotEmpty && fraction >= 0.20) {
-            if (centerY > maxCenterY) {
-              maxCenterY = centerY;
-              bottomMostKey = key;
-            }
-          }
-        }
-        if (bottomMostKey != null) {
-          bestKey = bottomMostKey;
-        }
-      }
-
-      if (bestKey == null) {
-        for (final entry in _cardVisibility.entries) {
-          final key = entry.key;
-          final fraction = entry.value;
-          final centerY = _cardCenterY[key] ?? 0.0;
-          final url = _urlMap[key] ?? '';
-
-          if (url.isNotEmpty && fraction >= 0.15) {
-            final double distFromCenter = (centerY - targetCenterY).abs();
-            final score = (fraction * 1000.0) - (distFromCenter * 1.5);
-            if (score > bestCardScore) {
-              bestCardScore = score;
-              bestKey = key;
-            }
+        if (url.isNotEmpty && fraction >= 0.15) {
+          final double distFromCenter = (centerY - targetCenterY).abs();
+          // Score rewards high visibility and closeness to the center of the screen
+          final score = (fraction * 1000.0) - (distFromCenter * 2.0);
+          if (score > bestCardScore) {
+            bestCardScore = score;
+            bestKey = key;
           }
         }
       }
 
-      // Fallback if visibility hasn't fired yet but cards are registered for Boutique
+      // Fallback for Boutique initial load
       if (bestKey == null && _activeTabIndex == 1 && _urlMap.isNotEmpty) {
         for (final entry in _urlMap.entries) {
           if (entry.key.startsWith('boutique_') && entry.value.isNotEmpty) {

@@ -925,7 +925,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
         final message =
             provider.storeSettings?.deliveryMessage?.isNotEmpty == true
             ? provider.storeSettings!.deliveryMessage!
-            : "No Message ";
+            : "";
 
         return Column(
           mainAxisSize: MainAxisSize.min,

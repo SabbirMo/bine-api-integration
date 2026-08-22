@@ -350,7 +350,8 @@ class _AccueilScreenState extends State<AccueilScreen>
                 final pixels = scrollInfo.metrics.pixels;
                 final ratio = maxScroll > 0 ? (pixels / maxScroll).clamp(0.0, 1.0) : 0.0;
                 FeedVideoManager.instance.updateScrollRatio(ratio);
-                final isBottom = maxScroll > 0 && pixels >= (maxScroll - 50);
+                final isBottom =
+                    maxScroll > 0 && scrollInfo.metrics.extentAfter <= 25;
                 FeedVideoManager.instance.setIsAtBottom(isBottom);
                 return false;
               },

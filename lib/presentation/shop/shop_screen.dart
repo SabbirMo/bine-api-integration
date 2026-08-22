@@ -74,6 +74,11 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   }
 
   String _resolveProductVideo(ProductModel product) {
+    final String vUrl = product.effectiveVideoUrl;
+    if (vUrl.isNotEmpty) {
+      return _resolveUrl(vUrl);
+    }
+
     for (final m in product.media) {
       final mType = m.mediaType.toLowerCase().trim();
       final mUrl = m.effectiveMediaUrl;
@@ -87,6 +92,10 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
       product.id,
     );
     if (matching != null && matching != product) {
+      final String matchVUrl = matching.effectiveVideoUrl;
+      if (matchVUrl.isNotEmpty) {
+        return _resolveUrl(matchVUrl);
+      }
       for (final m in matching.media) {
         final mType = m.mediaType.toLowerCase().trim();
         final mUrl = m.effectiveMediaUrl;
@@ -106,6 +115,10 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   }
 
   String _resolveProductThumbnail(ProductModel product) {
+    final String tUrl = product.effectiveThumbnailUrl;
+    if (tUrl.isNotEmpty) {
+      return _resolveUrl(tUrl);
+    }
     if (product.mainImage != null && product.mainImage!.isNotEmpty) {
       return _resolveUrl(product.mainImage!);
     }
@@ -256,7 +269,8 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                   ? (pixels / maxScroll).clamp(0.0, 1.0)
                   : 0.0;
               FeedVideoManager.instance.updateScrollRatio(ratio);
-              final isBottom = maxScroll > 0 && pixels >= (maxScroll - 50);
+              final isBottom =
+                  maxScroll > 0 && scrollInfo.metrics.extentAfter <= 25;
               FeedVideoManager.instance.setIsAtBottom(isBottom);
               return false;
             },
