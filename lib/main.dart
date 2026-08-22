@@ -19,6 +19,7 @@ import 'providers/order_provider.dart';
 import 'providers/feedback_provider.dart';
 import 'providers/story_provider.dart';
 import 'providers/notification_provider.dart';
+import 'providers/store_settings_provider.dart';
 
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -59,6 +60,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => FeedbackProvider()),
         ChangeNotifierProvider(create: (_) => StoryProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
+        ChangeNotifierProvider(create: (_) => StoreSettingsProvider()),
       ],
       child: const MyApp(),
     ),

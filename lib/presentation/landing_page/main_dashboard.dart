@@ -3,6 +3,7 @@ import 'package:binetatour/presentation/home/home_page.dart';
 import 'package:binetatour/presentation/profile/account/mon_compot_screen.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class MainDashboard extends StatefulWidget {
   const MainDashboard({super.key});
@@ -29,11 +30,16 @@ class _MainDashboardState extends State<MainDashboard> {
         currentIndex: _currentIndex,
         onTap: (index) {
           if (index != _currentIndex) {
-            FeedVideoManager.instance.setActiveTab(index);
             setState(() => _currentIndex = index);
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              FeedVideoManager.instance.resume();
-            });
+            FeedVideoManager.instance.setActiveTab(index);
+            if (index == 2) {
+              FeedVideoManager.instance.pauseAll();
+            } else {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                FeedVideoManager.instance.resume();
+                VisibilityDetectorController.instance.notifyNow();
+              });
+            }
           }
         },
         selectedItemColor: const Color(0xffFF6900),

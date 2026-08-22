@@ -34,14 +34,11 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   @override
   void initState() {
     super.initState();
-    FeedVideoManager.instance.setActiveTab(1);
     _categoryScrollController = ScrollController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      FeedVideoManager.instance.setActiveTab(1);
       context.read<CategoryProvider>().fetchCategories();
       context.read<ProductProvider>().fetchProducts();
       VisibilityDetectorController.instance.notifyNow();
-      FeedVideoManager.instance.evaluatePlaybackNow();
     });
   }
 

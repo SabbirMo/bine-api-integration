@@ -1,8 +1,10 @@
 import 'package:binetatour/core/base_url/base_url.dart';
+import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/presentation/home/widget/full_screen_player.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class VideoPlaceholder extends StatefulWidget {
   final String link;
@@ -20,7 +22,8 @@ class VideoPlaceholder extends StatefulWidget {
   State<VideoPlaceholder> createState() => _VideoPlaceholderState();
 }
 
-class _VideoPlaceholderState extends State<VideoPlaceholder> {
+class _VideoPlaceholderState extends State<VideoPlaceholder>
+    with WidgetsBindingObserver {
   late final Player _player = Player();
   late final VideoController _videoController = VideoController(
     _player,
@@ -37,11 +40,56 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
   bool _isSeeking = false;
   double _dragValue = 0.0;
   bool _hasTriedFallback = false;
+  bool _isVisible = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    FeedVideoManager.instance.addListener(_onFeedManagerUpdate);
     _initializePlayer();
+  }
+
+  void _onFeedManagerUpdate() {
+    if (!mounted) return;
+    if (FeedVideoManager.instance.isGloballyPaused ||
+        FeedVideoManager.instance.activeTabIndex != 0) {
+      if (_isPlaying.value) {
+        _player.pause();
+      }
+    } else if (_isVisible && !_isPlaying.value) {
+      _player.play();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _player.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_isVisible &&
+          !FeedVideoManager.instance.isGloballyPaused &&
+          FeedVideoManager.instance.activeTabIndex == 0) {
+        _player.play();
+      }
+    }
+  }
+
+  void _onVisibilityChanged(double visibleFraction) {
+    _isVisible = visibleFraction > 0.25;
+    if (!mounted) return;
+    if (!_isVisible) {
+      if (_isPlaying.value) {
+        _player.pause();
+      }
+    } else {
+      if (!FeedVideoManager.instance.isGloballyPaused &&
+          FeedVideoManager.instance.activeTabIndex == 0) {
+        _player.play();
+      }
+    }
   }
 
   @override
@@ -136,6 +184,8 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    FeedVideoManager.instance.removeListener(_onFeedManagerUpdate);
     _player.dispose();
     _isMuted.dispose();
     _isPlaying.dispose();
@@ -341,315 +391,319 @@ class _VideoPlaceholderState extends State<VideoPlaceholder> {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        color: const Color(0xFFFFF5EE),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 1. The Video Player (ALWAYS IN TREE so surface attaches)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                _isPlaying.value ? _player.pause() : _player.play();
-              },
-              child: SizedBox.expand(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox(
-                    width:
-                        _videoController.player.state.width?.toDouble() ?? 16.0,
-                    height:
-                        _videoController.player.state.height?.toDouble() ?? 9.0,
-                    child: Video(
-                      controller: _videoController,
-                      controls: NoVideoControls,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // 2. Thumbnail / Loading State (Fades out when video playback actually begins)
-            Positioned.fill(
-              child: ValueListenableBuilder<bool>(
-                valueListenable: _hasStartedPlaying,
-                builder: (context, hasStartedPlaying, _) {
-                  return AnimatedOpacity(
-                    opacity: hasStartedPlaying ? 0.0 : 1.0,
-                    duration: const Duration(milliseconds: 300),
-                    child: IgnorePointer(
-                      ignoring: hasStartedPlaying,
-                      child: Container(
-                        color: const Color(0xFFFFF5EE),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            if (_resolvedThumbnailUrl.isNotEmpty)
-                              Image.network(
-                                _resolvedThumbnailUrl,
-                                fit: BoxFit.cover,
-                                loadingBuilder: (
-                                  context,
-                                  child,
-                                  loadingProgress,
-                                ) {
-                                  if (loadingProgress == null) {
-                                    return child;
-                                  }
-                                  return _buildDefaultPlaceholder(
-                                    isLoading: true,
-                                  );
-                                },
-                                errorBuilder:
-                                    (_, _, _) => _buildDefaultPlaceholder(
-                                      isLoading: true,
-                                    ),
-                              )
-                            else
-                              _buildDefaultPlaceholder(isLoading: true),
-                          ],
-                        ),
+    return VisibilityDetector(
+      key: ValueKey('banner_video_${widget.link}'),
+      onVisibilityChanged: (info) => _onVisibilityChanged(info.visibleFraction),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          color: const Color(0xFFFFF5EE),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. The Video Player (ALWAYS IN TREE so surface attaches)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  _isPlaying.value ? _player.pause() : _player.play();
+                },
+                child: SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      width:
+                          _videoController.player.state.width?.toDouble() ?? 16.0,
+                      height:
+                          _videoController.player.state.height?.toDouble() ?? 9.0,
+                      child: Video(
+                        controller: _videoController,
+                        controls: NoVideoControls,
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
-
-            // 3. Permanent Bottom Gradient for high visibility and contrast
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 85,
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.35),
-                        Colors.black.withValues(alpha: 0.8),
-                      ],
-                    ),
                   ),
                 ),
               ),
-            ),
 
-            // 4. Center Play Indicator when Paused
-            ValueListenableBuilder<bool>(
-              valueListenable: _isPlaying,
-              builder: (context, isPlaying, _) {
-                return ValueListenableBuilder<bool>(
+              // 2. Thumbnail / Loading State (Fades out when video playback actually begins)
+              Positioned.fill(
+                child: ValueListenableBuilder<bool>(
                   valueListenable: _hasStartedPlaying,
-                  builder: (context, hasStarted, _) {
-                    if (!isPlaying && hasStarted) {
-                      return Center(
-                        child: GestureDetector(
-                          onTap: () => _player.play(),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.55),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 40,
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                );
-              },
-            ),
-
-            // 5. Fixed Bottom Controls (Timestamp, Fullscreen, Mute/Unmute, 3-dots, Progress Bar)
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 4,
-              child: StreamBuilder<Duration>(
-                stream: _player.stream.position,
-                builder: (context, snapshot) {
-                  final pos = snapshot.data ?? _player.state.position;
-                  final dur = _player.state.duration;
-
-                  final double currentMs =
-                      _isSeeking ? _dragValue : pos.inMilliseconds.toDouble();
-                  final double maxMs =
-                      dur.inMilliseconds.toDouble() > 0
-                          ? dur.inMilliseconds.toDouble()
-                          : 1.0;
-                  final double clampedMs = currentMs.clamp(0.0, maxMs);
-
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Row: Time and Action Icons
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            // Current Time / Duration (e.g. 1:48 / 4:32)
-                            Text(
-                              "${_formatDuration(_isSeeking ? Duration(milliseconds: clampedMs.toInt()) : pos)} / ${_formatDuration(dur)}",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.3,
-                                shadows: [
-                                  Shadow(
-                                    blurRadius: 4,
-                                    color: Colors.black87,
-                                    offset: Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Spacer(),
-
-                            // 1. Fullscreen Button
-                            _buildGlassIconButton(
-                              child: const Icon(
-                                Icons.crop_free_rounded,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              tooltip: "Plein écran",
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder:
-                                        (context) => FullScreenVideoPlayer(
-                                          player: _player,
-                                        ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 8),
-
-                            // 2. Sound / Volume Button (Mute / Unmute)
-                            ValueListenableBuilder<bool>(
-                              valueListenable: _isMuted,
-                              builder: (context, isMuted, _) {
-                                return _buildGlassIconButton(
-                                  child: Icon(
-                                    isMuted
-                                        ? Icons.volume_off_rounded
-                                        : Icons.volume_up_rounded,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  tooltip:
-                                      isMuted
-                                          ? "Activer le son"
-                                          : "Couper le son",
-                                  onTap: () {
-                                    final newMuted = !isMuted;
-                                    _isMuted.value = newMuted;
-                                    _player.setVolume(newMuted ? 0.0 : 100.0);
+                  builder: (context, hasStartedPlaying, _) {
+                    return AnimatedOpacity(
+                      opacity: hasStartedPlaying ? 0.0 : 1.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: IgnorePointer(
+                        ignoring: hasStartedPlaying,
+                        child: Container(
+                          color: const Color(0xFFFFF5EE),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (_resolvedThumbnailUrl.isNotEmpty)
+                                Image.network(
+                                  _resolvedThumbnailUrl,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (
+                                    context,
+                                    child,
+                                    loadingProgress,
+                                  ) {
+                                    if (loadingProgress == null) {
+                                      return child;
+                                    }
+                                    return _buildDefaultPlaceholder(
+                                      isLoading: true,
+                                    );
                                   },
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 8),
-
-                            // 3. More options (3-dots)
-                            _buildMoreOptionsButton(),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 2),
-
-                      // Progress Seek Line at bottom
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 3.0,
-                          thumbShape: const RoundSliderThumbShape(
-                            enabledThumbRadius: 0.0,
-                            disabledThumbRadius: 0.0,
-                            pressedElevation: 0.0,
-                          ),
-                          overlayShape: const RoundSliderOverlayShape(
-                            overlayRadius: 8.0,
-                          ),
-                          trackShape: const RectangularSliderTrackShape(),
-                          activeTrackColor: Colors.white,
-                          inactiveTrackColor: Colors.white.withValues(
-                            alpha: 0.35,
-                          ),
-                          thumbColor: Colors.white,
-                        ),
-                        child: SizedBox(
-                          height: 14,
-                          child: Slider(
-                            value: clampedMs,
-                            max: maxMs,
-                            onChangeStart: (val) {
-                              setState(() {
-                                _isSeeking = true;
-                                _dragValue = val;
-                              });
-                            },
-                            onChanged: (val) {
-                              setState(() {
-                                _dragValue = val;
-                              });
-                            },
-                            onChangeEnd: (val) {
-                              _player.seek(Duration(milliseconds: val.toInt()));
-                              setState(() {
-                                _isSeeking = false;
-                              });
-                            },
+                                  errorBuilder:
+                                      (_, _, _) => _buildDefaultPlaceholder(
+                                        isLoading: true,
+                                      ),
+                                )
+                              else
+                                _buildDefaultPlaceholder(isLoading: true),
+                            ],
                           ),
                         ),
                       ),
-                    ],
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
 
-            // 6. Buffering Indicator during active playback
-            ValueListenableBuilder<bool>(
-              valueListenable: _hasStartedPlaying,
-              builder: (context, hasStartedPlaying, _) {
-                if (hasStartedPlaying) {
+              // 3. Permanent Bottom Gradient for high visibility and contrast
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 85,
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.35),
+                          Colors.black.withValues(alpha: 0.8),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // 4. Center Play Indicator when Paused
+              ValueListenableBuilder<bool>(
+                valueListenable: _isPlaying,
+                builder: (context, isPlaying, _) {
                   return ValueListenableBuilder<bool>(
-                    valueListenable: _isBuffering,
-                    builder: (context, isBuffering, _) {
-                      if (isBuffering) {
-                        return const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6900),
+                    valueListenable: _hasStartedPlaying,
+                    builder: (context, hasStarted, _) {
+                      if (!isPlaying && hasStarted) {
+                        return Center(
+                          child: GestureDetector(
+                            onTap: () => _player.play(),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 40,
+                              ),
+                            ),
                           ),
                         );
                       }
                       return const SizedBox.shrink();
                     },
                   );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ],
+                },
+              ),
+
+              // 5. Fixed Bottom Controls (Timestamp, Fullscreen, Mute/Unmute, 3-dots, Progress Bar)
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 4,
+                child: StreamBuilder<Duration>(
+                  stream: _player.stream.position,
+                  builder: (context, snapshot) {
+                    final pos = snapshot.data ?? _player.state.position;
+                    final dur = _player.state.duration;
+
+                    final double currentMs =
+                        _isSeeking ? _dragValue : pos.inMilliseconds.toDouble();
+                    final double maxMs =
+                        dur.inMilliseconds.toDouble() > 0
+                            ? dur.inMilliseconds.toDouble()
+                            : 1.0;
+                    final double clampedMs = currentMs.clamp(0.0, maxMs);
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Row: Time and Action Icons
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              // Current Time / Duration (e.g. 1:48 / 4:32)
+                              Text(
+                                "${_formatDuration(_isSeeking ? Duration(milliseconds: clampedMs.toInt()) : pos)} / ${_formatDuration(dur)}",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3,
+                                  shadows: [
+                                    Shadow(
+                                      blurRadius: 4,
+                                      color: Colors.black87,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Spacer(),
+
+                              // 1. Fullscreen Button
+                              _buildGlassIconButton(
+                                child: const Icon(
+                                  Icons.crop_free_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                tooltip: "Plein écran",
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => FullScreenVideoPlayer(
+                                            player: _player,
+                                          ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 2. Sound / Volume Button (Mute / Unmute)
+                              ValueListenableBuilder<bool>(
+                                valueListenable: _isMuted,
+                                builder: (context, isMuted, _) {
+                                  return _buildGlassIconButton(
+                                    child: Icon(
+                                      isMuted
+                                          ? Icons.volume_off_rounded
+                                          : Icons.volume_up_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    tooltip:
+                                        isMuted
+                                            ? "Activer le son"
+                                            : "Couper le son",
+                                    onTap: () {
+                                      final newMuted = !isMuted;
+                                      _isMuted.value = newMuted;
+                                      _player.setVolume(newMuted ? 0.0 : 100.0);
+                                    },
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 3. More options (3-dots)
+                              _buildMoreOptionsButton(),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 2),
+
+                        // Progress Seek Line at bottom
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 3.0,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 0.0,
+                              disabledThumbRadius: 0.0,
+                              pressedElevation: 0.0,
+                            ),
+                            overlayShape: const RoundSliderOverlayShape(
+                              overlayRadius: 8.0,
+                            ),
+                            trackShape: const RectangularSliderTrackShape(),
+                            activeTrackColor: Colors.white,
+                            inactiveTrackColor: Colors.white.withValues(
+                              alpha: 0.35,
+                            ),
+                            thumbColor: Colors.white,
+                          ),
+                          child: SizedBox(
+                            height: 14,
+                            child: Slider(
+                              value: clampedMs,
+                              max: maxMs,
+                              onChangeStart: (val) {
+                                setState(() {
+                                  _isSeeking = true;
+                                  _dragValue = val;
+                                });
+                              },
+                              onChanged: (val) {
+                                setState(() {
+                                  _dragValue = val;
+                                });
+                              },
+                              onChangeEnd: (val) {
+                                _player.seek(Duration(milliseconds: val.toInt()));
+                                setState(() {
+                                  _isSeeking = false;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+
+              // 6. Buffering Indicator during active playback
+              ValueListenableBuilder<bool>(
+                valueListenable: _hasStartedPlaying,
+                builder: (context, hasStartedPlaying, _) {
+                  if (hasStartedPlaying) {
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: _isBuffering,
+                      builder: (context, isBuffering, _) {
+                        if (isBuffering) {
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFFF6900),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

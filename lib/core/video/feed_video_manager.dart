@@ -609,6 +609,11 @@ class FeedVideoManager extends ChangeNotifier {
 
   /// Resume playback when returning to the screen
   void resume() {
+    if (_activeTabIndex == 2) {
+      _isGloballyPaused = true;
+      pauseAll();
+      return;
+    }
     _isGloballyPaused = false;
     _evaluatePlayback();
   }

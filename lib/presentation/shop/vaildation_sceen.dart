@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
+import 'package:binetatour/providers/store_settings_provider.dart';
 import 'package:binetatour/presentation/shop/widget/cart_item_validation_card.dart';
 
 class ValidationScreen extends StatefulWidget {
@@ -34,6 +35,14 @@ class _ValidationScreenState extends State<ValidationScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
   final TextEditingController _timeController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<StoreSettingsProvider>().fetchStoreSettings();
+    });
+  }
 
   @override
   void dispose() {
@@ -909,17 +918,28 @@ class _ValidationScreenState extends State<ValidationScreen> {
     );
   }
 
-  Widget _buildFooterInfo() => const Text(
-    "Livraison gratuite a Dakar vous y croyez 🤩si vous êtes a Mbour ; thies ; Saly dans tout les régions du Sénégal . resté joignable le livreur vous appellera pour organiser la livraison avec vous 📞",
-    textAlign: TextAlign.center,
-    style: TextStyle(
-      color: Colors.black,
-      fontSize: 15.62,
-      fontFamily: 'Poppins',
-      fontWeight: FontWeight.w500,
-      height: 2.08,
-    ),
-  );
+  Widget _buildFooterInfo() {
+    return Consumer<StoreSettingsProvider>(
+      builder: (context, provider, child) {
+        final message =
+            provider.storeSettings?.deliveryMessage?.isNotEmpty == true
+            ? provider.storeSettings!.deliveryMessage!
+            : "No Message ";
+
+        return Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.black,
+            fontSize: 15.62,
+            fontFamily: 'Poppins',
+            fontWeight: FontWeight.w500,
+            height: 2.08,
+          ),
+        );
+      },
+    );
+  }
 }
 
 class TimeTextInputFormatter extends TextInputFormatter {
