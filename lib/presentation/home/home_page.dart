@@ -8,6 +8,7 @@ import 'package:binetatour/presentation/home/widget/notificaiton_screen.dart';
 import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/presentation/home/widget/video_widget.dart';
+import 'package:binetatour/presentation/landing_page/main_dashboard.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
@@ -348,10 +349,13 @@ class _AccueilScreenState extends State<AccueilScreen>
                 VisibilityDetectorController.instance.notifyNow();
                 final maxScroll = scrollInfo.metrics.maxScrollExtent;
                 final pixels = scrollInfo.metrics.pixels;
-                final ratio = maxScroll > 0 ? (pixels / maxScroll).clamp(0.0, 1.0) : 0.0;
+                final ratio = maxScroll > 0
+                    ? (pixels / maxScroll).clamp(0.0, 1.0)
+                    : 0.0;
                 FeedVideoManager.instance.updateScrollRatio(ratio);
-                final isBottom =
-                    maxScroll > 0 && scrollInfo.metrics.extentAfter <= 25;
+                final isBottom = maxScroll > 0 &&
+                    (scrollInfo.metrics.extentAfter <= 50 ||
+                        pixels >= maxScroll - 50);
                 FeedVideoManager.instance.setIsAtBottom(isBottom);
                 return false;
               },
@@ -728,6 +732,10 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
   @override
   void initState() {
     super.initState();
+    FeedVideoManager.instance.registerSectionContext(
+      widget.section.categoryId.toString(),
+      context,
+    );
     _scrollController.addListener(_onHorizontalScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadMissingDetails();
@@ -739,6 +747,10 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
   @override
   void didUpdateWidget(ProductSectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    FeedVideoManager.instance.registerSectionContext(
+      widget.section.categoryId.toString(),
+      context,
+    );
     if (oldWidget.section.products != widget.section.products) {
       _loadMissingDetails();
       _precacheSectionVideos();
@@ -750,6 +762,9 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
   void dispose() {
     _scrollController.removeListener(_onHorizontalScroll);
     _scrollController.dispose();
+    FeedVideoManager.instance.unregisterSectionContext(
+      widget.section.categoryId.toString(),
+    );
     FeedVideoManager.instance.unregisterSection(
       widget.section.categoryId.toString(),
     );
@@ -928,17 +943,23 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
           CategorySectionHeader(
             title: widget.section.categoryName ?? 'Category',
             imagePath: widget.section.categoryImageUrl,
-            onSeeMoreTap: () async {
-              FeedVideoManager.instance.pauseAll();
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BoutiqueScreen(
-                    initialCategoryId: widget.section.categoryId,
+            onSeeMoreTap: () {
+              final dashboard = MainDashboard.of(context);
+              if (dashboard != null) {
+                dashboard.switchToTab(
+                  1,
+                  categoryId: widget.section.categoryId,
+                );
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BoutiqueScreen(
+                      initialCategoryId: widget.section.categoryId,
+                    ),
                   ),
-                ),
-              );
-              FeedVideoManager.instance.resume();
+                );
+              }
             },
           ),
 

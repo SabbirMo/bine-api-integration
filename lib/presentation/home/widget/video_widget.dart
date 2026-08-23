@@ -314,7 +314,6 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
         width: 36,
         height: 36,
         child: PopupMenuButton<String>(
-          tooltip: "Options",
           color: const Color(0xFF1E1E1E),
           elevation: 8,
           shape: RoundedRectangleBorder(
@@ -602,7 +601,6 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                   color: Colors.white,
                                   size: 20,
                                 ),
-                                tooltip: "Plein écran",
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -629,9 +627,6 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                       color: Colors.white,
                                       size: 20,
                                     ),
-                                    tooltip: isMuted
-                                        ? "Activer le son"
-                                        : "Couper le son",
                                     onTap: () {
                                       final newMuted = !isMuted;
                                       _isMuted.value = newMuted;

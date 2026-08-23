@@ -19,10 +19,10 @@ class BoutiqueScreen extends StatefulWidget {
   const BoutiqueScreen({super.key, this.initialCategoryId});
 
   @override
-  State<BoutiqueScreen> createState() => _BoutiqueScreenState();
+  State<BoutiqueScreen> createState() => BoutiqueScreenState();
 }
 
-class _BoutiqueScreenState extends State<BoutiqueScreen> {
+class BoutiqueScreenState extends State<BoutiqueScreen> {
   int selectedCategory = 0;
   late ScrollController _categoryScrollController;
   String selectedCategoryName = "Tous";
@@ -30,6 +30,33 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
   bool isSubcategoryShow = true;
   int selectedSubCategoryIndex = -1;
   bool _initialCategorySet = false;
+
+  void selectCategoryById(int categoryId) {
+    final categories = context.read<CategoryProvider>().categories;
+    final index = categories.indexWhere((c) => c.id == categoryId);
+    if (index != -1) {
+      setState(() {
+        selectedCategory = index;
+        selectedCategoryName = categories[index].name;
+        selectedSubCategoryIndex = -1;
+      });
+      if (_categoryScrollController.hasClients) {
+        final targetOffset = (index * 90.0).clamp(
+          0.0,
+          _categoryScrollController.position.maxScrollExtent,
+        );
+        _categoryScrollController.animateTo(
+          targetOffset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        VisibilityDetectorController.instance.notifyNow();
+        FeedVideoManager.instance.evaluatePlaybackNow();
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -269,8 +296,9 @@ class _BoutiqueScreenState extends State<BoutiqueScreen> {
                   ? (pixels / maxScroll).clamp(0.0, 1.0)
                   : 0.0;
               FeedVideoManager.instance.updateScrollRatio(ratio);
-              final isBottom =
-                  maxScroll > 0 && scrollInfo.metrics.extentAfter <= 25;
+              final isBottom = maxScroll > 0 &&
+                  (scrollInfo.metrics.extentAfter <= 50 ||
+                      pixels >= maxScroll - 50);
               FeedVideoManager.instance.setIsAtBottom(isBottom);
               return false;
             },

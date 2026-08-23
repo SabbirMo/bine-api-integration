@@ -98,10 +98,29 @@ class FeedVideoManager extends ChangeNotifier {
   final Map<String, String> _sectionActiveKey = {};
   final Map<String, double> _sectionVisibility = {};
   final Map<String, double> _sectionCenterY = {};
-
   // Card-level tracking (Boutique grid & individual cards)
   final Map<String, double> _cardVisibility = {};
   final Map<String, double> _cardCenterY = {};
+
+  // Context-level tracking for real-time live coordinate calculations
+  final Map<String, BuildContext> _cardContexts = {};
+  final Map<String, BuildContext> _sectionContexts = {};
+
+  void registerCardContext(String key, BuildContext context) {
+    _cardContexts[key] = context;
+  }
+
+  void unregisterCardContext(String key) {
+    _cardContexts.remove(key);
+  }
+
+  void registerSectionContext(String sectionId, BuildContext context) {
+    _sectionContexts[sectionId] = context;
+  }
+
+  void unregisterSectionContext(String sectionId) {
+    _sectionContexts.remove(sectionId);
+  }
 
   final List<FeedPlayerState> _playerPool = [];
   final Map<String, FeedPlayerState> _keyToPlayer = {};
@@ -386,6 +405,7 @@ class FeedVideoManager extends ChangeNotifier {
       _isAtBottom = false;
       _scrollRatio = 0.0;
       pauseAll();
+      _currentPlayingKey = null;
       if (tabIndex != 2) {
         _isGloballyPaused = false;
         _evaluatePlayback();
@@ -416,10 +436,11 @@ class FeedVideoManager extends ChangeNotifier {
 
     String? bestKey;
     final double vHeight = _viewportHeight > 0 ? _viewportHeight : 800.0;
-    // When reached the end of the scroll list, shift target to the bottom of viewport
+    // Smooth adaptive visual focus:
+    // Starts at top row (0.32 * vHeight) and moves smoothly down to bottom row (0.75 * vHeight)
     final double targetCenterY = _isAtBottom
-        ? (vHeight * 0.72)
-        : (vHeight * 0.44);
+        ? (vHeight * 0.75)
+        : (vHeight * (0.32 + (_scrollRatio * 0.43)));
 
     // 1. If currently on Home page (tab 0)
     if (_activeTabIndex == 0 && _sectionVisibility.isNotEmpty) {
@@ -429,7 +450,20 @@ class FeedVideoManager extends ChangeNotifier {
       for (final entry in _sectionVisibility.entries) {
         final secId = entry.key;
         final fraction = entry.value;
-        final centerY = _sectionCenterY[secId] ?? 0.0;
+
+        // Calculate REAL-TIME centerY from live RenderBox
+        double centerY = _sectionCenterY[secId] ?? 0.0;
+        final ctx = _sectionContexts[secId];
+        if (ctx != null && ctx.mounted) {
+          try {
+            final renderBox = ctx.findRenderObject() as RenderBox?;
+            if (renderBox != null && renderBox.hasSize && renderBox.attached) {
+              final globalOffset = renderBox.localToGlobal(Offset.zero);
+              centerY = globalOffset.dy + (renderBox.size.height / 2);
+              _sectionCenterY[secId] = centerY;
+            }
+          } catch (_) {}
+        }
 
         if (fraction >= 0.15) {
           final double distFromCenter = (centerY - targetCenterY).abs();
@@ -445,19 +479,36 @@ class FeedVideoManager extends ChangeNotifier {
         bestKey = _sectionActiveKey[bestSectionId];
       }
     }
-    // 2. If currently on Boutique page (tab 1) or individual card tracking
-    else if (_activeTabIndex == 1 || _cardVisibility.isNotEmpty) {
+    // 2. If currently on Boutique page (tab 1)
+    else if (_activeTabIndex == 1) {
       double bestCardScore = -999999.0;
 
       for (final entry in _cardVisibility.entries) {
         final key = entry.key;
-        final fraction = entry.value;
-        final centerY = _cardCenterY[key] ?? 0.0;
-        final url = _urlMap[key] ?? '';
+        // Strictly filter only Boutique cards when on Boutique tab
+        if (!key.startsWith('boutique_')) continue;
 
-        if (url.isNotEmpty && fraction >= 0.15) {
+        final fraction = entry.value;
+        final url = _urlMap[key] ?? '';
+        if (url.isEmpty) continue;
+
+        // Calculate REAL-TIME centerY from live RenderBox
+        double centerY = _cardCenterY[key] ?? 0.0;
+        final ctx = _cardContexts[key];
+        if (ctx != null && ctx.mounted) {
+          try {
+            final renderBox = ctx.findRenderObject() as RenderBox?;
+            if (renderBox != null && renderBox.hasSize && renderBox.attached) {
+              final globalOffset = renderBox.localToGlobal(Offset.zero);
+              centerY = globalOffset.dy + (renderBox.size.height / 2);
+              _cardCenterY[key] = centerY;
+            }
+          } catch (_) {}
+        }
+
+        if (fraction >= 0.15) {
           final double distFromCenter = (centerY - targetCenterY).abs();
-          // Score rewards high visibility and closeness to the center of the screen
+          // Score rewards high visibility and closeness to the target Y
           final score = (fraction * 1000.0) - (distFromCenter * 2.0);
           if (score > bestCardScore) {
             bestCardScore = score;
@@ -467,7 +518,7 @@ class FeedVideoManager extends ChangeNotifier {
       }
 
       // Fallback for Boutique initial load
-      if (bestKey == null && _activeTabIndex == 1 && _urlMap.isNotEmpty) {
+      if (bestKey == null && _urlMap.isNotEmpty) {
         for (final entry in _urlMap.entries) {
           if (entry.key.startsWith('boutique_') && entry.value.isNotEmpty) {
             bestKey = entry.key;

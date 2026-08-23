@@ -6,20 +6,57 @@ import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 class MainDashboard extends StatefulWidget {
-  const MainDashboard({super.key});
+  final int initialIndex;
+  const MainDashboard({super.key, this.initialIndex = 0});
+
+  static MainDashboardState? of(BuildContext context) {
+    return context.findAncestorStateOfType<MainDashboardState>();
+  }
 
   @override
-  State<MainDashboard> createState() => _MainDashboardState();
+  State<MainDashboard> createState() => MainDashboardState();
 }
 
-class _MainDashboardState extends State<MainDashboard> {
-  int _currentIndex = 0;
+class MainDashboardState extends State<MainDashboard> {
+  late int _currentIndex;
+  final GlobalKey<BoutiqueScreenState> _boutiqueKey =
+      GlobalKey<BoutiqueScreenState>();
 
-  final List<Widget> _screens = [
-    const AccueilScreen(),
-    const BoutiqueScreen(),
-    const MonCompteScreen(),
-  ];
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _screens = [
+      const AccueilScreen(),
+      BoutiqueScreen(key: _boutiqueKey),
+      const MonCompteScreen(),
+    ];
+  }
+
+  void switchToTab(int index, {int? categoryId}) {
+    if (_currentIndex != index) {
+      setState(() => _currentIndex = index);
+    }
+    FeedVideoManager.instance.setActiveTab(index);
+
+    if (index == 1 && categoryId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _boutiqueKey.currentState?.selectCategoryById(categoryId);
+      });
+    }
+
+    if (index == 2) {
+      FeedVideoManager.instance.pauseAll();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        FeedVideoManager.instance.resume();
+        VisibilityDetectorController.instance.notifyNow();
+        FeedVideoManager.instance.evaluatePlaybackNow();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,16 +67,7 @@ class _MainDashboardState extends State<MainDashboard> {
         currentIndex: _currentIndex,
         onTap: (index) {
           if (index != _currentIndex) {
-            setState(() => _currentIndex = index);
-            FeedVideoManager.instance.setActiveTab(index);
-            if (index == 2) {
-              FeedVideoManager.instance.pauseAll();
-            } else {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                FeedVideoManager.instance.resume();
-                VisibilityDetectorController.instance.notifyNow();
-              });
-            }
+            switchToTab(index);
           }
         },
         selectedItemColor: const Color(0xffFF6900),

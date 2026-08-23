@@ -59,6 +59,7 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
   @override
   void initState() {
     super.initState();
+    FeedVideoManager.instance.registerCardContext(widget.keyString, context);
     if (widget.videoUrl.trim().isNotEmpty) {
       FeedVideoManager.instance.registerCardUrl(
         widget.keyString,
@@ -76,9 +77,11 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
   @override
   void didUpdateWidget(covariant ShortsProductCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    FeedVideoManager.instance.registerCardContext(widget.keyString, context);
     if (oldWidget.keyString != widget.keyString ||
         oldWidget.videoUrl != widget.videoUrl) {
       if (oldWidget.keyString != widget.keyString) {
+        FeedVideoManager.instance.unregisterCardContext(oldWidget.keyString);
         FeedVideoManager.instance.unregisterCard(oldWidget.keyString);
       }
       if (widget.videoUrl.trim().isNotEmpty) {
@@ -100,6 +103,7 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
 
   @override
   void dispose() {
+    FeedVideoManager.instance.unregisterCardContext(widget.keyString);
     FeedVideoManager.instance.unregisterCard(widget.keyString);
     super.dispose();
   }
