@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class ProductModel {
   final int id;
   final String productName;
@@ -137,7 +135,8 @@ class ProductModel {
       }
     }
 
-    final rawVideoUrl = json['video_url']?.toString() ??
+    final rawVideoUrl =
+        json['video_url']?.toString() ??
         json['video']?.toString() ??
         json['video_file']?.toString() ??
         json['file']?.toString() ??
@@ -156,7 +155,8 @@ class ProductModel {
             mediaType: 'video',
             mediaUrl: rawVideoUrl ?? '',
             hlsUrl: rawHlsUrl,
-            thumbnailUrl: json['thumbnail_url']?.toString() ??
+            thumbnailUrl:
+                json['thumbnail_url']?.toString() ??
                 json['thumbnail']?.toString() ??
                 json['main_image']?.toString(),
           ),
@@ -236,10 +236,6 @@ class ProductModel {
         ? subCatIdRaw.toInt()
         : int.tryParse(subCatIdRaw?.toString() ?? '');
 
-    debugPrint(
-      "🏷️ [ProductModel]: ID=${json['id']}, Name=${json['product_name']}, Mode=$mode, TotalStock=$rawTotalStock, Unassigned=$rawUnassigned, Variants=${parsedVariants.length}",
-    );
-
     return ProductModel(
       id: json['id'] is num
           ? (json['id'] as num).toInt()
@@ -297,7 +293,8 @@ class MediaModel {
   }
 
   factory MediaModel.fromJson(Map<String, dynamic> json) {
-    final rawUrl = json['media_url'] ??
+    final rawUrl =
+        json['media_url'] ??
         json['media_file'] ??
         json['file'] ??
         json['video'] ??
@@ -332,7 +329,8 @@ class MediaModel {
       mediaType: mType,
       mediaUrl: rawUrl?.toString() ?? '',
       hlsUrl: json['hls_url']?.toString(),
-      thumbnailUrl: json['thumbnail_url']?.toString() ??
+      thumbnailUrl:
+          json['thumbnail_url']?.toString() ??
           json['thumbnail']?.toString() ??
           json['thumb_url']?.toString(),
       videoStatus: json['video_status']?.toString(),

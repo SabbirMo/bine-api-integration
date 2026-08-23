@@ -1,5 +1,6 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/presentation/home/widget/full_screen_player.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -98,6 +99,16 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
     }
   }
 
+  void _openTargetVideo(String targetUrl) {
+    if (targetUrl.trim().isEmpty) return;
+    final cachedPath = VideoCacheManager.instance.getCachedFilePath(targetUrl);
+    final playPath = cachedPath ?? targetUrl;
+    _player.open(Media(playPath));
+    if (cachedPath == null && targetUrl.startsWith('http')) {
+      VideoCacheManager.instance.preCacheVideo(targetUrl);
+    }
+  }
+
   @override
   void didUpdateWidget(covariant VideoPlaceholder oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -105,7 +116,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
       _hasTriedFallback = false;
       _hasStartedPlaying.value = false;
       _isBuffering.value = true;
-      _player.open(Media(_resolvedVideoUrl));
+      _openTargetVideo(_resolvedVideoUrl);
     }
   }
 
@@ -167,7 +178,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
       _handleFallback();
     });
 
-    _player.open(Media(_resolvedVideoUrl));
+    _openTargetVideo(_resolvedVideoUrl);
   }
 
   void _handleFallback() {
@@ -184,7 +195,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
             : '$base/$fallback';
       }
       debugPrint("Playback failed, falling back to: $fallback");
-      _player.open(Media(fallback));
+      _openTargetVideo(fallback);
     }
   }
 

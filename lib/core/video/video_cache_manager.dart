@@ -39,8 +39,10 @@ class VideoCacheManager {
     // Generate safe alphanumeric filename
     final safeHash = url.hashCode.abs().toString();
     final cleanUrl = url.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-    final prefix = cleanUrl.length > 20 ? cleanUrl.substring(cleanUrl.length - 20) : cleanUrl;
-    
+    final prefix = cleanUrl.length > 20
+        ? cleanUrl.substring(cleanUrl.length - 20)
+        : cleanUrl;
+
     String ext = '.mp4';
     final uri = Uri.tryParse(url);
     if (uri != null && uri.path.contains('.')) {
@@ -131,11 +133,7 @@ class VideoCacheManager {
       final tempFilePath = '${file.path}.tmp';
       final tempFile = File(tempFilePath);
 
-      await _dio.download(
-        url,
-        tempFilePath,
-        deleteOnError: true,
-      );
+      await _dio.download(url, tempFilePath, deleteOnError: true);
 
       if (await tempFile.exists() && await tempFile.length() > 1024) {
         await tempFile.rename(file.path);
@@ -143,17 +141,29 @@ class VideoCacheManager {
         debugPrint('✅ [VideoCacheManager] Cached video: $url');
       }
     } catch (e) {
+      try {
+        final file = await _getLocalFile(url);
+        if (file != null) {
+          final tempFile = File('${file.path}.tmp');
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        }
+      } catch (_) {}
       debugPrint('⚠️ [VideoCacheManager] Error caching video $url: $e');
     } finally {
       _downloadingUrls.remove(url);
     }
   }
 
-  /// Pre-cache a list of product video URLs (e.g. on home page load)
+  /// Pre-cache a list of product video URLs in background sequentially
   Future<void> preCacheBatch(List<String> urls) async {
     for (final url in urls) {
-      if (url.trim().isNotEmpty && url.startsWith('http')) {
-        preCacheVideo(url);
+      if (url.trim().isNotEmpty &&
+          url.startsWith('http') &&
+          !url.toLowerCase().contains('.m3u8') &&
+          !isCached(url)) {
+        await preCacheVideo(url);
       }
     }
   }

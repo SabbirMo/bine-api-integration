@@ -28,7 +28,6 @@ class ProductProvider extends ChangeNotifier {
       );
 
       final dynamic data = response.data;
-      debugPrint("📦 [API Response - Products List]: $data");
 
       if (data != null &&
           data is Map<String, dynamic> &&
@@ -114,7 +113,6 @@ class ProductProvider extends ChangeNotifier {
         requireAuth: false,
       );
       final data = response.data;
-      debugPrint("📦 [API Response - Product Details ID: $id]: $data");
       if (data != null && data is Map<String, dynamic>) {
         final product = ProductModel.fromJson(data);
         _productDetailsCache[id] = product;

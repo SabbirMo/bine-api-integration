@@ -21,6 +21,8 @@ import 'providers/story_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/store_settings_provider.dart';
 
+import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 @pragma('vm:entry-point')
@@ -32,6 +34,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   VisibilityDetectorController.instance.updateInterval = Duration.zero;
+
+  // Pre-initialize and warm up disk video & thumbnail caches for 0ms cold-start playback
+  await VideoCacheManager.instance.init();
+  await VideoFrameManager.instance.init();
 
   await dotenv.load(fileName: ".env");
 

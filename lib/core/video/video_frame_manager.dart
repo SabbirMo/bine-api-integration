@@ -17,6 +17,7 @@ class VideoFrameManager extends ChangeNotifier {
 
   final Map<String, Uint8List> _memoryFrameCache = {};
   final Set<String> _pendingUrls = {};
+  final Set<String> _failedUrls = {};
   Directory? _thumbDir;
   bool _isInitialized = false;
 
@@ -52,7 +53,9 @@ class VideoFrameManager extends ChangeNotifier {
   String _getThumbFilename(String url) {
     final safeHash = url.hashCode.abs().toString();
     final clean = url.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-    final prefix = clean.length > 15 ? clean.substring(clean.length - 15) : clean;
+    final prefix = clean.length > 15
+        ? clean.substring(clean.length - 15)
+        : clean;
     return 'frame_${safeHash}_$prefix.jpg';
   }
 
@@ -62,22 +65,34 @@ class VideoFrameManager extends ChangeNotifier {
     return _memoryFrameCache[videoUrl];
   }
 
-  /// Batch pre-extract all video frames in the background so they are ready before scroll
-  void preExtractBatch(List<String> videoUrls) {
+  /// Batch pre-extract all video frames sequentially so codec threads are never exhausted
+  Future<void> preExtractBatch(List<String> videoUrls) async {
     for (final url in videoUrls) {
-      if (url.trim().isNotEmpty) {
-        extractFirstFrame(url);
+      if (url.trim().isNotEmpty &&
+          !url.toLowerCase().contains('.m3u8') &&
+          !_memoryFrameCache.containsKey(url) &&
+          !_failedUrls.contains(url)) {
+        await extractFirstFrame(url);
       }
     }
   }
 
   /// Extract the video's first frame with ultra-fast decoder settings
   Future<Uint8List?> extractFirstFrame(String videoUrl) async {
-    if (videoUrl.trim().isEmpty) return null;
+    final clean = videoUrl.trim();
+    if (clean.isEmpty) return null;
+
+    // HLS (.m3u8) streams do not support static frame extraction via VideoThumbnail;
+    // skip to avoid native thread stalls
+    if (clean.toLowerCase().contains('.m3u8')) {
+      return null;
+    }
+
+    if (_failedUrls.contains(clean)) return null;
 
     // 1. Instant Memory Cache (0ms)
-    if (_memoryFrameCache.containsKey(videoUrl)) {
-      return _memoryFrameCache[videoUrl];
+    if (_memoryFrameCache.containsKey(clean)) {
+      return _memoryFrameCache[clean];
     }
 
     if (!_isInitialized) {
@@ -86,22 +101,26 @@ class VideoFrameManager extends ChangeNotifier {
 
     // 2. Instant Disk Cache (< 5ms)
     if (_thumbDir != null) {
-      final file = File('${_thumbDir!.path}/${_getThumbFilename(videoUrl)}');
+      final file = File('${_thumbDir!.path}/${_getThumbFilename(clean)}');
       if (file.existsSync() && file.lengthSync() > 100) {
-        final bytes = await file.readAsBytes();
-        _memoryFrameCache[videoUrl] = bytes;
-        notifyListeners();
-        return bytes;
+        try {
+          final bytes = await file.readAsBytes();
+          _memoryFrameCache[clean] = bytes;
+          notifyListeners();
+          return bytes;
+        } catch (_) {}
       }
     }
 
-    if (_pendingUrls.contains(videoUrl)) return null;
-    _pendingUrls.add(videoUrl);
+    if (_pendingUrls.contains(clean)) return null;
+    _pendingUrls.add(clean);
 
     try {
       // Prefer locally cached video for instantaneous offline extraction
-      final localVideoPath = VideoCacheManager.instance.getCachedFilePath(videoUrl);
-      final source = localVideoPath ?? videoUrl;
+      final localVideoPath = VideoCacheManager.instance.getCachedFilePath(
+        clean,
+      );
+      final source = localVideoPath ?? clean;
 
       final bytes = await VideoThumbnail.thumbnailData(
         video: source,
@@ -112,21 +131,26 @@ class VideoFrameManager extends ChangeNotifier {
       );
 
       if (bytes.isNotEmpty) {
-        _memoryFrameCache[videoUrl] = bytes;
+        _memoryFrameCache[clean] = bytes;
 
         // Persist to disk asynchronously
         if (_thumbDir != null) {
-          final file = File('${_thumbDir!.path}/${_getThumbFilename(videoUrl)}');
+          final file = File('${_thumbDir!.path}/${_getThumbFilename(clean)}');
           file.writeAsBytes(bytes, flush: false).ignore();
         }
 
         notifyListeners();
         return bytes;
+      } else {
+        _failedUrls.add(clean);
       }
     } catch (e) {
-      debugPrint('⚠️ [VideoFrameManager] Frame extraction failed for $videoUrl: $e');
+      _failedUrls.add(clean);
+      debugPrint(
+        '⚠️ [VideoFrameManager] Frame extraction skipped for $clean: $e',
+      );
     } finally {
-      _pendingUrls.remove(videoUrl);
+      _pendingUrls.remove(clean);
     }
 
     return null;
