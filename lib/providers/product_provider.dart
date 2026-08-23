@@ -79,6 +79,11 @@ class ProductProvider extends ChangeNotifier {
   final Map<int, ProductModel> _productDetailsCache = {};
   final Set<int> _fetchingDetailIds = {};
 
+  void clearCache() {
+    _productDetailsCache.clear();
+    _fetchingDetailIds.clear();
+  }
+
   bool isProductDetailsCached(int id) => _productDetailsCache.containsKey(id);
 
   ProductModel? getCachedProduct(int id) {
@@ -88,8 +93,11 @@ class ProductProvider extends ChangeNotifier {
     return _allProducts.where((p) => p.id == id).firstOrNull;
   }
 
-  Future<ProductModel?> fetchProductDetails(int id) async {
-    if (_productDetailsCache.containsKey(id)) {
+  Future<ProductModel?> fetchProductDetails(
+    int id, {
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _productDetailsCache.containsKey(id)) {
       return _productDetailsCache[id];
     }
     if (_fetchingDetailIds.contains(id)) {

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
 import 'package:binetatour/data/models/order_history_model.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
+import 'package:binetatour/data/models/payment_status_model.dart';
 
 class OrderProvider extends ChangeNotifier {
   final ApiServices _apiServices = ApiServices();
@@ -280,6 +281,56 @@ class OrderProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  PaymentStatusModel? _paymentStatus;
+  PaymentStatusModel? get paymentStatus => _paymentStatus;
+
+  bool _isCheckingPaymentStatus = false;
+  bool get isCheckingPaymentStatus => _isCheckingPaymentStatus;
+
+  String? _paymentStatusError;
+  String? get paymentStatusError => _paymentStatusError;
+
+  /// Calls GET /api/mobile/pay/{transaction_id}/status/ to check the status of a payment.
+  Future<PaymentStatusModel?> checkPaymentStatus(int transactionId) async {
+    _isCheckingPaymentStatus = true;
+    _paymentStatusError = null;
+    notifyListeners();
+
+    try {
+      final response = await _apiServices.get(
+        '/api/mobile/pay/$transactionId/status/',
+        requireAuth: true,
+      );
+
+      log("🔍 [PaymentStatus Response]: ${response.data}");
+
+      if (response.data != null && response.data is Map<String, dynamic>) {
+        _paymentStatus = PaymentStatusModel.fromJson(
+          response.data as Map<String, dynamic>,
+        );
+      } else if (response.data != null && response.data is Map) {
+        _paymentStatus = PaymentStatusModel.fromJson(
+          Map<String, dynamic>.from(response.data as Map),
+        );
+      }
+      return _paymentStatus;
+    } catch (e) {
+      _paymentStatusError = e.toString();
+      log("Error checking payment status: ${e.toString()}");
+      return null;
+    } finally {
+      _isCheckingPaymentStatus = false;
+      notifyListeners();
+    }
+  }
+
+  void clearPaymentStatus() {
+    _paymentStatus = null;
+    _paymentStatusError = null;
+    _isCheckingPaymentStatus = false;
+    notifyListeners();
   }
 
   final Set<String> _downloadingInvoices = {};

@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/category_provider.dart';
 import 'package:binetatour/data/models/category_model.dart';
 import 'package:binetatour/providers/product_provider.dart';
+import 'package:binetatour/providers/cart_provider.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 class BoutiqueScreen extends StatefulWidget {
@@ -280,9 +281,11 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
       body: RefreshIndicator(
         color: const Color(0xFFFF6900),
         onRefresh: () async {
+          context.read<ProductProvider>().clearCache();
           await Future.wait([
             context.read<CategoryProvider>().fetchCategories(),
             context.read<ProductProvider>().fetchProducts(),
+            context.read<CartProvider>().fetchCart(showLoading: false),
           ]);
         },
         child: SafeArea(

@@ -189,20 +189,12 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
   }
 
   /// Tap on Video Body:
-  /// - If video is muted (initial preview): restart from 0:00, auto-enable sound (100%), and play.
-  /// - If already unmuted: toggle play/pause.
+  /// - Toggle play/pause without affecting volume/mute state.
   void _handleVideoTap() {
-    if (_isMuted.value) {
-      _player.seek(Duration.zero);
-      _isMuted.value = false;
-      _player.setVolume(100.0);
-      _player.play();
+    if (_isPlaying.value) {
+      _player.pause();
     } else {
-      if (_isPlaying.value) {
-        _player.pause();
-      } else {
-        _player.play();
-      }
+      _player.play();
     }
   }
 

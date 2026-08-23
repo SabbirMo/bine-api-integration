@@ -94,51 +94,70 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                       ),
 
                       Expanded(
-                        child: items.isEmpty
-                            ? const Center(child: Text("Votre panier est vide"))
-                            : ListView(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                children: [
-                                  ...items.map((item) => _buildCartItem(item)),
-                                  const SizedBox(height: 30),
+                        child: RefreshIndicator(
+                          color: const Color(0xFFFF6900),
+                          onRefresh: () async {
+                            await context.read<CartProvider>().fetchCart();
+                          },
+                          child: items.isEmpty
+                              ? ListView(
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  children: const [
+                                    SizedBox(height: 150),
+                                    Center(
+                                      child: Text("Votre panier est vide"),
+                                    ),
+                                  ],
+                                )
+                              : ListView(
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  children: [
+                                    ...items.map(
+                                      (item) => _buildCartItem(item),
+                                    ),
+                                    const SizedBox(height: 30),
 
-                                  // Total Box
-                                  Container(
-                                    padding: const EdgeInsets.all(20),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFFF3E6),
-                                      borderRadius: BorderRadius.circular(15),
-                                      border: Border.all(
-                                        color: const Color(0xFFFFD1A1),
-                                        width: 0.5,
+                                    // Total Box
+                                    Container(
+                                      padding: const EdgeInsets.all(20),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFFF3E6),
+                                        borderRadius: BorderRadius.circular(15),
+                                        border: Border.all(
+                                          color: const Color(0xFFFFD1A1),
+                                          width: 0.5,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            "Total",
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Text(
+                                            "$totalDisplay FCFA",
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFFFF6900),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          "Total",
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        Text(
-                                          "$totalDisplay FCFA",
-                                          style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFFFF6900),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                  ],
+                                ),
+                        ),
                       ),
 
                       // Bottom Buttons

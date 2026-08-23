@@ -167,7 +167,7 @@ class ProductModel {
   final String? productName;
   final String? sellingPrice;
   final String? discountPercentage;
-  final double? priceAfterDiscount;
+  final String? priceAfterDiscount;
   final String? status;
   final String? mainImage;
   final String? videoUrl;
@@ -263,9 +263,7 @@ class ProductModel {
       productName: json['product_name']?.toString(),
       sellingPrice: json['selling_price']?.toString(),
       discountPercentage: json['discount_percentage']?.toString(),
-      priceAfterDiscount: json['price_after_discount'] != null
-          ? double.tryParse(json['price_after_discount'].toString())
-          : null,
+      priceAfterDiscount: json['price_after_discount']?.toString(),
       status: json['status']?.toString(),
       mainImage: json['main_image']?.toString(),
       videoUrl: vUrl,

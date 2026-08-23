@@ -95,7 +95,19 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           }).toList();
 
           if (displayOrders.isEmpty) {
-            return const Center(child: Text("Aucune facture trouvée."));
+            return RefreshIndicator(
+              color: const Color(0xFFFF6900),
+              onRefresh: () async {
+                await context.read<OrderProvider>().fetchOrderHistory();
+              },
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 160),
+                  Center(child: Text("Aucune facture trouvée.")),
+                ],
+              ),
+            );
           }
 
           return RefreshIndicator(
@@ -104,6 +116,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               await context.read<OrderProvider>().fetchOrderHistory();
             },
             child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: displayOrders.length,
               itemBuilder: (context, index) {

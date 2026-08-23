@@ -13,8 +13,10 @@ import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/providers/category_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
+import 'package:binetatour/providers/store_settings_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/svg.dart';
@@ -38,10 +40,13 @@ class _AccueilScreenState extends State<AccueilScreen>
   final ScrollController _storyScrollController = ScrollController();
 
   Future<void> _refreshHomeData() async {
+    context.read<ProductProvider>().clearCache();
     await Future.wait([
       context.read<HomeProvider>().fetchHomeData(),
-      context.read<CartProvider>().fetchCart(),
+      context.read<CartProvider>().fetchCart(showLoading: false),
       context.read<ProductProvider>().fetchProducts(),
+      context.read<CategoryProvider>().fetchCategories(),
+      context.read<StoreSettingsProvider>().fetchStoreSettings(),
       context.read<NotificationProvider>().fetchNotifications(
         forceRefresh: true,
       ),
@@ -324,12 +329,48 @@ class _AccueilScreenState extends State<AccueilScreen>
           }
 
           if (provider.errorMessage != null) {
-            return Center(child: Text("Error: ${provider.errorMessage}"));
+            return RefreshIndicator(
+              color: const Color(0xFFE8500A),
+              onRefresh: _refreshHomeData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text("Error: ${provider.errorMessage}"),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _refreshHomeData,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE8500A),
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text("Réessayer"),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
           }
 
           final homeData = provider.homeData;
           if (homeData == null) {
-            return const Center(child: Text("No Data Available"));
+            return RefreshIndicator(
+              color: const Color(0xFFE8500A),
+              onRefresh: _refreshHomeData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: const Center(child: Text("No Data Available")),
+                ),
+              ),
+            );
           }
 
           if (homeData.productSections.isNotEmpty) {
@@ -353,7 +394,8 @@ class _AccueilScreenState extends State<AccueilScreen>
                     ? (pixels / maxScroll).clamp(0.0, 1.0)
                     : 0.0;
                 FeedVideoManager.instance.updateScrollRatio(ratio);
-                final isBottom = maxScroll > 0 &&
+                final isBottom =
+                    maxScroll > 0 &&
                     (scrollInfo.metrics.extentAfter <= 50 ||
                         pixels >= maxScroll - 50);
                 FeedVideoManager.instance.setIsAtBottom(isBottom);
@@ -946,10 +988,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
             onSeeMoreTap: () {
               final dashboard = MainDashboard.of(context);
               if (dashboard != null) {
-                dashboard.switchToTab(
-                  1,
-                  categoryId: widget.section.categoryId,
-                );
+                dashboard.switchToTab(1, categoryId: widget.section.categoryId);
               } else {
                 Navigator.push(
                   context,
@@ -1009,7 +1048,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
               thumbnailUrl: resolvedThumbnail,
               title: product.productName ?? "No Title",
               price:
-                  "${product.priceAfterDiscount ?? product.sellingPrice} FCFA",
+                  "${(product.priceAfterDiscount != null && product.priceAfterDiscount!.isNotEmpty) ? product.priceAfterDiscount : product.sellingPrice} FCFA",
               oldPrice: discPerc > 0 ? "${product.sellingPrice} FCFA" : null,
               discount: discPerc > 0 ? "-${discPerc.toInt()}%" : null,
               width: cardWidth,
@@ -1050,7 +1089,11 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                     categoryName: widget.section.categoryName ?? '',
                     sellingPrice: p.sellingPrice ?? '0',
                     discountPercentage: p.discountPercentage ?? '0',
-                    priceAfterDiscount: p.priceAfterDiscount ?? 0.0,
+                    priceAfterDiscount:
+                        (p.priceAfterDiscount != null &&
+                            p.priceAfterDiscount!.isNotEmpty)
+                        ? p.priceAfterDiscount!
+                        : (p.sellingPrice ?? '0'),
                     status: p.status ?? '',
                     mainImage: p.mainImage,
                     media: mediaList,

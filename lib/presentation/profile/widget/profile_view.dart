@@ -3,6 +3,9 @@ import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/feedback_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/invoice/invoice_screen.dart';
 import 'package:binetatour/presentation/profile/my_order/my_order_screen.dart';
+import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/providers/notification_provider.dart';
+import 'package:binetatour/providers/order_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -56,10 +59,23 @@ class _ProfileViewState extends State<ProfileView> {
     final user = FirebaseAuth.instance.currentUser;
     final userPhotoUrl = user?.photoURL;
     final localProfileImage = profileImage;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
+    return RefreshIndicator(
+      color: const Color(0xFFFF6900),
+      onRefresh: () async {
+        await Future.wait([
+          _loadProfileData(),
+          context.read<OrderProvider>().fetchOrderHistory(),
+          context.read<NotificationProvider>().fetchNotifications(
+            forceRefresh: true,
+          ),
+          context.read<CartProvider>().fetchCart(showLoading: false),
+        ]);
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
           // User Card
           Container(
             padding: const EdgeInsets.all(15),
@@ -266,8 +282,9 @@ class _ProfileViewState extends State<ProfileView> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showDeleteAccountDialog() {
     showDialog(

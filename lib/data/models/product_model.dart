@@ -9,7 +9,7 @@ class ProductModel {
   final String? subcategoryName;
   final String sellingPrice;
   final String discountPercentage;
-  final double priceAfterDiscount;
+  final String priceAfterDiscount;
   final String status;
   final String? mainImage;
   final List<MediaModel> media;
@@ -109,16 +109,6 @@ class ProductModel {
       return mainImage!;
     }
     return '';
-  }
-
-  static double _parsePrice(dynamic value, [double fallback = 0.0]) {
-    if (value == null) return fallback;
-    if (value is num) return value.toDouble();
-    if (value is String) {
-      final clean = value.replaceAll(' ', '').replaceAll(',', '.').trim();
-      return double.tryParse(clean) ?? fallback;
-    }
-    return fallback;
   }
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
@@ -228,16 +218,12 @@ class ProductModel {
 
     final bool noVar = json['no_variant'] == true || mode == 'product';
 
-    final sellingNum = _parsePrice(json['selling_price']);
-    final discountNum = _parsePrice(json['discount_percentage']);
-
-    double pad = 0.0;
-    if (json['price_after_discount'] != null) {
-      pad = _parsePrice(json['price_after_discount'], sellingNum);
-    } else if (discountNum > 0 && sellingNum > 0) {
-      pad = sellingNum * (1.0 - (discountNum / 100.0));
+    String pad = '';
+    if (json['price_after_discount'] != null &&
+        json['price_after_discount'].toString().trim().isNotEmpty) {
+      pad = json['price_after_discount'].toString();
     } else {
-      pad = sellingNum;
+      pad = json['selling_price']?.toString() ?? '0';
     }
 
     final catIdRaw = json['category_id'] ?? json['category'];

@@ -118,7 +118,28 @@ class CartProvider extends ChangeNotifier {
         }
       }
 
-      if (maxStock > 0 && item.quantity >= maxStock) {
+      if (product.isOutOfStock || maxStock <= 0) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                "Ce produit est en rupture de stock !",
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: const Color(0xFFFF6900),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              margin: const EdgeInsets.all(20),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (item.quantity >= maxStock) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

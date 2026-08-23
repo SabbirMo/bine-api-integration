@@ -8,6 +8,7 @@ import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/providers/store_settings_provider.dart';
 import 'package:binetatour/presentation/shop/widget/cart_item_validation_card.dart';
+import 'package:binetatour/presentation/shop/widget/payment_status_dialog.dart';
 
 class ValidationScreen extends StatefulWidget {
   const ValidationScreen({super.key});
@@ -544,7 +545,27 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 return;
                               }
 
-                              // Step 2 – Initiate payment
+                              // Step 2 – Handle Cash on Delivery vs Online Payment
+                              if (payProvider == "cash_on_delivery") {
+                                await cartProvider.clearServerCart();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Commande confirmée"),
+                                    ),
+                                  );
+                                  Navigator.pushAndRemoveUntil(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const MainDashboard(),
+                                    ),
+                                    (route) => false,
+                                  );
+                                }
+                                return;
+                              }
+
+                              // Step 3 – Initiate online payment (Orange Money / Wave)
                               final payResponse = await orderProvider.payOrder(
                                 orderId: orderId,
                                 provider: payProvider,
@@ -569,7 +590,17 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               final dataMap =
                                   payResponse['data'] as Map<String, dynamic>?;
 
-                              // Extract deep link with support for Wave & Orange Money key variations
+                              // Extract transaction ID
+                              final dynamic rawTxId = payResponse['transaction_id'] ??
+                                  qrData?['metadata']?['transaction_id'] ??
+                                  payResponse['metadata']?['transaction_id'] ??
+                                  dataMap?['transaction_id'] ??
+                                  payResponse['id'];
+                              final int transactionId = rawTxId is int
+                                  ? rawTxId
+                                  : int.tryParse(rawTxId?.toString() ?? '0') ?? 0;
+
+                              // Extract deep link
                               String? deepLink =
                                   payResponse['payment_url']?.toString() ??
                                   payResponse['paymentUrl']?.toString() ??
@@ -592,72 +623,82 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                   dataMap?['deepLink']?.toString() ??
                                   dataMap?['url']?.toString();
 
-                              if (deepLink != null && deepLink.isNotEmpty) {
+                              final String? qrCode = qrData?['qrCode']?.toString() ??
+                                  payResponse['qrCode']?.toString() ??
+                                  dataMap?['qrCode']?.toString();
+                              final String? message = payResponse['message']?.toString() ??
+                                  qrData?['message']?.toString();
+                              final dynamic val = qrData?['validity'] ??
+                                  payResponse['validity'] ??
+                                  dataMap?['validity'];
+                              final int validity = val is int
+                                  ? val
+                                  : int.tryParse(val?.toString() ?? '300') ?? 300;
+                              final Map<String, dynamic>? deepLinksMap =
+                                  (qrData?['deepLinks'] as Map<String, dynamic>?) ??
+                                  (payResponse['deepLinks'] as Map<String, dynamic>?);
+
+                              // For Wave, optionally attempt auto-launching app
+                              if (selectedPayment == "Wave" && deepLink != null && deepLink.isNotEmpty) {
                                 final uri = Uri.parse(deepLink);
-                                bool launched = false;
-
-                                // 1️⃣ Try launching directly into installed native app (Wave app)
                                 try {
-                                  launched = await launchUrl(
+                                  await launchUrl(
                                     uri,
-                                    mode: LaunchMode
-                                        .externalNonBrowserApplication,
+                                    mode: LaunchMode.externalNonBrowserApplication,
                                   );
-                                } catch (_) {
-                                  launched = false;
-                                }
-
-                                // 2️⃣ Fallback: open in external web browser if app is not installed
-                                if (!launched) {
-                                  try {
-                                    launched = await launchUrl(
-                                      uri,
-                                      mode: LaunchMode.externalApplication,
-                                    );
-                                  } catch (_) {
-                                    launched = false;
-                                  }
-                                }
-
-                                // 3️⃣ Fallback: platformDefault
-                                if (!launched) {
-                                  try {
-                                    launched = await launchUrl(
-                                      uri,
-                                      mode: LaunchMode.platformDefault,
-                                    );
-                                  } catch (_) {
-                                    launched = false;
-                                  }
-                                }
-
-                                if (!launched && context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Impossible d'ouvrir l'application de paiement.",
-                                      ),
-                                    ),
-                                  );
-                                }
+                                } catch (_) {}
                               }
 
-                              // Clear cart & Navigate to Dashboard on 1st click
-                              await cartProvider.clearServerCart();
-
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text("Commande confirmée"),
-                                  ),
+                              // Step 4 – Show Payment Status Popup with live polling
+                              if (transactionId > 0) {
+                                PaymentStatusDialog.show(
+                                  context: context,
+                                  transactionId: transactionId,
+                                  providerName: selectedPayment,
+                                  qrCodeBase64: qrCode,
+                                  deepLink: deepLink,
+                                  deepLinks: deepLinksMap,
+                                  message: message,
+                                  validitySeconds: validity,
+                                  onPaymentSuccess: (statusModel) async {
+                                    await cartProvider.clearServerCart();
+                                    if (context.mounted) {
+                                      Navigator.of(context, rootNavigator: true).pop();
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          backgroundColor: Color(0xFF2E7D32),
+                                          content: Text(
+                                            "Paiement réussi ! Commande confirmée.",
+                                          ),
+                                        ),
+                                      );
+                                      Navigator.pushAndRemoveUntil(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const MainDashboard(),
+                                        ),
+                                        (route) => false,
+                                      );
+                                    }
+                                  },
                                 );
-                                Navigator.pushAndRemoveUntil(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const MainDashboard(),
-                                  ),
-                                  (route) => false,
-                                );
+                              } else {
+                                // Fallback if no transactionId
+                                await cartProvider.clearServerCart();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Commande confirmée"),
+                                    ),
+                                  );
+                                  Navigator.pushAndRemoveUntil(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const MainDashboard(),
+                                    ),
+                                    (route) => false,
+                                  );
+                                }
                               }
                             },
                       child: orderProvider.isLoading
