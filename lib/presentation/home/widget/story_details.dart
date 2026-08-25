@@ -352,7 +352,7 @@ class _StoryDetailContent extends StatelessWidget {
   Widget _buildHeader(BuildContext context, StoryDetailProvider provider) {
     final story = provider.stories[provider.currentIndex];
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           CircleAvatar(
@@ -361,29 +361,53 @@ class _StoryDetailContent extends StatelessWidget {
                 ? NetworkImage(userProfile)
                 : AssetImage(userProfile) as ImageProvider,
           ),
-          const SizedBox(width: 12),
-          Text(
-            userName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    userName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if ((story.createdAt ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    story.createdAt!,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            story.createdAt ?? " ",
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
-          ),
-          const Spacer(),
           IconButton(
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(),
             icon: Icon(
               provider.isMuted ? Icons.volume_off : Icons.volume_up,
               color: Colors.white,
+              size: 22,
             ),
             onPressed: provider.toggleMute,
           ),
+          const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(),
+            icon: const Icon(Icons.close, color: Colors.white, size: 24),
             onPressed: () => Navigator.pop(context),
           ),
         ],

@@ -51,6 +51,10 @@ class FeedPlayerState {
     });
 
     _errorSub = player.stream.error.listen((error) {
+      final errorStr = error.toString().toLowerCase();
+      if (errorStr.contains('audio device') || errorStr.contains('no sound')) {
+        return; // Ignore harmless audio device warning for muted feed players
+      }
       debugPrint("⚠️ [FeedVideoManager] Player error for $currentKey: $error");
       isBuffering = false;
       onUpdate();

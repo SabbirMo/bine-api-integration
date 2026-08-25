@@ -84,7 +84,23 @@ class StoryDetailProvider extends ChangeNotifier {
         }
         final dur = p.state.duration;
         if (dur.inMilliseconds > 0) {
-          _currentMediaProgress = pos.inMilliseconds / dur.inMilliseconds;
+          _currentMediaProgress = (pos.inMilliseconds / dur.inMilliseconds)
+              .clamp(0.0, 1.0);
+          notifyListeners();
+          if (pos >= dur && dur > const Duration(seconds: 1)) {
+            nextStory();
+          }
+        }
+      }
+    });
+
+    p.stream.duration.listen((dur) {
+      if (_isDisposed) return;
+      if ((_currentIndex % 2) == pIdx) {
+        final pos = p.state.position;
+        if (dur.inMilliseconds > 0 && pos.inMilliseconds > 0) {
+          _currentMediaProgress = (pos.inMilliseconds / dur.inMilliseconds)
+              .clamp(0.0, 1.0);
           notifyListeners();
         }
       }
@@ -92,7 +108,13 @@ class StoryDetailProvider extends ChangeNotifier {
 
     p.stream.completed.listen((completed) {
       if (!_isDisposed && completed && (_currentIndex % 2) == pIdx) {
-        nextStory();
+        final pos = p.state.position;
+        final dur = p.state.duration;
+        // Strictly verify that media has actually loaded and played to near the end
+        if (dur > const Duration(milliseconds: 500) &&
+            (pos.inMilliseconds >= dur.inMilliseconds - 600 || pos >= dur)) {
+          nextStory();
+        }
       }
     });
 
@@ -108,6 +130,22 @@ class StoryDetailProvider extends ChangeNotifier {
     p.stream.playing.listen((playing) {
       if (!_isDisposed && (_currentIndex % 2) == pIdx) {
         _isPlaying = playing;
+        if (playing && _isLoading) {
+          _isLoading = false;
+        }
+        notifyListeners();
+      }
+    });
+
+    p.stream.error.listen((error) {
+      if (_isDisposed) return;
+      final errorStr = error.toString().toLowerCase();
+      if (errorStr.contains('audio device') || errorStr.contains('no sound')) {
+        return;
+      }
+      debugPrint("⚠️ [StoryDetailProvider] Error on p$pIdx: $error");
+      if ((_currentIndex % 2) == pIdx) {
+        _isLoading = false;
         notifyListeners();
       }
     });
@@ -148,16 +186,34 @@ class StoryDetailProvider extends ChangeNotifier {
       final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanUrl);
       final playPath = cachedPath ?? cleanUrl;
 
-      // Extract first frame
-      VideoFrameManager.instance.extractFirstFrame(cleanUrl);
+      // Extract first frame only for video (skip for audio)
+      if (story.isVideo && !story.isAudio) {
+        VideoFrameManager.instance.extractFirstFrame(cleanUrl);
+      }
+
+      // Format URI properly with file:// scheme for local files
+      final String mediaUri;
+      if (cachedPath != null && cachedPath.isNotEmpty) {
+        mediaUri = cachedPath.startsWith('file://')
+            ? cachedPath
+            : 'file://$cachedPath';
+      } else if (playPath.startsWith('/')) {
+        mediaUri = playPath.startsWith('file://')
+            ? playPath
+            : 'file://$playPath';
+      } else {
+        mediaUri = playPath;
+      }
 
       // Check if active player was already pre-buffered with this URL!
       final currentSource = activePlayer.state.playlist.medias.isNotEmpty
           ? activePlayer.state.playlist.medias.first.uri
           : '';
 
-      final bool isAlreadyPrebuffered = currentSource == playPath ||
+      final bool isAlreadyPrebuffered =
+          currentSource == playPath ||
           currentSource == cleanUrl ||
+          currentSource == mediaUri ||
           currentSource == 'file://$playPath' ||
           currentSource == 'file://$cleanUrl';
 
@@ -166,16 +222,9 @@ class StoryDetailProvider extends ChangeNotifier {
         activePlayer.play();
       } else {
         _isLoading = true;
+        activePlayer.open(Media(mediaUri), play: true);
         if (story.isNetwork && cachedPath == null) {
-          activePlayer.open(Media(cleanUrl), play: true);
           VideoCacheManager.instance.preCacheVideo(cleanUrl);
-        } else {
-          final mediaUri = (cachedPath != null || playPath.startsWith('/'))
-              ? playPath
-              : (playPath.startsWith('http')
-                  ? playPath
-                  : 'asset://$playPath');
-          activePlayer.open(Media(mediaUri), play: true);
         }
       }
       notifyListeners();
@@ -205,12 +254,25 @@ class StoryDetailProvider extends ChangeNotifier {
     final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanNext);
     final playPath = cachedPath ?? cleanNext;
 
+    final String mediaUri;
+    if (cachedPath != null && cachedPath.isNotEmpty) {
+      mediaUri = cachedPath.startsWith('file://')
+          ? cachedPath
+          : 'file://$cachedPath';
+    } else if (playPath.startsWith('/')) {
+      mediaUri = playPath.startsWith('file://') ? playPath : 'file://$playPath';
+    } else {
+      mediaUri = playPath;
+    }
+
     final currentSource = nextP.state.playlist.medias.isNotEmpty
         ? nextP.state.playlist.medias.first.uri
         : '';
 
-    final bool isAlreadyPreloaded = currentSource == playPath ||
+    final bool isAlreadyPreloaded =
+        currentSource == playPath ||
         currentSource == cleanNext ||
+        currentSource == mediaUri ||
         currentSource == 'file://$playPath' ||
         currentSource == 'file://$cleanNext';
 
@@ -219,21 +281,16 @@ class StoryDetailProvider extends ChangeNotifier {
         "Pre-buffering next story index $nextIndex in background: $cleanNext",
       );
       nextP.setVolume(_isMuted ? 0.0 : 100.0);
+      nextP.open(Media(mediaUri), play: false);
       if (nextStory.isNetwork && cachedPath == null) {
-        nextP.open(Media(cleanNext), play: false);
         VideoCacheManager.instance.preCacheVideo(cleanNext);
-      } else {
-        final mediaUri = (cachedPath != null || playPath.startsWith('/'))
-            ? playPath
-            : (playPath.startsWith('http')
-                ? playPath
-                : 'asset://$playPath');
-        nextP.open(Media(mediaUri), play: false);
       }
     }
 
-    // Pre-extract first frame
-    VideoFrameManager.instance.extractFirstFrame(cleanNext);
+    // Pre-extract first frame only for video
+    if (nextStory.isVideo && !nextStory.isAudio) {
+      VideoFrameManager.instance.extractFirstFrame(cleanNext);
+    }
   }
 
   void startImageTimer() {

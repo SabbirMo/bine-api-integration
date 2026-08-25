@@ -9,9 +9,12 @@ class CircularStoryAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+    return Container(
+      width: 80,
+      margin: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Stack(
             alignment: Alignment.bottomRight,
@@ -25,9 +28,7 @@ class CircularStoryAvatar extends StatelessWidget {
                 child: CustomPaint(
                   painter: DashedBorderPainter(itemCount: item.storyCount),
                   child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: const BoxDecoration(shape: BoxShape.circle),
                     child: Padding(
                       padding: const EdgeInsets.all(2.0),
                       child: ClipOval(
@@ -85,6 +86,9 @@ class CircularStoryAvatar extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             item.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,

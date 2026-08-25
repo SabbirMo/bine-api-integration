@@ -174,6 +174,10 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
     });
 
     _player.stream.error.listen((error) {
+      final errorStr = error.toString().toLowerCase();
+      if (errorStr.contains('audio device') || errorStr.contains('no sound')) {
+        return; // Ignore harmless audio device warning for muted video preview
+      }
       debugPrint("Video player error: $error");
       _handleFallback();
     });
