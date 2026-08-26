@@ -153,8 +153,9 @@ class VideoFrameManager extends ChangeNotifier {
 
     final resolved = resolveUrl(clean);
 
-    if (_failedUrls.contains(clean) || _failedUrls.contains(resolved))
+    if (_failedUrls.contains(clean) || _failedUrls.contains(resolved)) {
       return null;
+    }
 
     // 1. Instant Memory Cache (0ms)
     if (_memoryFrameCache.containsKey(clean)) {
@@ -186,8 +187,9 @@ class VideoFrameManager extends ChangeNotifier {
       }
     }
 
-    if (_pendingUrls.contains(clean) || _pendingUrls.contains(resolved))
+    if (_pendingUrls.contains(clean) || _pendingUrls.contains(resolved)) {
       return null;
+    }
     _pendingUrls.add(clean);
     _pendingUrls.add(resolved);
 

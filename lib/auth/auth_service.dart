@@ -6,6 +6,10 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class AuthService {
+  static final AuthService instance = AuthService._internal();
+  factory AuthService() => instance;
+  AuthService._internal();
+
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb
@@ -21,12 +25,7 @@ class AuthService {
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     final stopwatch = Stopwatch()..start();
     try {
-      // Clear any previous stale session so fresh account chooser is displayed
-      try {
-        await _googleSignIn.signOut();
-      } catch (_) {}
-
-      // 1. Google sign-in dialog
+      // 1. Google sign-in dialog (opens instantly)
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       final t1 = stopwatch.elapsedMilliseconds;
 
@@ -126,7 +125,15 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _firebaseAuth.signOut();
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      log("Error during Google signOut: $e");
+    }
+    try {
+      await _firebaseAuth.signOut();
+    } catch (e) {
+      log("Error during Firebase signOut: $e");
+    }
   }
 }
