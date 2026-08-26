@@ -27,22 +27,23 @@ class OrderHistoryModel {
 
   factory OrderHistoryModel.fromJson(Map<String, dynamic> json) {
     return OrderHistoryModel(
-      id: json['id'] ?? 0,
-      orderNumber: json['order_number'] ?? '',
-      status: json['status'] ?? '',
-      paymentMethod: json['payment_method'] ?? '',
-      paymentStatus: json['payment_status'] ?? '',
+      id: OrderDetailModel.asInt(json['id']),
+      orderNumber: json['order_number']?.toString() ?? '',
+      status: json['status']?.toString() ?? '',
+      paymentMethod: json['payment_method']?.toString() ?? '',
+      paymentStatus: json['payment_status']?.toString() ?? '',
       totalAmount: json['total_amount']?.toString() ?? '0.00',
-      itemCount: json['item_count'] ?? 0,
-      productNames: json['product_names'] != null
-          ? List<String>.from(json['product_names'])
+      itemCount: OrderDetailModel.asInt(json['item_count']),
+      productNames: json['product_names'] is List
+          ? (json['product_names'] as List).map((e) => e.toString()).toList()
           : [],
-      items: json['items'] != null
+      items: json['items'] is List
           ? (json['items'] as List)
-                .map((i) => OrderItemModel.fromJson(i))
-                .toList()
+              .whereType<Map>()
+              .map((i) => OrderItemModel.fromJson(Map<String, dynamic>.from(i)))
+              .toList()
           : null,
-      createdAt: json['created_at'] ?? '',
+      createdAt: json['created_at']?.toString() ?? '',
     );
   }
 }

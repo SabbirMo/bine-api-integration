@@ -1,3 +1,4 @@
+import 'package:binetatour/presentation/common/widgets/product_thumbnail_or_video_frame.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -103,17 +104,12 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
+          ProductThumbnailOrVideoFrame(
+            imageUrl: item.mainImage,
+            productId: item.productId,
             width: 60,
             height: 60,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: Colors.grey[200],
-              image: DecorationImage(
-                image: NetworkImage(item.mainImage),
-                fit: BoxFit.cover,
-              ),
-            ),
+            borderRadius: BorderRadius.circular(8),
           ),
           const SizedBox(width: 12),
           Expanded(

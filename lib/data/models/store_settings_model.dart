@@ -6,8 +6,8 @@ class StoreSettingsModel {
 
   factory StoreSettingsModel.fromJson(Map<String, dynamic> json) {
     return StoreSettingsModel(
-      deliveryMessage: json['delivery_message'] as String?,
-      deliveryHeading: json['delivery_heading'] as String?,
+      deliveryMessage: json['delivery_message']?.toString(),
+      deliveryHeading: json['delivery_heading']?.toString(),
     );
   }
 

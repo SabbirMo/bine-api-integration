@@ -20,7 +20,7 @@ class OrderProvider extends ChangeNotifier {
   bool get isDetailLoading => _isDetailLoading;
 
   bool _isLoading = false;
-  bool get isLoading => _isLoading || _isHistoryLoading || _isDetailLoading;
+  bool get isLoading => _isLoading;
 
   String? _historyErrorMessage;
   String? get historyErrorMessage => _historyErrorMessage;
@@ -158,14 +158,17 @@ class OrderProvider extends ChangeNotifier {
   final Map<String, OrderDetailModel> _orderDetailsMap = {};
   Map<String, OrderDetailModel> get orderDetailsMap => _orderDetailsMap;
 
-  final Map<String, bool> _orderLoadingMap = {};
+  final Set<String> _loadingOrderNumbers = {};
   bool isOrderLoading(String orderNumber) =>
-      _orderLoadingMap[orderNumber] ?? true;
+      _loadingOrderNumbers.contains(orderNumber);
 
   Future<void> fetchOrderDetailForCard(String orderNumber) async {
-    if (_orderDetailsMap.containsKey(orderNumber)) return;
+    if (_orderDetailsMap.containsKey(orderNumber) ||
+        _loadingOrderNumbers.contains(orderNumber)) {
+      return;
+    }
 
-    _orderLoadingMap[orderNumber] = true;
+    _loadingOrderNumbers.add(orderNumber);
     notifyListeners();
 
     try {
@@ -191,7 +194,7 @@ class OrderProvider extends ChangeNotifier {
     } catch (e) {
       log("Error fetching order detail data for card: ${e.toString()}");
     } finally {
-      _orderLoadingMap[orderNumber] = false;
+      _loadingOrderNumbers.remove(orderNumber);
       notifyListeners();
     }
   }
@@ -238,20 +241,29 @@ class OrderProvider extends ChangeNotifier {
 
       log("Create order response: ${response.data}");
 
-      // Extract the numeric order id from the response
-      final int? orderId = response.data?['id'] as int?;
-
-      if (orderId == null) {
-        _isLoading = false;
-        notifyListeners();
+      int? orderId;
+      final dynamic raw = response.data;
+      if (raw is Map) {
+        final rawId = raw['id'] ??
+            (raw['order'] is Map ? raw['order']['id'] : null) ??
+            (raw['data'] is Map ? raw['data']['id'] : null);
+        if (rawId is num) {
+          orderId = rawId.toInt();
+        } else if (rawId != null) {
+          orderId = int.tryParse(rawId.toString());
+        }
       }
       return orderId;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = ApiErrorHandle.sanitizeMessage(
+        e.toString().replaceAll('Exception: ', ''),
+        null,
+      );
       log("Error creating order: ${e.toString()}");
+      return null;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return null;
     }
   }
 
@@ -262,6 +274,7 @@ class OrderProvider extends ChangeNotifier {
     required String provider,
   }) async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     try {
@@ -272,9 +285,17 @@ class OrderProvider extends ChangeNotifier {
       );
 
       log("Pay order response: ${response.data}");
-      return response.data as Map<String, dynamic>?;
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      } else if (response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      return null;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = ApiErrorHandle.sanitizeMessage(
+        e.toString().replaceAll('Exception: ', ''),
+        null,
+      );
       log("Error paying order: ${e.toString()}");
       return null;
     } finally {

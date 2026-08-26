@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/data/models/cart_model.dart';
 import 'package:binetatour/data/models/product_model.dart';
 
@@ -18,6 +19,8 @@ class CartProvider extends ChangeNotifier {
   CartModel? get cart => _cart;
 
   final Map<int, ProductModel> _productDetailsCache = {};
+  ProductModel? getProductFromCache(int id) => _productDetailsCache[id];
+  Map<int, ProductModel> get productDetailsCache => _productDetailsCache;
 
   Future<void> fetchCart({bool showLoading = true}) async {
     if (showLoading) {
@@ -39,6 +42,20 @@ class CartProvider extends ChangeNotifier {
       } else {
         _cart = null;
       }
+
+      if (_cart != null) {
+        for (final item in _cart!.items) {
+          if (item.effectiveVideoUrl.isNotEmpty) {
+            VideoFrameManager.instance
+                .extractFirstFrame(item.effectiveVideoUrl)
+                .ignore();
+          }
+          if (item.productId > 0 &&
+              !_productDetailsCache.containsKey(item.productId)) {
+            _fetchAndCacheProduct(item.productId);
+          }
+        }
+      }
     } catch (e) {
       _errorMessage = e.toString();
     } finally {
@@ -47,6 +64,26 @@ class CartProvider extends ChangeNotifier {
       }
       notifyListeners();
     }
+  }
+
+  Future<void> _fetchAndCacheProduct(int productId) async {
+    try {
+      final response = await _apiServices.get(
+        '/api/mobile/products/$productId/',
+        requireAuth: false,
+      );
+      final data = response.data;
+      if (data != null && data is Map<String, dynamic>) {
+        final product = ProductModel.fromJson(data);
+        _productDetailsCache[productId] = product;
+        if (product.effectiveVideoUrl.isNotEmpty) {
+          VideoFrameManager.instance
+              .extractFirstFrame(product.effectiveVideoUrl)
+              .ignore();
+        }
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   CartItemModel? _getItem(int id) {
@@ -240,6 +277,12 @@ class CartProvider extends ChangeNotifier {
   }
 
   Future<void> addToCart(ProductModel product, {int quantity = 1}) async {
+    _productDetailsCache[product.id] = product;
+    if (product.effectiveVideoUrl.isNotEmpty) {
+      VideoFrameManager.instance
+          .extractFirstFrame(product.effectiveVideoUrl)
+          .ignore();
+    }
     if (product.isOutOfStock) {
       debugPrint("❌ Cannot add to cart: Product is out of stock (ID: ${product.id}, TotalStock: ${product.totalStock}, Status: ${product.status})");
       throw Exception("Ce produit est en rupture de stock !");

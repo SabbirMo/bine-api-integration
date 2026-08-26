@@ -22,6 +22,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
   String _selectedDate = "AUJOURD'HUI";
   bool _isAvailableNow = true;
   String _formattedDate = "dd/mm/yyyy";
+  bool _isSubmitting = false;
 
   /// Maps cartItemId -> selected variantId (null means no variant selected or "Sans préférence")
   final Map<int, int?> _selectedVariantIds = {};
@@ -396,7 +397,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      onPressed: orderProvider.isLoading
+                      onPressed: _isSubmitting
                           ? null
                           : () async {
                               // ── Validate: every item must have a valid selection ──
@@ -448,260 +449,304 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 return;
                               }
 
-                              String deliveryDate = "";
-                              if (_selectedDate == "AUJOURD'HUI") {
-                                deliveryDate = DateFormat(
-                                  'yyyy-MM-dd',
-                                ).format(DateTime.now());
-                              } else if (_selectedDate == "DEMAIN") {
-                                deliveryDate = DateFormat('yyyy-MM-dd').format(
-                                  DateTime.now().add(const Duration(days: 1)),
-                                );
-                              } else {
-                                try {
-                                  final parts = _formattedDate.split('/');
-                                  deliveryDate =
-                                      "${parts[2]}-${parts[1]}-${parts[0]}";
-                                } catch (e) {
+                              setState(() => _isSubmitting = true);
+
+                              try {
+                                String deliveryDate = "";
+                                if (_selectedDate == "AUJOURD'HUI") {
                                   deliveryDate = DateFormat(
                                     'yyyy-MM-dd',
                                   ).format(DateTime.now());
+                                } else if (_selectedDate == "DEMAIN") {
+                                  deliveryDate = DateFormat('yyyy-MM-dd')
+                                      .format(
+                                        DateTime.now().add(
+                                          const Duration(days: 1),
+                                        ),
+                                      );
+                                } else {
+                                  try {
+                                    final parts = _formattedDate.split('/');
+                                    deliveryDate =
+                                        "${parts[2]}-${parts[1]}-${parts[0]}";
+                                  } catch (e) {
+                                    deliveryDate = DateFormat(
+                                      'yyyy-MM-dd',
+                                    ).format(DateTime.now());
+                                  }
                                 }
-                              }
 
-                              String deliveryTimeStr =
-                                  "${DateFormat('HH:mm:ss.SSS').format(DateTime.now())}Z";
-                              if (_timeController.text.trim().isNotEmpty) {
-                                final cleanTime = _timeController.text
-                                    .replaceAll('h :', ':')
-                                    .replaceAll(' ', '');
-                                final parts = cleanTime.split(':');
-                                if (parts.isNotEmpty && parts[0].isNotEmpty) {
-                                  final hh = parts[0].padLeft(2, '0');
-                                  final mm =
-                                      parts.length > 1 && parts[1].isNotEmpty
-                                      ? parts[1].padLeft(2, '0')
-                                      : '00';
-                                  deliveryTimeStr = "$hh:$mm:00.000Z";
+                                String deliveryTimeStr =
+                                    "${DateFormat('HH:mm:ss.SSS').format(DateTime.now())}Z";
+                                if (_timeController.text.trim().isNotEmpty) {
+                                  final cleanTime = _timeController.text
+                                      .replaceAll('h :', ':')
+                                      .replaceAll(' ', '');
+                                  final parts = cleanTime.split(':');
+                                  if (parts.isNotEmpty && parts[0].isNotEmpty) {
+                                    final hh = parts[0].padLeft(2, '0');
+                                    final mm =
+                                        parts.length > 1 && parts[1].isNotEmpty
+                                        ? parts[1].padLeft(2, '0')
+                                        : '00';
+                                    deliveryTimeStr = "$hh:$mm:00.000Z";
+                                  }
                                 }
-                              }
 
-                              // Build items list with product_id and conditional variant_id
-                              final items = cartItems.map((cartItem) {
-                                final variantId =
-                                    _selectedVariantIds[cartItem.id];
-                                final itemMap = <String, dynamic>{
-                                  "product_id": cartItem.productId,
-                                  "quantity": cartItem.quantity,
-                                };
-                                if (variantId != null && variantId > 0) {
-                                  itemMap["variant_id"] = variantId;
+                                // Build items list with product_id and conditional variant_id
+                                final items = cartItems.map((cartItem) {
+                                  final variantId =
+                                      _selectedVariantIds[cartItem.id];
+                                  final itemMap = <String, dynamic>{
+                                    "product_id": cartItem.productId,
+                                    "quantity": cartItem.quantity,
+                                  };
+                                  if (variantId != null && variantId > 0) {
+                                    itemMap["variant_id"] = variantId;
+                                  }
+                                  return itemMap;
+                                }).toList();
+
+                                String orderPaymentMethod;
+                                String payProvider;
+                                if (selectedPayment == "Wave") {
+                                  orderPaymentMethod = "wave";
+                                  payProvider = "wave";
+                                } else if (selectedPayment == "Liquide") {
+                                  orderPaymentMethod = "cash_on_delivery";
+                                  payProvider = "cash_on_delivery";
+                                } else {
+                                  // Orange Money
+                                  orderPaymentMethod = "orange_money";
+                                  payProvider = "orange";
                                 }
-                                return itemMap;
-                              }).toList();
 
-                              String orderPaymentMethod;
-                              String payProvider;
-                              if (selectedPayment == "Wave") {
-                                orderPaymentMethod = "wave";
-                                payProvider = "wave";
-                              } else if (selectedPayment == "Liquide") {
-                                orderPaymentMethod = "cash_on_delivery";
-                                payProvider = "cash_on_delivery";
-                              } else {
-                                // Orange Money
-                                orderPaymentMethod = "orange_money";
-                                payProvider = "orange";
-                              }
+                                // Step 1 – Create the order
+                                final int? orderId = await orderProvider
+                                    .createOrder(
+                                      items: items,
+                                      customerName: _nameController.text,
+                                      customerSurname: _surnameController.text,
+                                      customerPhone: _phoneController.text,
+                                      customerPhone2: _phone2Controller.text,
+                                      customerAddress: _addressController.text,
+                                      deliveryDate: deliveryDate,
+                                      deliveryTime: deliveryTimeStr,
+                                      deliveryTimeEnd: deliveryTimeStr,
+                                      deliveryNote: _noteController.text,
+                                      deliveryFee: "0.00",
+                                      paymentMethod: orderPaymentMethod,
+                                    );
 
-                              // Step 1 – Create the order
-                              final int? orderId = await orderProvider
-                                  .createOrder(
-                                    items: items,
-                                    customerName: _nameController.text,
-                                    customerSurname: _surnameController.text,
-                                    customerPhone: _phoneController.text,
-                                    customerPhone2: _phone2Controller.text,
-                                    customerAddress: _addressController.text,
-                                    deliveryDate: deliveryDate,
-                                    deliveryTime: deliveryTimeStr,
-                                    deliveryTimeEnd: deliveryTimeStr,
-                                    deliveryNote: _noteController.text,
-                                    deliveryFee: "0.00",
-                                    paymentMethod: orderPaymentMethod,
+                                if (orderId == null) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          orderProvider.errorMessage ??
+                                              "Erreur lors de la commande",
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return;
+                                }
+
+                                // Step 2 – Handle Cash on Delivery vs Online Payment
+                                if (payProvider == "cash_on_delivery") {
+                                  await cartProvider.clearServerCart();
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Commande confirmée"),
+                                      ),
+                                    );
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const MainDashboard(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  }
+                                  return;
+                                }
+
+                                // Step 3 – Initiate online payment (Orange Money / Wave)
+                                final payResponse = await orderProvider
+                                    .payOrder(
+                                      orderId: orderId,
+                                      provider: payProvider,
+                                    );
+
+                                if (!context.mounted) return;
+
+                                if (payResponse == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        orderProvider.errorMessage ??
+                                            "Erreur lors du paiement",
+                                      ),
+                                    ),
                                   );
+                                  return;
+                                }
 
-                              if (orderId == null) {
+                                final qrData =
+                                    payResponse['qr'] as Map<String, dynamic>?;
+                                final dataMap =
+                                    payResponse['data']
+                                        as Map<String, dynamic>?;
+
+                                // Extract transaction ID
+                                final dynamic rawTxId =
+                                    payResponse['transaction_id'] ??
+                                    qrData?['metadata']?['transaction_id'] ??
+                                    payResponse['metadata']?['transaction_id'] ??
+                                    dataMap?['transaction_id'] ??
+                                    payResponse['id'];
+                                final int transactionId = rawTxId is int
+                                    ? rawTxId
+                                    : int.tryParse(
+                                            rawTxId?.toString() ?? '0',
+                                          ) ??
+                                          0;
+
+                                // Extract deep link
+                                String? deepLink =
+                                    payResponse['payment_url']?.toString() ??
+                                    payResponse['paymentUrl']?.toString() ??
+                                    payResponse['redirect_url']?.toString() ??
+                                    payResponse['redirectUrl']?.toString() ??
+                                    payResponse['wave_launch_url']
+                                        ?.toString() ??
+                                    payResponse['deep_link']?.toString() ??
+                                    payResponse['deepLink']?.toString() ??
+                                    payResponse['launch_url']?.toString() ??
+                                    payResponse['url']?.toString() ??
+                                    qrData?['payment_url']?.toString() ??
+                                    qrData?['paymentUrl']?.toString() ??
+                                    qrData?['deepLink']?.toString() ??
+                                    qrData?['wave_launch_url']?.toString() ??
+                                    qrData?['launch_url']?.toString() ??
+                                    qrData?['url']?.toString() ??
+                                    dataMap?['payment_url']?.toString() ??
+                                    dataMap?['paymentUrl']?.toString() ??
+                                    dataMap?['wave_launch_url']?.toString() ??
+                                    dataMap?['deepLink']?.toString() ??
+                                    dataMap?['url']?.toString();
+
+                                final String? qrCode =
+                                    qrData?['qrCode']?.toString() ??
+                                    payResponse['qrCode']?.toString() ??
+                                    dataMap?['qrCode']?.toString();
+                                final String? message =
+                                    payResponse['message']?.toString() ??
+                                    qrData?['message']?.toString();
+                                final dynamic val =
+                                    qrData?['validity'] ??
+                                    payResponse['validity'] ??
+                                    dataMap?['validity'];
+                                final int validity = val is int
+                                    ? val
+                                    : int.tryParse(val?.toString() ?? '300') ??
+                                          300;
+                                final Map<String, dynamic>? deepLinksMap =
+                                    (qrData?['deepLinks']
+                                        as Map<String, dynamic>?) ??
+                                    (payResponse['deepLinks']
+                                        as Map<String, dynamic>?);
+
+                                // For Wave, optionally attempt auto-launching app
+                                if (selectedPayment == "Wave" &&
+                                    deepLink != null &&
+                                    deepLink.isNotEmpty) {
+                                  final uri = Uri.parse(deepLink);
+                                  try {
+                                    await launchUrl(
+                                      uri,
+                                      mode: LaunchMode
+                                          .externalNonBrowserApplication,
+                                    );
+                                  } catch (_) {}
+                                }
+
+                                // Step 4 – Show Payment Status Popup with live polling
+                                if (transactionId > 0) {
+                                  PaymentStatusDialog.show(
+                                    context: context,
+                                    transactionId: transactionId,
+                                    providerName: selectedPayment,
+                                    qrCodeBase64: qrCode,
+                                    deepLink: deepLink,
+                                    deepLinks: deepLinksMap,
+                                    message: message,
+                                    validitySeconds: validity,
+                                    onPaymentSuccess: (statusModel) async {
+                                      await cartProvider.clearServerCart();
+                                      if (context.mounted) {
+                                        Navigator.of(
+                                          context,
+                                          rootNavigator: true,
+                                        ).pop();
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            backgroundColor: Color(0xFF2E7D32),
+                                            content: Text(
+                                              "Paiement réussi ! Commande confirmée.",
+                                            ),
+                                          ),
+                                        );
+                                        Navigator.pushAndRemoveUntil(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const MainDashboard(),
+                                          ),
+                                          (route) => false,
+                                        );
+                                      }
+                                    },
+                                  );
+                                } else {
+                                  // Fallback if no transactionId
+                                  await cartProvider.clearServerCart();
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Commande confirmée"),
+                                      ),
+                                    );
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const MainDashboard(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  }
+                                }
+                              } catch (e) {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
                                         orderProvider.errorMessage ??
-                                            "Erreur lors de la commande",
+                                            "Erreur lors de la validation: $e",
                                       ),
                                     ),
                                   );
                                 }
-                                return;
-                              }
-
-                              // Step 2 – Handle Cash on Delivery vs Online Payment
-                              if (payProvider == "cash_on_delivery") {
-                                await cartProvider.clearServerCart();
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Commande confirmée"),
-                                    ),
-                                  );
-                                  Navigator.pushAndRemoveUntil(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const MainDashboard(),
-                                    ),
-                                    (route) => false,
-                                  );
-                                }
-                                return;
-                              }
-
-                              // Step 3 – Initiate online payment (Orange Money / Wave)
-                              final payResponse = await orderProvider.payOrder(
-                                orderId: orderId,
-                                provider: payProvider,
-                              );
-
-                              if (!context.mounted) return;
-
-                              if (payResponse == null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      orderProvider.errorMessage ??
-                                          "Erreur lors du paiement",
-                                    ),
-                                  ),
-                                );
-                                return;
-                              }
-
-                              final qrData =
-                                  payResponse['qr'] as Map<String, dynamic>?;
-                              final dataMap =
-                                  payResponse['data'] as Map<String, dynamic>?;
-
-                              // Extract transaction ID
-                              final dynamic rawTxId = payResponse['transaction_id'] ??
-                                  qrData?['metadata']?['transaction_id'] ??
-                                  payResponse['metadata']?['transaction_id'] ??
-                                  dataMap?['transaction_id'] ??
-                                  payResponse['id'];
-                              final int transactionId = rawTxId is int
-                                  ? rawTxId
-                                  : int.tryParse(rawTxId?.toString() ?? '0') ?? 0;
-
-                              // Extract deep link
-                              String? deepLink =
-                                  payResponse['payment_url']?.toString() ??
-                                  payResponse['paymentUrl']?.toString() ??
-                                  payResponse['redirect_url']?.toString() ??
-                                  payResponse['redirectUrl']?.toString() ??
-                                  payResponse['wave_launch_url']?.toString() ??
-                                  payResponse['deep_link']?.toString() ??
-                                  payResponse['deepLink']?.toString() ??
-                                  payResponse['launch_url']?.toString() ??
-                                  payResponse['url']?.toString() ??
-                                  qrData?['payment_url']?.toString() ??
-                                  qrData?['paymentUrl']?.toString() ??
-                                  qrData?['deepLink']?.toString() ??
-                                  qrData?['wave_launch_url']?.toString() ??
-                                  qrData?['launch_url']?.toString() ??
-                                  qrData?['url']?.toString() ??
-                                  dataMap?['payment_url']?.toString() ??
-                                  dataMap?['paymentUrl']?.toString() ??
-                                  dataMap?['wave_launch_url']?.toString() ??
-                                  dataMap?['deepLink']?.toString() ??
-                                  dataMap?['url']?.toString();
-
-                              final String? qrCode = qrData?['qrCode']?.toString() ??
-                                  payResponse['qrCode']?.toString() ??
-                                  dataMap?['qrCode']?.toString();
-                              final String? message = payResponse['message']?.toString() ??
-                                  qrData?['message']?.toString();
-                              final dynamic val = qrData?['validity'] ??
-                                  payResponse['validity'] ??
-                                  dataMap?['validity'];
-                              final int validity = val is int
-                                  ? val
-                                  : int.tryParse(val?.toString() ?? '300') ?? 300;
-                              final Map<String, dynamic>? deepLinksMap =
-                                  (qrData?['deepLinks'] as Map<String, dynamic>?) ??
-                                  (payResponse['deepLinks'] as Map<String, dynamic>?);
-
-                              // For Wave, optionally attempt auto-launching app
-                              if (selectedPayment == "Wave" && deepLink != null && deepLink.isNotEmpty) {
-                                final uri = Uri.parse(deepLink);
-                                try {
-                                  await launchUrl(
-                                    uri,
-                                    mode: LaunchMode.externalNonBrowserApplication,
-                                  );
-                                } catch (_) {}
-                              }
-
-                              // Step 4 – Show Payment Status Popup with live polling
-                              if (transactionId > 0) {
-                                PaymentStatusDialog.show(
-                                  context: context,
-                                  transactionId: transactionId,
-                                  providerName: selectedPayment,
-                                  qrCodeBase64: qrCode,
-                                  deepLink: deepLink,
-                                  deepLinks: deepLinksMap,
-                                  message: message,
-                                  validitySeconds: validity,
-                                  onPaymentSuccess: (statusModel) async {
-                                    await cartProvider.clearServerCart();
-                                    if (context.mounted) {
-                                      Navigator.of(context, rootNavigator: true).pop();
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          backgroundColor: Color(0xFF2E7D32),
-                                          content: Text(
-                                            "Paiement réussi ! Commande confirmée.",
-                                          ),
-                                        ),
-                                      );
-                                      Navigator.pushAndRemoveUntil(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const MainDashboard(),
-                                        ),
-                                        (route) => false,
-                                      );
-                                    }
-                                  },
-                                );
-                              } else {
-                                // Fallback if no transactionId
-                                await cartProvider.clearServerCart();
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Commande confirmée"),
-                                    ),
-                                  );
-                                  Navigator.pushAndRemoveUntil(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const MainDashboard(),
-                                    ),
-                                    (route) => false,
-                                  );
+                              } finally {
+                                if (mounted) {
+                                  setState(() => _isSubmitting = false);
                                 }
                               }
                             },
-                      child: orderProvider.isLoading
+                      child: _isSubmitting
                           ? const SizedBox(
                               height: 20,
                               width: 20,

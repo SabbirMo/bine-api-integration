@@ -1,3 +1,4 @@
+import 'package:binetatour/presentation/common/widgets/product_thumbnail_or_video_frame.dart';
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -190,34 +191,22 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
   Widget _buildCartItem(CartItemModel item) {
     return Container(
       padding: const EdgeInsets.all(12),
-      margin: EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
         border: Border.all(color: Colors.black12),
       ),
       child: Row(
         children: [
-          ClipRRect(
+          ProductThumbnailOrVideoFrame(
+            imageUrl: item.effectiveThumbnailUrl,
+            videoUrl: item.effectiveVideoUrl,
+            productId: item.productId,
+            width: 80,
+            height: 80,
             borderRadius: BorderRadius.circular(10),
-            child: Image.network(
-              item.mainImage ?? "",
-              width: 80,
-              height: 80,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 80,
-                  height: 80,
-                  color: Colors.grey[200],
-                  child: const Icon(
-                    Icons.image_not_supported,
-                    color: Colors.grey,
-                  ),
-                );
-              },
-            ),
           ),
           const SizedBox(width: 15),
           Expanded(

@@ -43,34 +43,53 @@ class OrderDetailModel {
     required this.totalAmount,
   });
 
+  static int asInt(dynamic value, [int fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  static double asDouble(dynamic value, [double fallback = 0.0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final clean = value.replaceAll(' ', '').replaceAll(',', '.').trim();
+      return double.tryParse(clean) ?? fallback;
+    }
+    return fallback;
+  }
+
   factory OrderDetailModel.fromJson(Map<String, dynamic> json) {
     return OrderDetailModel(
-      id: json['id'] ?? 0,
-      orderNumber: json['order_number'] ?? '',
-      status: json['status'] ?? '',
-      createdAt: json['created_at'] ?? '',
-      trackingSteps: json['tracking_steps'] != null
+      id: asInt(json['id']),
+      orderNumber: json['order_number']?.toString() ?? '',
+      status: json['status']?.toString() ?? '',
+      createdAt: json['created_at']?.toString() ?? '',
+      trackingSteps: json['tracking_steps'] is List
           ? (json['tracking_steps'] as List)
-                .map((i) => TrackingStepModel.fromJson(i))
-                .toList()
+              .whereType<Map>()
+              .map((i) => TrackingStepModel.fromJson(Map<String, dynamic>.from(i)))
+              .toList()
           : [],
-      items: json['items'] != null
+      items: json['items'] is List
           ? (json['items'] as List)
-                .map((i) => OrderItemModel.fromJson(i))
-                .toList()
+              .whereType<Map>()
+              .map((i) => OrderItemModel.fromJson(Map<String, dynamic>.from(i)))
+              .toList()
           : [],
-      customerName: json['customer_name'] ?? '',
-      customerSurname: json['customer_surname'] ?? '',
-      customerPhone: json['customer_phone'] ?? '',
-      customerPhone2: json['customer_phone2'] ?? '',
-      customerAddress: json['customer_address'] ?? '',
-      deliveryDate: json['delivery_date'] ?? '',
-      deliveryTime: json['delivery_time'] ?? '',
-      deliveryTimeEnd: json['delivery_time_end'] ?? '',
-      deliveryNote: json['delivery_note'] ?? '',
+      customerName: json['customer_name']?.toString() ?? '',
+      customerSurname: json['customer_surname']?.toString() ?? '',
+      customerPhone: json['customer_phone']?.toString() ?? '',
+      customerPhone2: json['customer_phone2']?.toString() ?? '',
+      customerAddress: json['customer_address']?.toString() ?? '',
+      deliveryDate: json['delivery_date']?.toString() ?? '',
+      deliveryTime: json['delivery_time']?.toString() ?? '',
+      deliveryTimeEnd: json['delivery_time_end']?.toString() ?? '',
+      deliveryNote: json['delivery_note']?.toString() ?? '',
       deliveryFee: json['delivery_fee']?.toString() ?? '0.00',
-      paymentMethod: json['payment_method'] ?? '',
-      paymentStatus: json['payment_status'] ?? '',
+      paymentMethod: json['payment_method']?.toString() ?? '',
+      paymentStatus: json['payment_status']?.toString() ?? '',
       subtotalAmount: json['subtotal_amount']?.toString() ?? '0.00',
       totalAmount: json['total_amount']?.toString() ?? '0.00',
     );
@@ -94,11 +113,11 @@ class TrackingStepModel {
 
   factory TrackingStepModel.fromJson(Map<String, dynamic> json) {
     return TrackingStepModel(
-      key: json['key'] ?? '',
-      label: json['label'] ?? '',
-      description: json['description'] ?? '',
-      state: json['state'] ?? '',
-      timestamp: json['timestamp'],
+      key: json['key']?.toString() ?? '',
+      label: json['label']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      state: json['state']?.toString() ?? '',
+      timestamp: json['timestamp']?.toString(),
     );
   }
 }
@@ -115,6 +134,8 @@ class OrderItemModel {
   final int quantity;
   final String unitPrice;
   final double subtotal;
+  final bool isReviewed;
+  final int? reviewId;
 
   OrderItemModel({
     required this.id,
@@ -128,6 +149,8 @@ class OrderItemModel {
     required this.quantity,
     required this.unitPrice,
     required this.subtotal,
+    this.isReviewed = false,
+    this.reviewId,
   });
 
   bool get hasVariant =>
@@ -143,8 +166,8 @@ class OrderItemModel {
   }
 
   factory OrderItemModel.fromJson(Map<String, dynamic> json) {
-    final variantData = json['variant'] is Map<String, dynamic>
-        ? json['variant'] as Map<String, dynamic>
+    final variantData = json['variant'] is Map
+        ? Map<String, dynamic>.from(json['variant'] as Map)
         : null;
 
     final rawVariantId = variantData != null
@@ -152,21 +175,51 @@ class OrderItemModel {
         : json['variant_id'];
 
     final int? parsedVariantId = rawVariantId != null && rawVariantId != 0
-        ? (rawVariantId is num ? rawVariantId.toInt() : int.tryParse(rawVariantId.toString()))
+        ? (rawVariantId is num
+            ? rawVariantId.toInt()
+            : int.tryParse(rawVariantId.toString()))
+        : null;
+
+    final rawProductId = json['product_id'] ??
+        (json['product'] is Map ? (json['product'] as Map)['id'] : null);
+    final int parsedProductId = OrderDetailModel.asInt(rawProductId);
+
+    final rawReviewId = json['review_id'];
+    final int? parsedReviewId = rawReviewId != null
+        ? OrderDetailModel.asInt(rawReviewId)
         : null;
 
     return OrderItemModel(
-      id: json['id'] ?? 0,
-      productId: json['product_id'] ?? (json['product'] is Map ? json['product']['id'] ?? 0 : 0),
-      productName: json['product_name'] ?? (json['product'] is Map ? json['product']['product_name'] ?? '' : ''),
-      mainImage: json['main_image'] ?? (json['product'] is Map ? json['product']['main_image'] ?? '' : ''),
+      id: OrderDetailModel.asInt(json['id']),
+      productId: parsedProductId,
+      productName: (json['product_name'] ??
+              (json['product'] is Map
+                  ? (json['product'] as Map)['product_name']
+                  : ''))
+          ?.toString() ??
+          '',
+      mainImage: (json['main_image'] ??
+              (json['product'] is Map
+                  ? (json['product'] as Map)['main_image']
+                  : ''))
+          ?.toString() ??
+          '',
       variantId: parsedVariantId,
-      colorName: variantData != null ? variantData['color_name'] : json['color_name'],
-      colorCode: variantData != null ? variantData['color_code'] : json['color_code'],
-      size: variantData != null ? variantData['size'] : json['size'],
-      quantity: json['quantity'] ?? 0,
+      colorName: (variantData != null
+              ? variantData['color_name']
+              : json['color_name'])
+          ?.toString(),
+      colorCode: (variantData != null
+              ? variantData['color_code']
+              : json['color_code'])
+          ?.toString(),
+      size: (variantData != null ? variantData['size'] : json['size'])
+          ?.toString(),
+      quantity: OrderDetailModel.asInt(json['quantity']),
       unitPrice: json['unit_price']?.toString() ?? '0.00',
-      subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
+      subtotal: OrderDetailModel.asDouble(json['subtotal']),
+      isReviewed: json['is_reviewed'] == true,
+      reviewId: parsedReviewId,
     );
   }
 }

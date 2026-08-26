@@ -1,3 +1,4 @@
+import 'package:binetatour/presentation/common/widgets/product_thumbnail_or_video_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/order_items_screen.dart';
@@ -276,17 +277,12 @@ class _OrderReviewCardState extends State<OrderReviewCard> {
       ),
       child: Row(
         children: [
-          Container(
+          ProductThumbnailOrVideoFrame(
+            imageUrl: item.mainImage,
+            productId: item.productId,
             width: 50,
             height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: Colors.grey[200],
-              image: DecorationImage(
-                image: NetworkImage(item.mainImage),
-                fit: BoxFit.cover,
-              ),
-            ),
+            borderRadius: BorderRadius.circular(8),
           ),
           const SizedBox(width: 12),
           Expanded(

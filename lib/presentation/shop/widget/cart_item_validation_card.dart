@@ -1,3 +1,4 @@
+import 'package:binetatour/presentation/common/widgets/product_thumbnail_or_video_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -219,28 +220,17 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           title: "Articles & Quantité",
           child: Row(
             children: [
-              ClipRRect(
+              ProductThumbnailOrVideoFrame(
+                imageUrl: widget.item.effectiveThumbnailUrl.isNotEmpty
+                    ? widget.item.effectiveThumbnailUrl
+                    : (_productDetails?.effectiveThumbnailUrl ?? ""),
+                videoUrl: widget.item.effectiveVideoUrl.isNotEmpty
+                    ? widget.item.effectiveVideoUrl
+                    : (_productDetails?.effectiveVideoUrl ?? ""),
+                productId: widget.item.productId,
+                width: 52,
+                height: 52,
                 borderRadius: BorderRadius.circular(10),
-                child: Image.network(
-                  widget.item.mainImage ?? "",
-                  width: 52,
-                  height: 52,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.image_not_supported,
-                        color: Colors.grey,
-                      ),
-                    );
-                  },
-                ),
               ),
               const SizedBox(width: 12),
               Expanded(

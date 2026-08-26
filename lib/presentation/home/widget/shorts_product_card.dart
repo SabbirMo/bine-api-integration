@@ -132,8 +132,9 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
     return ListenableBuilder(
       listenable: VideoFrameManager.instance,
       builder: (context, _) {
-        final frameBytes =
-            VideoFrameManager.instance.getCachedFrame(widget.videoUrl);
+        final frameBytes = VideoFrameManager.instance.getCachedFrame(
+          widget.videoUrl,
+        );
 
         if (frameBytes != null && frameBytes.isNotEmpty) {
           return Image.memory(
@@ -146,38 +147,12 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
         // Trigger extraction in background if not already cached
         VideoFrameManager.instance.extractFirstFrame(widget.videoUrl);
 
-        // Immediately show the product thumbnail if available
-        if (widget.thumbnailUrl != null &&
-            widget.thumbnailUrl!.trim().isNotEmpty) {
-          return _buildFallbackImage();
-        }
-
+        // Sleek minimal dark placeholder while extracting the actual video frame
         return Container(
           color: const Color(0xFF161616),
           child: _buildBannerStyleLoading(),
         );
       },
-    );
-  }
-
-  Widget _buildFallbackImage() {
-    final thumb = widget.thumbnailUrl ?? '';
-    if (thumb.isEmpty) {
-      return Container(color: const Color(0xFF161616));
-    }
-
-    if (thumb.startsWith('http')) {
-      return Image.network(
-        thumb,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => Container(color: const Color(0xFF161616)),
-      );
-    }
-
-    return Image.asset(
-      thumb,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => Container(color: const Color(0xFF161616)),
     );
   }
 
@@ -214,17 +189,18 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
             fit: StackFit.expand,
             children: [
               // 1. Base Layer: The ACTUAL FIRST FRAME extracted directly from the video file (NO external catalog thumbnail!)
-              if (hasVideo) _buildVideoFirstFrame() else _buildFallbackImage(),
+              if (hasVideo)
+                _buildVideoFirstFrame()
+              else
+                Container(color: const Color(0xFF161616)),
 
               // 2. Active Video Player Layer (Plays smoothly right on top of the first frame)
               if (hasVideo)
                 ListenableBuilder(
                   listenable: FeedVideoManager.instance,
                   builder: (context, _) {
-                    final playerState =
-                        FeedVideoManager.instance.getPlayerState(
-                      widget.keyString,
-                    );
+                    final playerState = FeedVideoManager.instance
+                        .getPlayerState(widget.keyString);
                     final isAttached =
                         playerState != null &&
                         playerState.currentUrl == widget.videoUrl;

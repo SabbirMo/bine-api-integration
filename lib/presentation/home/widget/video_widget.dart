@@ -1,6 +1,7 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/presentation/home/widget/full_screen_player.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -48,6 +49,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
   double _dragValue = 0.0;
   bool _hasTriedFallback = false;
   bool _isVisible = true;
+  bool _isManuallyPaused = false;
 
   @override
   void initState() {
@@ -64,7 +66,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
       if (_isPlaying.value) {
         _player.pause();
       }
-    } else if (_isVisible && !_isPlaying.value) {
+    } else if (_isVisible && !_isManuallyPaused && !_isPlaying.value) {
       _player.play();
     }
   }
@@ -77,6 +79,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
       _player.pause();
     } else if (state == AppLifecycleState.resumed) {
       if (_isVisible &&
+          !_isManuallyPaused &&
           !FeedVideoManager.instance.isGloballyPaused &&
           FeedVideoManager.instance.activeTabIndex == 0) {
         _player.play();
@@ -92,7 +95,9 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
         _player.pause();
       }
     } else {
-      if (!FeedVideoManager.instance.isGloballyPaused &&
+      // Auto-resume ONLY if the user has NOT manually paused the video
+      if (!_isManuallyPaused &&
+          !FeedVideoManager.instance.isGloballyPaused &&
           FeedVideoManager.instance.activeTabIndex == 0) {
         _player.play();
       }
@@ -113,24 +118,12 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
   void didUpdateWidget(covariant VideoPlaceholder oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.link != widget.link) {
+      _isManuallyPaused = false;
       _hasTriedFallback = false;
       _hasStartedPlaying.value = false;
       _isBuffering.value = true;
       _openTargetVideo(_resolvedVideoUrl);
     }
-  }
-
-  String get _resolvedThumbnailUrl {
-    String url = widget.thumbnailUrl ?? '';
-    if (url.isNotEmpty && !url.startsWith('http')) {
-      final base = BaseUrl.baseUrl;
-      if (url.startsWith('/')) {
-        url = '$base$url';
-      } else {
-        url = '$base/$url';
-      }
-    }
-    return url;
   }
 
   String get _resolvedVideoUrl {
@@ -207,8 +200,10 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
   /// - Toggle play/pause without affecting volume/mute state.
   void _handleVideoTap() {
     if (_isPlaying.value) {
+      _isManuallyPaused = true;
       _player.pause();
     } else {
+      _isManuallyPaused = false;
       _player.play();
     }
   }
@@ -337,7 +332,13 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
           ),
           onSelected: (value) {
             if (value == 'play_pause') {
-              _isPlaying.value ? _player.pause() : _player.play();
+              if (_isPlaying.value) {
+                _isManuallyPaused = true;
+                _player.pause();
+              } else {
+                _isManuallyPaused = false;
+                _player.play();
+              }
             } else if (value.startsWith('speed_')) {
               final speed =
                   double.tryParse(value.replaceFirst('speed_', '')) ?? 1.0;
@@ -457,7 +458,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                 ),
               ),
 
-              // 2. Thumbnail / Loading State (Fades out when video playback actually begins)
+              // 2. Video First Frame / Loading State (Fades out seamlessly when playback begins)
               Positioned.fill(
                 child: ValueListenableBuilder<bool>(
                   valueListenable: _hasStartedPlaying,
@@ -468,29 +469,27 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                       child: IgnorePointer(
                         ignoring: hasStartedPlaying,
                         child: Container(
-                          color: const Color(0xFFFFF5EE),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              if (_resolvedThumbnailUrl.isNotEmpty)
-                                Image.network(
-                                  _resolvedThumbnailUrl,
+                          color: const Color(0xFF161616),
+                          child: ListenableBuilder(
+                            listenable: VideoFrameManager.instance,
+                            builder: (context, _) {
+                              final frameBytes = VideoFrameManager.instance
+                                  .getCachedFrame(_resolvedVideoUrl);
+
+                              if (frameBytes != null && frameBytes.isNotEmpty) {
+                                return Image.memory(
+                                  frameBytes,
                                   fit: BoxFit.cover,
-                                  loadingBuilder:
-                                      (context, child, loadingProgress) {
-                                        if (loadingProgress == null) {
-                                          return child;
-                                        }
-                                        return _buildDefaultPlaceholder(
-                                          isLoading: true,
-                                        );
-                                      },
-                                  errorBuilder: (_, _, _) =>
-                                      _buildDefaultPlaceholder(isLoading: true),
-                                )
-                              else
-                                _buildDefaultPlaceholder(isLoading: true),
-                            ],
+                                  gaplessPlayback: true,
+                                );
+                              }
+
+                              VideoFrameManager.instance.extractFirstFrame(
+                                _resolvedVideoUrl,
+                              );
+
+                              return _buildDefaultPlaceholder(isLoading: true);
+                            },
                           ),
                         ),
                       ),
@@ -532,7 +531,10 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                       if (!isPlaying && hasStarted) {
                         return Center(
                           child: GestureDetector(
-                            onTap: () => _player.play(),
+                            onTap: () {
+                              _isManuallyPaused = false;
+                              _player.play();
+                            },
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
@@ -608,8 +610,8 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                   color: Colors.white,
                                   size: 20,
                                 ),
-                                onTap: () {
-                                  Navigator.push(
+                                onTap: () async {
+                                  await Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) =>
@@ -618,6 +620,9 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                                           ),
                                     ),
                                   );
+                                  if (!_player.state.playing) {
+                                    _isManuallyPaused = true;
+                                  }
                                 },
                               ),
                               const SizedBox(width: 8),
