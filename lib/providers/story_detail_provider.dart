@@ -11,6 +11,8 @@ class StoryDetailProvider extends ChangeNotifier {
   final List<StoryContent> stories;
   final StoryProvider storyProvider;
   final VoidCallback? onFinished;
+  final VoidCallback? onPreviousAtStart;
+  final bool autoStart;
 
   int _currentIndex = 0;
   bool _isMuted = false;
@@ -20,6 +22,7 @@ class StoryDetailProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isPlaying = false;
   bool _isDisposed = false;
+  bool _hasStarted = false;
 
   Player? _playerA;
   VideoController? _controllerA;
@@ -30,8 +33,13 @@ class StoryDetailProvider extends ChangeNotifier {
     required this.stories,
     required this.storyProvider,
     this.onFinished,
+    this.onPreviousAtStart,
+    this.autoStart = true,
   }) {
-    _loadStory(_currentIndex);
+    if (autoStart) {
+      _hasStarted = true;
+      _loadStory(_currentIndex);
+    }
   }
 
   int get currentIndex => _currentIndex;
@@ -151,12 +159,21 @@ class StoryDetailProvider extends ChangeNotifier {
     });
   }
 
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
+  }
+
   void _loadStory(int index) {
     _cancelTimer();
     _imageProgress = 0.0;
     _currentMediaProgress = 0.0;
 
-    if (index < 0 || index >= stories.length) return;
+    if (_isDisposed || stories.isEmpty || index < 0 || index >= stories.length) {
+      return;
+    }
 
     final oldIndex = _currentIndex;
     _currentIndex = index;
@@ -167,65 +184,82 @@ class StoryDetailProvider extends ChangeNotifier {
     // Pause previous player if switching index
     final prevPlayer = (oldIndex % 2 == 0) ? _playerA : _playerB;
     if (prevPlayer != null && oldIndex != index) {
-      prevPlayer.pause();
+      try {
+        prevPlayer.pause();
+      } catch (_) {}
     }
 
     if (story.id != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_isDisposed) {
-          storyProvider.viewStory(story.id!);
+          try {
+            storyProvider.viewStory(story.id!);
+          } catch (_) {}
         }
       });
     }
 
     if (story.isVideo || story.isAudio) {
-      final activePlayer = player!;
-      activePlayer.setVolume(_isMuted ? 0.0 : 100.0);
-
-      final cleanUrl = story.url;
-      final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanUrl);
-      final playPath = cachedPath ?? cleanUrl;
-
-      // Extract first frame only for video (skip for audio)
-      if (story.isVideo && !story.isAudio) {
-        VideoFrameManager.instance.extractFirstFrame(cleanUrl);
+      final activePlayer = player;
+      if (activePlayer == null) {
+        _isLoading = false;
+        notifyListeners();
+        return;
       }
 
-      // Format URI properly with file:// scheme for local files
-      final String mediaUri;
-      if (cachedPath != null && cachedPath.isNotEmpty) {
-        mediaUri = cachedPath.startsWith('file://')
-            ? cachedPath
-            : 'file://$cachedPath';
-      } else if (playPath.startsWith('/')) {
-        mediaUri = playPath.startsWith('file://')
-            ? playPath
-            : 'file://$playPath';
-      } else {
-        mediaUri = playPath;
-      }
+      try {
+        activePlayer.setVolume(_isMuted ? 0.0 : 100.0);
 
-      // Check if active player was already pre-buffered with this URL!
-      final currentSource = activePlayer.state.playlist.medias.isNotEmpty
-          ? activePlayer.state.playlist.medias.first.uri
-          : '';
+        final cleanUrl = story.url;
+        final cachedPath = VideoCacheManager.instance.getCachedFilePath(
+          cleanUrl,
+        );
+        final playPath = cachedPath ?? cleanUrl;
 
-      final bool isAlreadyPrebuffered =
-          currentSource == playPath ||
-          currentSource == cleanUrl ||
-          currentSource == mediaUri ||
-          currentSource == 'file://$playPath' ||
-          currentSource == 'file://$cleanUrl';
-
-      if (isAlreadyPrebuffered) {
-        _isLoading = activePlayer.state.position == Duration.zero;
-        activePlayer.play();
-      } else {
-        _isLoading = true;
-        activePlayer.open(Media(mediaUri), play: true);
-        if (story.isNetwork && cachedPath == null) {
-          VideoCacheManager.instance.preCacheVideo(cleanUrl);
+        // Extract first frame only for video (skip for audio)
+        if (story.isVideo && !story.isAudio) {
+          VideoFrameManager.instance.extractFirstFrame(cleanUrl);
         }
+
+        // Format URI properly with file:// scheme for local files
+        final String mediaUri;
+        if (cachedPath != null && cachedPath.isNotEmpty) {
+          mediaUri = cachedPath.startsWith('file://')
+              ? cachedPath
+              : 'file://$cachedPath';
+        } else if (playPath.startsWith('/')) {
+          mediaUri = playPath.startsWith('file://')
+              ? playPath
+              : 'file://$playPath';
+        } else {
+          mediaUri = playPath;
+        }
+
+        // Check if active player was already pre-buffered with this URL!
+        final currentSource = activePlayer.state.playlist.medias.isNotEmpty
+            ? activePlayer.state.playlist.medias.first.uri
+            : '';
+
+        final bool isAlreadyPrebuffered =
+            currentSource == playPath ||
+            currentSource == cleanUrl ||
+            currentSource == mediaUri ||
+            currentSource == 'file://$playPath' ||
+            currentSource == 'file://$cleanUrl';
+
+        if (isAlreadyPrebuffered) {
+          _isLoading = activePlayer.state.position == Duration.zero;
+          activePlayer.play();
+        } else {
+          _isLoading = true;
+          activePlayer.open(Media(mediaUri), play: true);
+          if (story.isNetwork && cachedPath == null) {
+            VideoCacheManager.instance.preCacheVideo(cleanUrl);
+          }
+        }
+      } catch (e) {
+        debugPrint("Error loading media in StoryDetailProvider: $e");
+        _isLoading = false;
       }
       notifyListeners();
 
@@ -242,7 +276,7 @@ class StoryDetailProvider extends ChangeNotifier {
   }
 
   void _preloadNextStory(int nextIndex) {
-    if (nextIndex < 0 || nextIndex >= stories.length) return;
+    if (_isDisposed || nextIndex < 0 || nextIndex >= stories.length) return;
     final nextStory = stories[nextIndex];
     if (!nextStory.isVideo && !nextStory.isAudio) return;
     if (nextStory.url.isEmpty) return;
@@ -250,58 +284,77 @@ class StoryDetailProvider extends ChangeNotifier {
     final nextP = _nextPlayer;
     if (nextP == null) return;
 
-    final cleanNext = nextStory.url;
-    final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanNext);
-    final playPath = cachedPath ?? cleanNext;
-
-    final String mediaUri;
-    if (cachedPath != null && cachedPath.isNotEmpty) {
-      mediaUri = cachedPath.startsWith('file://')
-          ? cachedPath
-          : 'file://$cachedPath';
-    } else if (playPath.startsWith('/')) {
-      mediaUri = playPath.startsWith('file://') ? playPath : 'file://$playPath';
-    } else {
-      mediaUri = playPath;
-    }
-
-    final currentSource = nextP.state.playlist.medias.isNotEmpty
-        ? nextP.state.playlist.medias.first.uri
-        : '';
-
-    final bool isAlreadyPreloaded =
-        currentSource == playPath ||
-        currentSource == cleanNext ||
-        currentSource == mediaUri ||
-        currentSource == 'file://$playPath' ||
-        currentSource == 'file://$cleanNext';
-
-    if (!isAlreadyPreloaded) {
-      debugPrint(
-        "Pre-buffering next story index $nextIndex in background: $cleanNext",
+    try {
+      final cleanNext = nextStory.url;
+      final cachedPath = VideoCacheManager.instance.getCachedFilePath(
+        cleanNext,
       );
-      nextP.setVolume(_isMuted ? 0.0 : 100.0);
-      nextP.open(Media(mediaUri), play: false);
-      if (nextStory.isNetwork && cachedPath == null) {
-        VideoCacheManager.instance.preCacheVideo(cleanNext);
-      }
-    }
+      final playPath = cachedPath ?? cleanNext;
 
-    // Pre-extract first frame only for video
-    if (nextStory.isVideo && !nextStory.isAudio) {
-      VideoFrameManager.instance.extractFirstFrame(cleanNext);
+      final String mediaUri;
+      if (cachedPath != null && cachedPath.isNotEmpty) {
+        mediaUri = cachedPath.startsWith('file://')
+            ? cachedPath
+            : 'file://$cachedPath';
+      } else if (playPath.startsWith('/')) {
+        mediaUri = playPath.startsWith('file://')
+            ? playPath
+            : 'file://$playPath';
+      } else {
+        mediaUri = playPath;
+      }
+
+      final currentSource = nextP.state.playlist.medias.isNotEmpty
+          ? nextP.state.playlist.medias.first.uri
+          : '';
+
+      final bool isAlreadyPreloaded =
+          currentSource == playPath ||
+          currentSource == cleanNext ||
+          currentSource == mediaUri ||
+          currentSource == 'file://$playPath' ||
+          currentSource == 'file://$cleanNext';
+
+      if (!isAlreadyPreloaded) {
+        nextP.setVolume(_isMuted ? 0.0 : 100.0);
+        nextP.open(Media(mediaUri), play: false);
+        if (nextStory.isNetwork && cachedPath == null) {
+          VideoCacheManager.instance.preCacheVideo(cleanNext);
+        }
+      }
+
+      // Pre-extract first frame only for video
+      if (nextStory.isVideo && !nextStory.isAudio) {
+        VideoFrameManager.instance.extractFirstFrame(cleanNext);
+      }
+    } catch (e) {
+      debugPrint("Error preloading next story: $e");
+    }
+  }
+
+  void startOrResumeStory() {
+    if (_isDisposed) return;
+    if (!_hasStarted) {
+      _hasStarted = true;
+      _loadStory(_currentIndex);
+    } else {
+      resumeStory();
     }
   }
 
   void startImageTimer() {
     _cancelTimer();
     const duration = Duration(seconds: 5);
+    final initialTicks = (_imageProgress * duration.inMilliseconds / 50)
+        .round();
+    int currentTicks = initialTicks;
     _timer = Timer.periodic(const Duration(milliseconds: 50), (t) {
       if (_isDisposed) {
         t.cancel();
         return;
       }
-      _imageProgress = (t.tick * 50) / duration.inMilliseconds;
+      currentTicks++;
+      _imageProgress = (currentTicks * 50) / duration.inMilliseconds;
       if (_imageProgress >= 1.0) {
         _cancelTimer();
         nextStory();
@@ -314,12 +367,15 @@ class StoryDetailProvider extends ChangeNotifier {
   void _cancelTimer() => _timer?.cancel();
 
   void nextStory() {
+    if (_isDisposed) return;
     if (_currentIndex < stories.length - 1) {
       _loadStory(_currentIndex + 1);
     } else {
       _cancelTimer();
-      _playerA?.pause();
-      _playerB?.pause();
+      try {
+        _playerA?.pause();
+        _playerB?.pause();
+      } catch (_) {}
       if (onFinished != null) {
         onFinished!();
       }
@@ -327,43 +383,62 @@ class StoryDetailProvider extends ChangeNotifier {
   }
 
   void previousStory() {
+    if (_isDisposed) return;
     if (_currentIndex > 0) {
       _loadStory(_currentIndex - 1);
+    } else {
+      if (onPreviousAtStart != null) {
+        onPreviousAtStart!();
+      }
     }
   }
 
   void toggleMute() {
+    if (_isDisposed) return;
     _isMuted = !_isMuted;
-    _playerA?.setVolume(_isMuted ? 0.0 : 100.0);
-    _playerB?.setVolume(_isMuted ? 0.0 : 100.0);
+    try {
+      _playerA?.setVolume(_isMuted ? 0.0 : 100.0);
+      _playerB?.setVolume(_isMuted ? 0.0 : 100.0);
+    } catch (_) {}
     notifyListeners();
   }
 
   void togglePlayPause() {
+    if (_isDisposed) return;
     final p = player;
     if (p == null) return;
-    if (_isPlaying) {
-      p.pause();
-    } else {
-      p.play();
-    }
+    try {
+      if (_isPlaying) {
+        p.pause();
+      } else {
+        p.play();
+      }
+    } catch (_) {}
   }
 
   void pauseStory() {
+    if (_isDisposed || stories.isEmpty) return;
+    if (_currentIndex < 0 || _currentIndex >= stories.length) return;
     final story = stories[_currentIndex];
     if (story.isImage) {
       _cancelTimer();
     } else {
-      player?.pause();
+      try {
+        player?.pause();
+      } catch (_) {}
     }
   }
 
   void resumeStory() {
+    if (_isDisposed || stories.isEmpty) return;
+    if (_currentIndex < 0 || _currentIndex >= stories.length) return;
     final story = stories[_currentIndex];
     if (story.isImage) {
       startImageTimer();
     } else {
-      player?.play();
+      try {
+        player?.play();
+      } catch (_) {}
     }
   }
 
@@ -371,8 +446,10 @@ class StoryDetailProvider extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _cancelTimer();
-    _playerA?.dispose();
-    _playerB?.dispose();
+    try {
+      _playerA?.dispose();
+      _playerB?.dispose();
+    } catch (_) {}
     super.dispose();
   }
 }

@@ -21,53 +21,58 @@ class CategorySectionHeader extends StatelessWidget {
         children: [
           // Left Side: Image and Title
           Expanded(
-            child: Row(
-              children: [
-                Container(
-                  height: 50,
-                  width: 50,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.grey[300], // Background color when no image
-                    image: imagePath != null && imagePath!.isNotEmpty
-                        ? DecorationImage(
-                            image: imagePath!.startsWith('http')
-                                ? NetworkImage(imagePath!) as ImageProvider
-                                : AssetImage(imagePath!),
-                            fit: BoxFit.cover,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onSeeMoreTap,
+              child: Row(
+                children: [
+                  Container(
+                    height: 50,
+                    width: 50,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.grey[300], // Background color when no image
+                      image: imagePath != null && imagePath!.isNotEmpty
+                          ? DecorationImage(
+                              image: imagePath!.startsWith('http')
+                                  ? NetworkImage(imagePath!) as ImageProvider
+                                  : AssetImage(imagePath!),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: imagePath == null || imagePath!.isEmpty
+                        ? const Icon(
+                            Icons.image_not_supported,
+                            size: 24,
+                            color: Colors.grey,
                           )
                         : null,
                   ),
-                  child: imagePath == null || imagePath!.isEmpty
-                      ? const Icon(
-                          Icons.image_not_supported,
-                          size: 24,
-                          color: Colors.grey,
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF2B2B2B),
-                      fontSize: 22,
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w600,
-                      height: 1.29,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF2B2B2B),
+                        fontSize: 22,
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        height: 1.29,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 16),
 
           // Right Side: Voir plus Link
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: onSeeMoreTap,
             child: Row(
               children: [

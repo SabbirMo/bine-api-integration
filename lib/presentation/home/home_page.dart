@@ -463,7 +463,10 @@ class _AccueilScreenState extends State<AccueilScreen>
 
                     // Product Sections
                     ...homeData.productSections.map((section) {
-                      return ProductSectionWidget(section: section);
+                      return ProductSectionWidget(
+                        section: section,
+                        allSections: homeData.productSections,
+                      );
                     }),
 
                     const SizedBox(height: 20),
@@ -617,12 +620,95 @@ class _AccueilScreenState extends State<AccueilScreen>
     }
   }
 
+  StoryGroup _mapCategoryToStoryGroup(StoryCategoryModel cat) {
+    String catImg = cat.imageUrl ?? '';
+    if (catImg.isNotEmpty && !catImg.startsWith('http')) {
+      final base = BaseUrl.baseUrl;
+      catImg = catImg.startsWith('/') ? '$base$catImg' : '$base/$catImg';
+    }
+
+    final String type = (cat.type ?? '').toLowerCase().trim();
+    final bool isVideo = type == 'video';
+    final bool isAudio = type == 'audio';
+
+    final mappedStories = cat.stories
+        .where((s) => s.effectiveMediaUrl.trim().isNotEmpty)
+        .map((s) {
+          String url = s.effectiveMediaUrl;
+          if (url.isNotEmpty && !url.startsWith('http')) {
+            final base = BaseUrl.baseUrl;
+            url = url.startsWith('/') ? '$base$url' : '$base/$url';
+          }
+
+          final String cType = (s.contentType ?? '').toLowerCase().trim();
+          final String lowerUrl = url.toLowerCase();
+          bool isVid =
+              cType == 'video' ||
+              isVideo ||
+              lowerUrl.contains('.m3u8') ||
+              lowerUrl.contains('.mp4') ||
+              lowerUrl.endsWith('.mov') ||
+              lowerUrl.endsWith('.webm') ||
+              lowerUrl.endsWith('.mkv') ||
+              lowerUrl.endsWith('.avi');
+          bool isImg =
+              cType == 'image' ||
+              lowerUrl.endsWith('.png') ||
+              lowerUrl.endsWith('.jpg') ||
+              lowerUrl.endsWith('.jpeg') ||
+              lowerUrl.endsWith('.webp') ||
+              lowerUrl.endsWith('.gif');
+          bool isAud =
+              cType == 'audio' ||
+              lowerUrl.endsWith('.mp3') ||
+              lowerUrl.endsWith('.wav') ||
+              lowerUrl.endsWith('.aac') ||
+              lowerUrl.endsWith('.m4a');
+
+          if (!isVid && !isImg && !isAud) {
+            isImg = true;
+          }
+
+          if (isVid && url.isNotEmpty) {
+            VideoCacheManager.instance.preCacheVideo(url);
+            VideoFrameManager.instance.extractFirstFrame(url);
+          }
+
+          return StoryContent(
+            id: s.id,
+            url: url,
+            fallbackUrl: s.mediaUrl,
+            thumbnailUrl: null,
+            isVideo: isVid,
+            isAudio: isAud,
+            isImage: isImg,
+            isNetwork: url.startsWith('http'),
+            createdAt: s.createdAt,
+          );
+        })
+        .toList();
+
+    return StoryGroup(
+      categoryId: cat.id,
+      categoryName: cat.name ?? "Story",
+      categoryImage: catImg.isNotEmpty ? catImg : "",
+      stories: mappedStories,
+      isVideo: isVideo,
+      isAudio: isAudio,
+    );
+  }
+
   Widget _buildStoryListDynamic(List<StoryCategoryModel> storyCategories) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _precacheStoryThumbnails(storyCategories);
       }
     });
+
+    final allGroups = storyCategories
+        .map((cat) => _mapCategoryToStoryGroup(cat))
+        .where((g) => g.stories.isNotEmpty)
+        .toList();
 
     return SizedBox(
       height: 120,
@@ -633,95 +719,8 @@ class _AccueilScreenState extends State<AccueilScreen>
         itemCount: storyCategories.length,
         itemBuilder: (context, index) {
           final cat = storyCategories[index];
-
-          // Resolve absolute URL for category image if it is relative
-          String catImg = cat.imageUrl ?? '';
-          if (catImg.isNotEmpty && !catImg.startsWith('http')) {
-            final base = BaseUrl.baseUrl;
-            if (catImg.startsWith('/')) {
-              catImg = '$base$catImg';
-            } else {
-              catImg = '$base/$catImg';
-            }
-          }
-
-          final String type = (cat.type ?? '').toLowerCase().trim();
-          final bool isVideo = type == 'video';
-          final bool isAudio = type == 'audio';
-
-          // Map API stories to StoryContent list
-          final mappedStories = cat.stories
-              .where((s) => s.effectiveMediaUrl.trim().isNotEmpty)
-              .map((s) {
-                String url = s.effectiveMediaUrl;
-                // Resolve absolute URL for media URL if it is relative
-                if (url.isNotEmpty && !url.startsWith('http')) {
-                  final base = BaseUrl.baseUrl;
-                  if (url.startsWith('/')) {
-                    url = '$base$url';
-                  } else {
-                    url = '$base/$url';
-                  }
-                }
-
-                final String cType = (s.contentType ?? '').toLowerCase().trim();
-                final String lowerUrl = url.toLowerCase();
-                bool isVid =
-                    cType == 'video' ||
-                    isVideo ||
-                    lowerUrl.contains('.m3u8') ||
-                    lowerUrl.contains('.mp4') ||
-                    lowerUrl.endsWith('.mov') ||
-                    lowerUrl.endsWith('.webm') ||
-                    lowerUrl.endsWith('.mkv') ||
-                    lowerUrl.endsWith('.avi');
-                bool isImg =
-                    cType == 'image' ||
-                    lowerUrl.endsWith('.png') ||
-                    lowerUrl.endsWith('.jpg') ||
-                    lowerUrl.endsWith('.jpeg') ||
-                    lowerUrl.endsWith('.webp') ||
-                    lowerUrl.endsWith('.gif');
-                bool isAud =
-                    cType == 'audio' ||
-                    lowerUrl.endsWith('.mp3') ||
-                    lowerUrl.endsWith('.wav') ||
-                    lowerUrl.endsWith('.aac') ||
-                    lowerUrl.endsWith('.m4a');
-
-                // Fallback: if none is detected, treat as image
-                if (!isVid && !isImg && !isAud) {
-                  isImg = true;
-                }
-
-                String? storyThumb = s.thumbnailUrl;
-                if (storyThumb != null &&
-                    storyThumb.trim().isNotEmpty &&
-                    !storyThumb.startsWith('http')) {
-                  final base = BaseUrl.baseUrl;
-                  storyThumb = storyThumb.startsWith('/')
-                      ? '$base$storyThumb'
-                      : '$base/$storyThumb';
-                }
-
-                if (isVid && url.isNotEmpty) {
-                  VideoCacheManager.instance.preCacheVideo(url);
-                  VideoFrameManager.instance.extractFirstFrame(url);
-                }
-
-                return StoryContent(
-                  id: s.id,
-                  url: url,
-                  fallbackUrl: s.mediaUrl,
-                  thumbnailUrl: null, // No external catalog thumbnail
-                  isVideo: isVid,
-                  isAudio: isAud,
-                  isImage: isImg,
-                  isNetwork: url.startsWith('http'),
-                  createdAt: s.createdAt,
-                );
-              })
-              .toList();
+          final catGroup = _mapCategoryToStoryGroup(cat);
+          final mappedStories = catGroup.stories;
 
           final int sCount = mappedStories.isNotEmpty
               ? mappedStories.length
@@ -729,26 +728,29 @@ class _AccueilScreenState extends State<AccueilScreen>
 
           final sItem = StoryItem(
             title: cat.name ?? "Story",
-            imagePath: catImg.isNotEmpty ? catImg : "assets/images/footbal.jpg",
+            imagePath: catGroup.categoryImage,
             isDashed: sCount > 1,
             storyCount: sCount,
-            isVideo: isVideo,
-            isAudio: isAudio,
+            isVideo: catGroup.isVideo,
+            isAudio: catGroup.isAudio,
           );
 
           return InkWell(
             onTap: () async {
               if (mappedStories.isEmpty) return; // Prevent opening if empty
+
+              int initialGroupIndex = allGroups.indexWhere(
+                (g) => g.categoryId == cat.id,
+              );
+              if (initialGroupIndex < 0) initialGroupIndex = 0;
+
               FeedVideoManager.instance.pauseAll();
               await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => StoryDetailScreen(
-                    stories: mappedStories,
-                    userName: cat.name ?? "Story",
-                    userProfile: catImg.isNotEmpty
-                        ? catImg
-                        : "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg",
+                    storyGroups: allGroups,
+                    initialGroupIndex: initialGroupIndex,
                   ),
                 ),
               );
@@ -764,8 +766,13 @@ class _AccueilScreenState extends State<AccueilScreen>
 
 class ProductSectionWidget extends StatefulWidget {
   final ProductSectionModel section;
+  final List<ProductSectionModel>? allSections;
 
-  const ProductSectionWidget({super.key, required this.section});
+  const ProductSectionWidget({
+    super.key,
+    required this.section,
+    this.allSections,
+  });
 
   @override
   State<ProductSectionWidget> createState() => _ProductSectionWidgetState();
@@ -1065,51 +1072,95 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
                 FeedVideoManager.instance.pauseAll();
 
-                final convertedProducts = allProducts.map((p) {
-                  final full = productProvider.getCachedProduct(p.id);
+                final sectionsToUse =
+                    (widget.allSections != null &&
+                        widget.allSections!.isNotEmpty)
+                    ? widget.allSections!
+                    : [widget.section];
 
-                  if (full != null) {
-                    return full;
-                  }
+                final List<shop_model.ProductModel> convertedProducts = [];
+                final Set<int> addedIds = {};
+                int targetInitialIndex = 0;
 
-                  List<shop_model.MediaModel> mediaList = [];
-                  if (p.safeMedia.isNotEmpty) {
-                    mediaList = p.safeMedia;
-                  } else if (p.effectiveVideoUrl.isNotEmpty) {
-                    mediaList.add(
-                      shop_model.MediaModel(
-                        id: 0,
-                        mediaType: 'video',
-                        mediaUrl: _resolveUrl(p.effectiveVideoUrl),
-                        thumbnailUrl: p.mainImage,
+                for (final sec in sectionsToUse) {
+                  for (final p in sec.products) {
+                    if (addedIds.contains(p.id)) continue;
+                    addedIds.add(p.id);
+
+                    if (sec.categoryId == widget.section.categoryId &&
+                        p.id == product.id) {
+                      targetInitialIndex = convertedProducts.length;
+                    }
+
+                    final full = productProvider.getCachedProduct(p.id);
+                    if (full != null) {
+                      convertedProducts.add(full);
+                      continue;
+                    }
+
+                    List<shop_model.MediaModel> mediaList = [];
+                    if (p.safeMedia.isNotEmpty) {
+                      mediaList = p.safeMedia;
+                    } else if (p.effectiveVideoUrl.isNotEmpty) {
+                      mediaList = [
+                        shop_model.MediaModel(
+                          id: 0,
+                          mediaType: 'video',
+                          mediaUrl: _resolveUrl(p.effectiveVideoUrl),
+                          thumbnailUrl: p.mainImage,
+                        ),
+                      ];
+                    }
+
+                    convertedProducts.add(
+                      shop_model.ProductModel(
+                        id: p.id,
+                        productName: p.productName ?? '',
+                        categoryId: sec.categoryId,
+                        categoryName: sec.categoryName ?? '',
+                        sellingPrice: p.sellingPrice ?? '0',
+                        discountPercentage: p.discountPercentage ?? '0',
+                        priceAfterDiscount:
+                            (p.priceAfterDiscount != null &&
+                                p.priceAfterDiscount!.isNotEmpty)
+                            ? p.priceAfterDiscount!
+                            : (p.sellingPrice ?? '0'),
+                        status: p.status ?? '',
+                        mainImage: p.mainImage,
+                        media: mediaList,
                       ),
                     );
                   }
+                }
 
-                  return shop_model.ProductModel(
-                    id: p.id,
-                    productName: p.productName ?? '',
-                    categoryId: widget.section.categoryId,
-                    categoryName: widget.section.categoryName ?? '',
-                    sellingPrice: p.sellingPrice ?? '0',
-                    discountPercentage: p.discountPercentage ?? '0',
-                    priceAfterDiscount:
-                        (p.priceAfterDiscount != null &&
-                            p.priceAfterDiscount!.isNotEmpty)
-                        ? p.priceAfterDiscount!
-                        : (p.sellingPrice ?? '0'),
-                    status: p.status ?? '',
-                    mainImage: p.mainImage,
-                    media: mediaList,
-                  );
-                }).toList();
+                // Precache clicked video and adjacent videos immediately for instant smooth playback
+                if (convertedProducts.isNotEmpty &&
+                    targetInitialIndex >= 0 &&
+                    targetInitialIndex < convertedProducts.length) {
+                  final indices = [
+                    targetInitialIndex,
+                    targetInitialIndex + 1,
+                    targetInitialIndex + 2,
+                    targetInitialIndex - 1,
+                  ];
+                  for (final idx in indices) {
+                    if (idx >= 0 && idx < convertedProducts.length) {
+                      final p = convertedProducts[idx];
+                      final vUrl = p.effectiveVideoUrl;
+                      if (vUrl.isNotEmpty) {
+                        VideoCacheManager.instance.preCacheVideo(vUrl);
+                        VideoFrameManager.instance.extractFirstFrame(vUrl);
+                      }
+                    }
+                  }
+                }
 
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ProductDetailsScreen(
                       allProducts: convertedProducts,
-                      initialProductIndex: index,
+                      initialProductIndex: targetInitialIndex,
                     ),
                   ),
                 );

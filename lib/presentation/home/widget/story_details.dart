@@ -1,568 +1,262 @@
 import 'dart:math';
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:media_kit_video/media_kit_video.dart';
-import 'package:provider/provider.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/core/video/video_frame_manager.dart';
-import 'package:binetatour/providers/story_provider.dart';
-import 'package:binetatour/providers/story_detail_provider.dart';
+import 'package:binetatour/presentation/home/widget/story/story_models.dart';
+import 'package:binetatour/presentation/home/widget/story/story_group_page_view.dart';
 
-class StoryDetailScreen extends StatelessWidget {
-  final List<StoryContent> stories;
+// Re-export models so all other files retain backwards compatibility
+export 'package:binetatour/presentation/home/widget/story/story_models.dart';
+export 'package:binetatour/presentation/home/widget/story/story_audio_wave.dart';
+export 'package:binetatour/presentation/home/widget/story/story_detail_content.dart';
+export 'package:binetatour/presentation/home/widget/story/story_group_page_view.dart';
+
+/// Multi-Category Facebook / Instagram-like Story Viewer
+class StoryDetailScreen extends StatefulWidget {
+  final List<StoryGroup>? storyGroups;
+  final int initialGroupIndex;
+
+  // Backwards compatibility for single-category invocation
+  final List<StoryContent>? stories;
   final String userName;
   final String userProfile;
 
   const StoryDetailScreen({
     super.key,
-    required this.stories,
+    this.storyGroups,
+    this.initialGroupIndex = 0,
+    this.stories,
     this.userName = "User Name",
-    this.userProfile =
-        "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg",
+    this.userProfile = "",
   });
 
   @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => StoryDetailProvider(
-        stories: stories,
-        storyProvider: context.read<StoryProvider>(),
-        onFinished: () {
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
-          }
-        },
-      ),
-      child: _StoryDetailContent(userName: userName, userProfile: userProfile),
-    );
-  }
+  State<StoryDetailScreen> createState() => _StoryDetailScreenState();
 }
 
-class _StoryDetailContent extends StatelessWidget {
-  final String userName;
-  final String userProfile;
-
-  const _StoryDetailContent({
-    required this.userName,
-    required this.userProfile,
-  });
-
-  Widget _buildNavigationLayer(
-    BuildContext context,
-    StoryDetailProvider provider,
-    StoryContent story,
-  ) {
-    if (story.isAudio) {
-      return Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: provider.previousStory,
-              onLongPressStart: (_) => provider.pauseStory(),
-              onLongPressEnd: (_) => provider.resumeStory(),
-              child: const SizedBox.expand(),
-            ),
-          ),
-          const Expanded(flex: 4, child: SizedBox.expand()),
-          Expanded(
-            flex: 3,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: provider.nextStory,
-              onLongPressStart: (_) => provider.pauseStory(),
-              onLongPressEnd: (_) => provider.resumeStory(),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapDown: (details) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        if (details.globalPosition.dx < screenWidth / 3) {
-          provider.previousStory();
-        } else {
-          provider.nextStory();
-        }
-      },
-      onLongPressStart: (_) => provider.pauseStory(),
-      onLongPressEnd: (_) => provider.resumeStory(),
-      child: const SizedBox.expand(),
-    );
-  }
-
-  Widget _buildMedia(
-    BuildContext context,
-    StoryDetailProvider provider,
-    StoryContent story,
-  ) {
-    final isLoading = provider.isLoading;
-    if (story.isImage) {
-      if (story.isNetwork) {
-        return Image.network(
-          story.url,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) {
-            return const Center(
-              child: Icon(Icons.broken_image, color: Colors.white, size: 50),
-            );
-          },
-        );
-      } else {
-        return Image.asset(
-          story.url,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          errorBuilder: (context, error, stackTrace) {
-            return const Center(
-              child: Icon(Icons.broken_image, color: Colors.white, size: 50),
-            );
-          },
-        );
-      }
-    }
-    if (story.isAudio) return _buildAudioPlaceholder(provider);
-    if (story.isVideo && provider.videoController != null) {
-      final double videoWidth =
-          provider.player!.state.width?.toDouble() ?? 16.0;
-      final double videoHeight =
-          provider.player!.state.height?.toDouble() ?? 9.0;
-      final cleanUrl = story.url;
-
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          // 1. Video Player with blurred background (fills the entire screen seamlessly)
-          SizedBox.expand(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Blurred Background Video
-                Positioned.fill(
-                  child: ClipRect(
-                    child: ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: videoWidth,
-                          height: videoHeight,
-                          child: Video(
-                            key: ValueKey('blur_${provider.currentIndex}'),
-                            controller: provider.videoController!,
-                            controls: NoVideoControls,
-                            fill: Colors.transparent,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Dark overlay to dim the background
-                Positioned.fill(
-                  child: Container(color: Colors.black.withValues(alpha: 0.25)),
-                ),
-                // Foreground Clear Video
-                Center(
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: videoWidth,
-                      height: videoHeight,
-                      child: Video(
-                        key: ValueKey('fg_${provider.currentIndex}'),
-                        controller: provider.videoController!,
-                        controls: NoVideoControls,
-                        fill: Colors.transparent,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 2. Pre-decoded Video First Frame (Extracted strictly from video file, NO external catalog thumbnail!)
-          if (isLoading)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black,
-                child: ListenableBuilder(
-                  listenable: VideoFrameManager.instance,
-                  builder: (context, _) {
-                    final frameBytes = VideoFrameManager.instance
-                        .getCachedFrame(cleanUrl);
-
-                    if (frameBytes != null && frameBytes.isNotEmpty) {
-                      return Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Blurred first frame background
-                          Positioned.fill(
-                            child: ClipRect(
-                              child: ImageFiltered(
-                                imageFilter: ImageFilter.blur(
-                                  sigmaX: 15.0,
-                                  sigmaY: 15.0,
-                                ),
-                                child: Image.memory(
-                                  frameBytes,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: Container(
-                              color: Colors.black.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          // Clear first frame foreground
-                          Center(
-                            child: Image.memory(
-                              frameBytes,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-
-                    // Trigger extraction if not already cached
-                    VideoFrameManager.instance.extractFirstFrame(cleanUrl);
-
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFFF6900),
-                        strokeWidth: 3,
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-        ],
-      );
-    }
-    return const CircularProgressIndicator(color: Colors.white);
-  }
-
-  Widget _buildAudioPlaceholder(StoryDetailProvider provider) {
-    if (provider.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-      );
-    }
-    return Container(
-      color: Colors.black,
-      child: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _StoryAudioWave(isPlaying: provider.isPlaying, isReversed: true),
-            const SizedBox(width: 16),
-            GestureDetector(
-              onTap: provider.togglePlayPause,
-              child: Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFFF6900).withValues(alpha: 0.4),
-                    width: 2,
-                  ),
-                  color: Colors.transparent,
-                ),
-                child: Center(
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFFFF6900),
-                    ),
-                    child: Icon(
-                      provider.isPlaying
-                          ? Icons.volume_up_rounded
-                          : Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            _StoryAudioWave(isPlaying: provider.isPlaying, isReversed: false),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressBars(StoryDetailProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      child: Row(
-        children: List.generate(provider.stories.length, (index) {
-          double val = 0.0;
-          if (index < provider.currentIndex) {
-            val = 1.0;
-          } else if (index == provider.currentIndex) {
-            final story = provider.stories[index];
-            val = (story.isVideo || story.isAudio)
-                ? provider.currentMediaProgress
-                : provider.imageProgress;
-          }
-          return Expanded(
-            child: Container(
-              height: 2,
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(
-                color: Colors.white30,
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: val.clamp(0.0, 1.0),
-                child: Container(color: Colors.white),
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context, StoryDetailProvider provider) {
-    final story = provider.stories[provider.currentIndex];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundImage: userProfile.startsWith('http')
-                ? NetworkImage(userProfile)
-                : AssetImage(userProfile) as ImageProvider,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    userName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                if ((story.createdAt ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    story.createdAt!,
-                    maxLines: 1,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(),
-            icon: Icon(
-              provider.isMuted ? Icons.volume_off : Icons.volume_up,
-              color: Colors.white,
-              size: 22,
-            ),
-            onPressed: provider.toggleMute,
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(),
-            icon: const Icon(Icons.close, color: Colors.white, size: 24),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final provider = context.watch<StoryDetailProvider>();
-    final story = provider.stories[provider.currentIndex];
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. Media Content (no gesture here)
-          Center(child: _buildMedia(context, provider, story)),
-
-          // 2. Navigation zones (long press + tap left/right)
-          //    For audio: center 40% is excluded so play button works freely
-          _buildNavigationLayer(context, provider, story),
-
-          // 3. UI Overlay (Header + Progress)
-          SafeArea(
-            child: Column(
-              children: [
-                _buildProgressBars(provider),
-                _buildHeader(context, provider),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class StoryContent {
-  final int? id;
-  final String url;
-  final String? fallbackUrl;
-  final String? thumbnailUrl;
-  final bool isVideo;
-  final bool isAudio;
-  final bool isImage;
-  final bool isNetwork;
-  final String? createdAt;
-
-  StoryContent({
-    this.id,
-    required this.url,
-    this.fallbackUrl,
-    this.thumbnailUrl,
-    required this.isVideo,
-    required this.isAudio,
-    required this.isImage,
-    this.isNetwork = false,
-    this.createdAt,
-  });
-}
-
-class _StoryAudioWave extends StatefulWidget {
-  final bool isPlaying;
-  final bool isReversed;
-
-  const _StoryAudioWave({required this.isPlaying, required this.isReversed});
-
-  @override
-  State<_StoryAudioWave> createState() => _StoryAudioWaveState();
-}
-
-class _StoryAudioWaveState extends State<_StoryAudioWave>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _StoryDetailScreenState extends State<StoryDetailScreen> {
+  late PageController _pageController;
+  late List<StoryGroup> _effectiveGroups;
+  late int _currentGroupIndex;
+  bool _isPageAnimating = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    if (widget.isPlaying) _controller.repeat(reverse: true);
+    if (widget.storyGroups != null && widget.storyGroups!.isNotEmpty) {
+      _effectiveGroups = widget.storyGroups!;
+      _currentGroupIndex = widget.initialGroupIndex.clamp(
+        0,
+        _effectiveGroups.length - 1,
+      );
+    } else if (widget.stories != null && widget.stories!.isNotEmpty) {
+      _effectiveGroups = [
+        StoryGroup(
+          categoryId: 0,
+          categoryName: widget.userName,
+          categoryImage: widget.userProfile,
+          stories: widget.stories!,
+        ),
+      ];
+      _currentGroupIndex = 0;
+    } else {
+      _effectiveGroups = [];
+      _currentGroupIndex = 0;
+    }
+
+    _pageController = PageController(initialPage: _currentGroupIndex);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preloadNearbyGroups(_currentGroupIndex);
+    });
   }
 
-  @override
-  void didUpdateWidget(_StoryAudioWave oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isPlaying != oldWidget.isPlaying) {
-      if (widget.isPlaying) {
-        _controller.repeat(reverse: true);
-      } else {
-        _controller.stop();
+  void _preloadNearbyGroups(int centerIndex) {
+    if (!mounted || _effectiveGroups.isEmpty) return;
+    final indicesToPreload = [
+      centerIndex,
+      centerIndex + 1,
+      centerIndex + 2,
+      centerIndex - 1,
+    ];
+
+    for (final idx in indicesToPreload) {
+      if (idx >= 0 && idx < _effectiveGroups.length) {
+        final group = _effectiveGroups[idx];
+        if (group.categoryImage.isNotEmpty &&
+            group.categoryImage.startsWith('http')) {
+          precacheImage(
+            NetworkImage(group.categoryImage),
+            context,
+          ).catchError((_) {});
+        }
+        for (final story in group.stories) {
+          if (story.isImage &&
+              story.isNetwork &&
+              story.url.startsWith('http')) {
+            precacheImage(NetworkImage(story.url), context).catchError((_) {});
+          } else if (story.isVideo && story.url.startsWith('http')) {
+            VideoCacheManager.instance.preCacheVideo(story.url);
+            VideoFrameManager.instance.extractFirstFrame(story.url);
+          }
+        }
       }
+    }
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentGroupIndex = index;
+    });
+    _preloadNearbyGroups(index);
+    _isPageAnimating = false;
+  }
+
+  void _goToNextCategory() {
+    if (!mounted || _isPageAnimating) return;
+    if (!_pageController.hasClients) return;
+    if (_currentGroupIndex < _effectiveGroups.length - 1) {
+      _isPageAnimating = true;
+      _pageController
+          .animateToPage(
+            _currentGroupIndex + 1,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            if (mounted) {
+              _isPageAnimating = false;
+            }
+          })
+          .catchError((_) {
+            if (mounted) {
+              _isPageAnimating = false;
+            }
+          });
+    } else {
+      _isPageAnimating = false;
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  void _goToPrevCategory() {
+    if (!mounted || _isPageAnimating) return;
+    if (!_pageController.hasClients) return;
+    if (_currentGroupIndex > 0) {
+      _isPageAnimating = true;
+      _pageController
+          .animateToPage(
+            _currentGroupIndex - 1,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            if (mounted) {
+              _isPageAnimating = false;
+            }
+          })
+          .catchError((_) {
+            if (mounted) {
+              _isPageAnimating = false;
+            }
+          });
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<double> sideHeights = [
-      4,
-      6,
-      8,
-      12,
-      10,
-      16,
-      20,
-      14,
-      24,
-      30,
-      22,
-      36,
-      44,
-      32,
-      50,
-      40,
-    ];
-    final List<double> actualHeights = widget.isReversed
-        ? sideHeights
-        : sideHeights.reversed.toList();
+    if (_effectiveGroups.isEmpty) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text(
+            "No stories available",
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    }
 
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: List.generate(actualHeights.length, (index) {
-            final double factor = sin(_controller.value * pi * 2 + index);
-            final double baseH = actualHeights[index];
-            double currentHeight = widget.isPlaying
-                ? baseH + (factor * (baseH * 0.3))
-                : baseH * 0.3;
-            currentHeight = currentHeight.clamp(2.0, 80.0);
-            final double opacity = (baseH / 50).clamp(0.2, 1.0);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: AnimatedBuilder(
+        animation: _pageController,
+        builder: (context, _) {
+          return PageView.builder(
+            controller: _pageController,
+            itemCount: _effectiveGroups.length,
+            onPageChanged: _onPageChanged,
+            physics: const SnappyStoryScrollPhysics(),
+            itemBuilder: (context, index) {
+              final group = _effectiveGroups[index];
 
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 1.5),
-              width: 3,
-              height: currentHeight,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF6900).withValues(alpha: opacity),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            );
-          }),
-        );
-      },
+              double pageOffset = 0.0;
+              if (_pageController.position.haveDimensions &&
+                  _pageController.position.viewportDimension > 0) {
+                pageOffset =
+                    (_pageController.page ?? _currentGroupIndex.toDouble()) -
+                    index;
+              } else {
+                pageOffset = (_currentGroupIndex - index).toDouble();
+              }
+
+              // True Facebook 3D Cube 90-degree perspective rotation
+              final double angle = (pageOffset * (pi / 2)).clamp(
+                -pi / 2,
+                pi / 2,
+              );
+              final isLeaving = pageOffset > 0;
+              final matrix = Matrix4.identity()
+                ..setEntry(3, 2, 0.001) // 3D perspective depth
+                ..rotateY(angle);
+
+              final double shadowOpacity =
+                  (pageOffset.abs() * 0.5).clamp(0.0, 0.6);
+
+              return Transform(
+                transform: matrix,
+                alignment: isLeaving
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    StoryGroupPageView(
+                      key: ValueKey('story_group_${group.categoryId}_$index'),
+                      group: group,
+                      isActive: (index == _currentGroupIndex),
+                      onNextCategory: _goToNextCategory,
+                      onPrevCategory: _goToPrevCategory,
+                      onClose: () {
+                        if (Navigator.canPop(context)) {
+                          Navigator.pop(context);
+                        }
+                      },
+                    ),
+                    // Realistic 3D Cube face shadow overlay
+                    if (shadowOpacity > 0.01)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Container(
+                            color: Colors.black.withValues(alpha: shadowOpacity),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
