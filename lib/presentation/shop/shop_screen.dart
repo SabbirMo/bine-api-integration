@@ -282,11 +282,15 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
         color: const Color(0xFFFF6900),
         onRefresh: () async {
           context.read<ProductProvider>().clearCache();
-          await Future.wait([
-            context.read<CategoryProvider>().fetchCategories(),
-            context.read<ProductProvider>().fetchProducts(),
-            context.read<CartProvider>().fetchCart(showLoading: false),
-          ]);
+          try {
+            await Future.wait([
+              context.read<CategoryProvider>().fetchCategories(),
+              context.read<ProductProvider>().fetchProducts(),
+              context.read<CartProvider>().fetchCart(showLoading: false),
+            ]).timeout(const Duration(seconds: 10));
+          } catch (e) {
+            debugPrint("Shop refresh timeout or network error: $e");
+          }
         },
         child: SafeArea(
           bottom: true,
@@ -299,7 +303,8 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                   ? (pixels / maxScroll).clamp(0.0, 1.0)
                   : 0.0;
               FeedVideoManager.instance.updateScrollRatio(ratio);
-              final isBottom = maxScroll > 0 &&
+              final isBottom =
+                  maxScroll > 0 &&
                   (scrollInfo.metrics.extentAfter <= 50 ||
                       pixels >= maxScroll - 50);
               FeedVideoManager.instance.setIsAtBottom(isBottom);

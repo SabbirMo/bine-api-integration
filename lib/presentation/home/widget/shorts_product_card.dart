@@ -295,8 +295,7 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
+                    Row(
                       children: [
                         Text(
                           widget.price,
@@ -309,16 +308,17 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                         if (widget.oldPrice != null &&
                             widget.oldPrice!.isNotEmpty) ...[
                           const SizedBox(width: 6),
-                          Text(
-                            widget.oldPrice!.replaceAll(
-                              RegExp(r'\s*FCFA', caseSensitive: false),
-                              '',
-                            ),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.65),
-                              fontSize: 10,
-                              decoration: TextDecoration.lineThrough,
-                              decorationThickness: 1.5,
+                          Expanded(
+                            child: Text(
+                              widget.oldPrice!,
+                              style: TextStyle(
+                                color: Colors.red.withValues(alpha: 0.65),
+                                fontSize: 10,
+                                decoration: TextDecoration.lineThrough,
+                                decorationThickness: 1.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],

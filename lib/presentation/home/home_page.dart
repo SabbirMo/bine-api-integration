@@ -41,16 +41,20 @@ class _AccueilScreenState extends State<AccueilScreen>
 
   Future<void> _refreshHomeData() async {
     context.read<ProductProvider>().clearCache();
-    await Future.wait([
-      context.read<HomeProvider>().fetchHomeData(),
-      context.read<CartProvider>().fetchCart(showLoading: false),
-      context.read<ProductProvider>().fetchProducts(),
-      context.read<CategoryProvider>().fetchCategories(),
-      context.read<StoreSettingsProvider>().fetchStoreSettings(),
-      context.read<NotificationProvider>().fetchNotifications(
-        forceRefresh: true,
-      ),
-    ]);
+    try {
+      await Future.wait([
+        context.read<HomeProvider>().fetchHomeData(),
+        context.read<CartProvider>().fetchCart(showLoading: false),
+        context.read<ProductProvider>().fetchProducts(),
+        context.read<CategoryProvider>().fetchCategories(),
+        context.read<StoreSettingsProvider>().fetchStoreSettings(),
+        context.read<NotificationProvider>().fetchNotifications(
+          forceRefresh: true,
+        ),
+      ]).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint("Home refresh timeout or network error: $e");
+    }
   }
 
   @override
