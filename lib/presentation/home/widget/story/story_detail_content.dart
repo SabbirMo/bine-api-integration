@@ -1,8 +1,6 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/providers/story_detail_provider.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/presentation/home/widget/story/story_audio_wave.dart';
@@ -108,7 +106,6 @@ class StoryDetailContent extends StatelessWidget {
           provider.player!.state.width?.toDouble() ?? 16.0;
       final double videoHeight =
           provider.player!.state.height?.toDouble() ?? 9.0;
-      final cleanUrl = story.url;
 
       return Stack(
         alignment: Alignment.center,
@@ -118,34 +115,8 @@ class StoryDetailContent extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                ListenableBuilder(
-                  listenable: VideoFrameManager.instance,
-                  builder: (context, _) {
-                    final frameBytes = VideoFrameManager.instance
-                        .getCachedFrame(cleanUrl);
-                    if (frameBytes != null && frameBytes.isNotEmpty) {
-                      return Positioned.fill(
-                        child: ClipRect(
-                          child: ImageFiltered(
-                            imageFilter: ImageFilter.blur(
-                              sigmaX: 8.0,
-                              sigmaY: 8.0,
-                            ),
-                            child: Image.memory(
-                              frameBytes,
-                              fit: BoxFit.cover,
-                              color: Colors.black.withValues(alpha: 0.35),
-                              colorBlendMode: BlendMode.darken,
-                              gaplessPlayback: true,
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    return Positioned.fill(
-                      child: Container(color: Colors.black),
-                    );
-                  },
+                Positioned.fill(
+                  child: Container(color: Colors.black),
                 ),
                 Positioned.fill(
                   child: Container(color: Colors.black.withValues(alpha: 0.25)),
@@ -171,56 +142,33 @@ class StoryDetailContent extends StatelessWidget {
             ),
           ),
 
-          // 2. Loading Indicator & Pre-decoded First Frame (NEVER a blank black screen!)
+          // 2. Loading Indicator (Shown seamlessly during loading)
           if (isLoading)
             Positioned.fill(
-              child: ListenableBuilder(
-                listenable: VideoFrameManager.instance,
-                builder: (context, _) {
-                  final frameBytes = VideoFrameManager.instance.getCachedFrame(
-                    cleanUrl,
-                  );
-
-                  Widget? backgroundWidget;
-                  if (frameBytes != null && frameBytes.isNotEmpty) {
-                    backgroundWidget = Center(
-                      child: Image.memory(
-                        frameBytes,
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                      ),
-                    );
-                  }
-
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (backgroundWidget != null)
-                        backgroundWidget
-                      else
-                        Container(color: Colors.black),
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(
-                                0xFFFF6900,
-                              ).withValues(alpha: 0.3),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: const CircularProgressIndicator(
-                            color: Color(0xFFFF6900),
-                            strokeWidth: 3.5,
-                          ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(color: Colors.black),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(
+                            0xFFFF6900,
+                          ).withValues(alpha: 0.3),
+                          width: 1.5,
                         ),
                       ),
-                    ],
-                  );
-                },
+                      child: const CircularProgressIndicator(
+                        color: Color(0xFFFF6900),
+                        strokeWidth: 3.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
         ],

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 class ProductContent {
   final String url;
+  final String? thumbnailUrl;
   final bool isVideo;
   final bool isImage;
   final bool isAudio;
@@ -12,6 +13,7 @@ class ProductContent {
 
   ProductContent({
     required this.url,
+    this.thumbnailUrl,
     required this.isVideo,
     required this.isImage,
     required this.isAudio,
@@ -42,7 +44,7 @@ class ProductMediaView extends StatelessWidget {
         child: ProductVideoItem(
           productId: productId,
           videoUrl: media.url,
-          thumbnailUrl: mainImage,
+          thumbnailUrl: media.thumbnailUrl ?? mainImage,
           isMuted: isMuted,
           isActive: isActive,
         ),

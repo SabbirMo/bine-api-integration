@@ -80,8 +80,14 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
         final isAud = m.mediaType.toLowerCase() == 'audio';
         final isImg = m.mediaType.toLowerCase() == 'image' && !isVid && !isAud;
 
+        final rawThumb = (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty)
+            ? m.thumbnailUrl!
+            : _product.effectiveThumbnailUrl;
+        final resolvedThumb = _resolveUrl(rawThumb);
+
         return ProductContent(
           url: resolvedUrl,
+          thumbnailUrl: resolvedThumb.isNotEmpty ? resolvedThumb : null,
           isVideo: isVid,
           isImage: isImg,
           isAudio: isAud,
@@ -102,9 +108,11 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
     final vUrl = _product.effectiveVideoUrl;
     if (vUrl.isNotEmpty) {
       final resolvedVid = _resolveUrl(vUrl);
+      final resolvedThumb = _resolveUrl(_product.effectiveThumbnailUrl);
       fallbackList.add(
         ProductContent(
           url: resolvedVid,
+          thumbnailUrl: resolvedThumb.isNotEmpty ? resolvedThumb : null,
           isVideo: true,
           isImage: false,
           isAudio: false,

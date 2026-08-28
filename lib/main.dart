@@ -22,11 +22,11 @@ import 'providers/notification_provider.dart';
 import 'providers/store_settings_provider.dart';
 
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }
 
@@ -36,9 +36,8 @@ void main() async {
   VisibilityDetectorController.instance.updateInterval =
       const Duration(milliseconds: 200);
 
-  // Pre-initialize and warm up disk video & thumbnail caches for 0ms cold-start playback
+  // Pre-initialize and warm up disk video cache for 0ms cold-start playback
   await VideoCacheManager.instance.init();
-  await VideoFrameManager.instance.init();
 
   await dotenv.load(fileName: ".env");
 

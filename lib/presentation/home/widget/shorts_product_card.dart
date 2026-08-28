@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 
 class ShortsProductCard extends StatefulWidget {
   final String keyString;
@@ -65,7 +64,6 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
         widget.keyString,
         widget.videoUrl,
       );
-      VideoFrameManager.instance.extractFirstFrame(widget.videoUrl);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _reportVisibility(1.0);
@@ -89,7 +87,6 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
           widget.keyString,
           widget.videoUrl,
         );
-        VideoFrameManager.instance.extractFirstFrame(widget.videoUrl);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _reportVisibility(1.0);
@@ -129,27 +126,31 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
   }
 
   Widget _buildVideoFirstFrame() {
-    return ListenableBuilder(
-      listenable: VideoFrameManager.instance,
-      builder: (context, _) {
-        final frameBytes = VideoFrameManager.instance.getCachedFrame(
-          widget.videoUrl,
-        );
-
-        if (frameBytes != null && frameBytes.isNotEmpty) {
-          return Image.memory(
-            frameBytes,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-          );
-        }
-
-        // Sleek minimal dark placeholder while extracting the actual video frame
-        return Container(
+    if (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty) {
+      return Image.network(
+        widget.thumbnailUrl!,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
           color: const Color(0xFF161616),
-          child: _buildBannerStyleLoading(),
-        );
-      },
+          child: const Center(
+            child: Icon(
+              Icons.shopping_bag_outlined,
+              color: Color(0xFF444444),
+              size: 32,
+            ),
+          ),
+        ),
+      );
+    }
+    return Container(
+      color: const Color(0xFF161616),
+      child: const Center(
+        child: Icon(
+          Icons.shopping_bag_outlined,
+          color: Color(0xFF444444),
+          size: 32,
+        ),
+      ),
     );
   }
 

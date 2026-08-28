@@ -1,6 +1,5 @@
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:binetatour/presentation/home/widget/category_section_header.dart';
 import 'package:binetatour/presentation/home/widget/circular_story_avatar.dart';
@@ -77,7 +76,6 @@ class _AccueilScreenState extends State<AccueilScreen>
   void initState() {
     super.initState();
     VideoCacheManager.instance.init();
-    VideoFrameManager.instance.init();
     WidgetsBinding.instance.addObserver(this);
 
     // Auto-refresh notifications and update bell count when a foreground notification is received
@@ -432,13 +430,7 @@ class _AccueilScreenState extends State<AccueilScreen>
                         child: AspectRatio(
                           aspectRatio: 16 / 9,
                           child: VideoPlaceholder(
-                            thumbnailUrl:
-                                (homeData.banner!.thumbnailUrl != null &&
-                                    homeData.banner!.thumbnailUrl!
-                                        .trim()
-                                        .isNotEmpty)
-                                ? homeData.banner!.thumbnailUrl
-                                : "https://static.vecteezy.com/system/resources/thumbnails/071/262/006/small_2x/close-up-of-a-person-walking-with-colorful-shopping-bags-in-a-bright-mall-free-video.jpg",
+                            thumbnailUrl: homeData.banner!.thumbnailUrl,
                             link: homeData.banner!.effectiveVideoUrl,
                             fallbackLink: homeData.banner!.videoUrl,
                           ),
@@ -687,7 +679,6 @@ class _AccueilScreenState extends State<AccueilScreen>
 
           if (isVid && url.isNotEmpty) {
             VideoCacheManager.instance.preCacheVideo(url);
-            VideoFrameManager.instance.extractFirstFrame(url);
           }
 
           return StoryContent(
@@ -809,6 +800,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _precacheSectionVideos();
       _notifySectionActiveCard();
+      _prefetchMissingThumbnails();
     });
   }
 
@@ -905,16 +897,24 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
   void _precacheSectionVideos() {
     final productProvider = context.read<ProductProvider>();
-    final List<String> videoUrls = [];
     for (final prod in widget.section.products) {
       final vUrl = _resolveProductVideo(prod, productProvider);
       if (vUrl.isNotEmpty) {
-        videoUrls.add(vUrl);
         VideoCacheManager.instance.preCacheVideo(vUrl);
       }
     }
-    if (videoUrls.isNotEmpty) {
-      VideoFrameManager.instance.preExtractBatch(videoUrls);
+  }
+
+  /// Silently fetch product details for cards that have no thumbnail/video.
+  /// When done, ProductProvider notifies listeners → section rebuilds with CDN thumbnail.
+  void _prefetchMissingThumbnails() {
+    if (!mounted) return;
+    final productProvider = context.read<ProductProvider>();
+    for (final prod in widget.section.products) {
+      final thumb = _resolveProductThumbnail(prod, productProvider);
+      if (thumb.isEmpty && prod.id > 0) {
+        productProvider.fetchProductDetails(prod.id).ignore();
+      }
     }
   }
 
@@ -975,10 +975,25 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     return '';
   }
 
-  String _resolveProductThumbnail(ProductModel product) {
+  String _resolveProductThumbnail(
+    ProductModel product,
+    ProductProvider productProvider,
+  ) {
+    // 1. Direct thumbnail from home API
     String tUrl = product.effectiveThumbnailUrl;
-    if (tUrl.isNotEmpty) {
-      return _resolveUrl(tUrl);
+    if (tUrl.isNotEmpty) return _resolveUrl(tUrl);
+
+    // 2. Cached product detail (fetched lazily) — has CDN thumbnail_url
+    final cached = productProvider.getCachedProduct(product.id);
+    if (cached != null) {
+      final cThumb = cached.effectiveThumbnailUrl;
+      if (cThumb.isNotEmpty) return _resolveUrl(cThumb);
+      // Also try thumbnail from media items
+      for (final m in cached.media) {
+        if (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty) {
+          return _resolveUrl(m.thumbnailUrl!);
+        }
+      }
     }
     return '';
   }
@@ -1048,7 +1063,10 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
             product,
             productProvider,
           );
-          final String resolvedThumbnail = _resolveProductThumbnail(product);
+          final String resolvedThumbnail = _resolveProductThumbnail(
+            product,
+            productProvider,
+          );
 
           double discPerc =
               double.tryParse(product.discountPercentage?.toString() ?? "0") ??
@@ -1152,7 +1170,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                       final vUrl = p.effectiveVideoUrl;
                       if (vUrl.isNotEmpty) {
                         VideoCacheManager.instance.preCacheVideo(vUrl);
-                        VideoFrameManager.instance.extractFirstFrame(vUrl);
                       }
                     }
                   }

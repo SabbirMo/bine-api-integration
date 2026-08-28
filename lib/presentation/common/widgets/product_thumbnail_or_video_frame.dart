@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
 
 /// Renders either:
 /// 1. A valid image thumbnail (if available and not a video file)
-/// 2. Extracted video first frame (via [VideoFrameManager]) if the product has a video
-/// 3. Automatically resolves and extracts the video frame using [productId] if the cart/order item has no explicit image
+/// 2. Product thumbnail if available
+/// 3. Automatically resolves product details using [productId] if the cart/order item has no explicit image
 class ProductThumbnailOrVideoFrame extends StatefulWidget {
   final String? imageUrl;
   final String? videoUrl;
@@ -94,11 +93,6 @@ class _ProductThumbnailOrVideoFrameState
         ? widget.videoUrl!
         : (isVideoUrl(widget.imageUrl) ? widget.imageUrl! : '');
 
-    if (rawVideo.isNotEmpty) {
-      final resolved = resolveUrl(rawVideo);
-      VideoFrameManager.instance.extractFirstFrame(resolved).ignore();
-    }
-
     if (!hasValidImage &&
         rawVideo.isEmpty &&
         widget.productId != null &&
@@ -109,21 +103,11 @@ class _ProductThumbnailOrVideoFrameState
 
       if (cartProv.getProductFromCache(productId) != null) {
         _fetchedProduct = cartProv.getProductFromCache(productId);
-        _triggerFrameForProduct(_fetchedProduct!);
       } else if (prodProv.getCachedProduct(productId) != null) {
         _fetchedProduct = prodProv.getCachedProduct(productId);
-        _triggerFrameForProduct(_fetchedProduct!);
       } else {
         _fetchProductDetailsAsync(productId);
       }
-    }
-  }
-
-  void _triggerFrameForProduct(ProductModel product) {
-    final vUrl = product.effectiveVideoUrl;
-    if (vUrl.isNotEmpty) {
-      final resolved = resolveUrl(vUrl);
-      VideoFrameManager.instance.extractFirstFrame(resolved).ignore();
     }
   }
 
@@ -138,7 +122,6 @@ class _ProductThumbnailOrVideoFrameState
         setState(() {
           _fetchedProduct = product;
         });
-        _triggerFrameForProduct(product);
       }
     } catch (_) {
     } finally {
@@ -211,26 +194,7 @@ class _ProductThumbnailOrVideoFrameState
   }
 
   Widget _buildVideoFrame(String vUrl) {
-    return ListenableBuilder(
-      listenable: VideoFrameManager.instance,
-      builder: (context, _) {
-        final frameBytes = VideoFrameManager.instance.getCachedFrame(vUrl);
-        if (frameBytes != null && frameBytes.isNotEmpty) {
-          return Image.memory(
-            frameBytes,
-            width: widget.width,
-            height: widget.height,
-            fit: widget.fit,
-            gaplessPlayback: true,
-          );
-        }
-
-        // Trigger extraction in background
-        VideoFrameManager.instance.extractFirstFrame(vUrl).ignore();
-
-        return _buildFallbackShimmer();
-      },
-    );
+    return _buildFallbackShimmer();
   }
 
   Widget _buildFallbackShimmer() {

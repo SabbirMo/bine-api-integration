@@ -1,7 +1,6 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
@@ -167,16 +166,11 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
   }
 
   void _precacheVideos(List<ProductModel> products) {
-    final List<String> videoUrls = [];
     for (final p in products) {
       final vUrl = _resolveProductVideo(p);
       if (vUrl.isNotEmpty) {
-        videoUrls.add(vUrl);
         VideoCacheManager.instance.preCacheVideo(vUrl);
       }
-    }
-    if (videoUrls.isNotEmpty) {
-      VideoFrameManager.instance.preExtractBatch(videoUrls);
     }
   }
 

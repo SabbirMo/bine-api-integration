@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/presentation/home/widget/story/story_group_page_view.dart';
 
@@ -97,7 +96,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             precacheImage(NetworkImage(story.url), context).catchError((_) {});
           } else if (story.isVideo && story.url.startsWith('http')) {
             VideoCacheManager.instance.preCacheVideo(story.url);
-            VideoFrameManager.instance.extractFirstFrame(story.url);
           }
         }
       }

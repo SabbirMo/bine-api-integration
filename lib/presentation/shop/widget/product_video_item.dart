@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 
 class ProductVideoItem extends StatefulWidget {
   final int productId;
@@ -45,6 +44,11 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     if (url.isEmpty && widget.fallbackUrl != null) {
       url = widget.fallbackUrl!.trim();
     }
+    return _resolveUrl(url);
+  }
+
+  String _resolveUrl(String rawUrl) {
+    String url = rawUrl.trim();
     if (url.isNotEmpty &&
         !url.startsWith('http') &&
         !url.startsWith('file://') &&
@@ -62,10 +66,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   @override
   void initState() {
     super.initState();
-    final cleanUrl = _resolvedVideoUrl;
-    if (cleanUrl.isNotEmpty) {
-      VideoFrameManager.instance.extractFirstFrame(cleanUrl);
-    }
     if (widget.isActive) {
       _initPlayer();
     }
@@ -89,7 +89,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
       _player = Player(
         configuration: const PlayerConfiguration(
-          bufferSize: 15 * 1024 * 1024,
+          bufferSize: 10 * 1024 * 1024,
           logLevel: MPVLogLevel.warn,
         ),
       );
@@ -104,10 +104,33 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       _player!.setPlaylistMode(PlaylistMode.loop);
       _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
 
+      try {
+        final platform = _player!.platform;
+        if (platform != null) {
+          (platform as dynamic).setProperty('hls-bitrate', 'auto');
+          (platform as dynamic).setProperty('cache', 'yes');
+        }
+      } catch (_) {}
+
+      _player!.stream.width.listen((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+      _player!.stream.height.listen((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+
       _player!.stream.playing.listen((playing) {
         if (mounted) {
           setState(() {
             _isPlaying = playing;
+            if (playing && _hasStartedPlaying) {
+              _isBuffering = false;
+              _isInitializing = false;
+            }
           });
         }
       });
@@ -125,11 +148,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       _player!.stream.buffering.listen((buffering) {
         if (mounted) {
           setState(() {
-            if (_hasStartedPlaying) {
-              _isBuffering = buffering;
-            } else {
-              _isBuffering = true;
-            }
+            _isBuffering = buffering;
           });
         }
       });
@@ -174,10 +193,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       _player?.dispose();
       _player = null;
       _controller = null;
-      final cleanUrl = _resolvedVideoUrl;
-      if (cleanUrl.isNotEmpty) {
-        VideoFrameManager.instance.extractFirstFrame(cleanUrl);
-      }
       if (widget.isActive) {
         _initPlayer();
       }
@@ -220,9 +235,12 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       );
     }
 
-    final double videoWidth = _player?.state.width?.toDouble() ?? 16.0;
-    final double videoHeight = _player?.state.height?.toDouble() ?? 9.0;
-    final cleanUrl = _resolvedVideoUrl;
+    final double? rawW = _player?.state.width?.toDouble();
+    final double? rawH = _player?.state.height?.toDouble();
+    final bool hasValidDimensions =
+        rawW != null && rawW > 0 && rawH != null && rawH > 0;
+    final double videoWidth = hasValidDimensions ? rawW : 16.0;
+    final double videoHeight = hasValidDimensions ? rawH : 9.0;
 
     return GestureDetector(
       onTap: () {
@@ -236,48 +254,33 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Blurred Background Layer using the extracted video frame
-            ListenableBuilder(
-              listenable: VideoFrameManager.instance,
-              builder: (context, _) {
-                final frameBytes = VideoFrameManager.instance.getCachedFrame(
-                  cleanUrl,
-                );
-                if (frameBytes != null && frameBytes.isNotEmpty) {
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Positioned.fill(
-                        child: ClipRect(
-                          child: ImageFiltered(
-                            imageFilter: ImageFilter.blur(
-                              sigmaX: 8.0,
-                              sigmaY: 8.0,
-                            ),
-                            child: Image.memory(
-                              frameBytes,
-                              fit: BoxFit.cover,
-                              color: Colors.black.withValues(alpha: 0.35),
-                              colorBlendMode: BlendMode.darken,
-                              gaplessPlayback: true,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: Container(
-                          color: Colors.black.withValues(alpha: 0.25),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                return Container(color: Colors.black);
-              },
+            // 1. Blurred Background Layer using CDN thumbnail
+            if (widget.thumbnailUrl != null &&
+                widget.thumbnailUrl!.trim().isNotEmpty)
+              Positioned.fill(
+                child: ClipRect(
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
+                    child: Image.network(
+                      widget.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      color: Colors.black.withValues(alpha: 0.35),
+                      colorBlendMode: BlendMode.darken,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Container(color: Colors.black),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Container(color: Colors.black),
+
+            Positioned.fill(
+              child: Container(color: Colors.black.withValues(alpha: 0.25)),
             ),
 
             // 2. Video Player Layer (Single Video Widget wrapped in RepaintBoundary)
-            if (_isVideoReady)
+            if (_isVideoReady && hasValidDimensions)
               Center(
                 child: FittedBox(
                   fit: BoxFit.contain,
@@ -295,34 +298,30 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                 ),
               ),
 
-            // 3. Pre-decoded Video First Frame (Shown seamlessly before playback starts)
+            // 3. Instant Thumbnail / Loading Cover (Instant clean cut right as frame 1 plays)
             if (!_hasStartedPlaying)
               Positioned.fill(
-                child: ListenableBuilder(
-                  listenable: VideoFrameManager.instance,
-                  builder: (context, _) {
-                    final frameBytes = VideoFrameManager.instance
-                        .getCachedFrame(cleanUrl);
-
-                    if (frameBytes != null && frameBytes.isNotEmpty) {
-                      return Center(
-                        child: Image.memory(
-                          frameBytes,
-                          fit: BoxFit.contain,
-                          gaplessPlayback: true,
+                child:
+                    widget.thumbnailUrl != null &&
+                        widget.thumbnailUrl!.trim().isNotEmpty
+                    ? Image.network(
+                        widget.thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFFF6900),
+                                strokeWidth: 3,
+                              ),
+                            ),
+                      )
+                    : const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF6900),
+                          strokeWidth: 3,
                         ),
-                      );
-                    }
-
-                    // Minimal sleek loading spinner
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFFF6900),
-                        strokeWidth: 3,
                       ),
-                    );
-                  },
-                ),
               ),
 
             if (_hasStartedPlaying && _isBuffering)

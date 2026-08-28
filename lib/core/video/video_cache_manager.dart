@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 
 /// Central Disk Video Cache Manager for ultra-smooth Shorts playback.
 /// Automatically caches remote video files to local disk so they only download
@@ -140,8 +139,6 @@ class VideoCacheManager {
         await tempFile.rename(file.path);
         _memoryPathCache[url] = file.path;
         debugPrint('✅ [VideoCacheManager] Cached video: $url');
-        // Instantly extract the first frame from the newly cached local file
-        VideoFrameManager.instance.extractFirstFrame(url).ignore();
       }
     } catch (e) {
       try {

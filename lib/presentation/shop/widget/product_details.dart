@@ -3,7 +3,6 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/widgets/smooth_reels_scroll_physics.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/shop/widget/product_details/product_media_gallery.dart';
 import 'package:flutter/material.dart';
@@ -73,7 +72,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           final clean = _resolveUrl(vUrl);
           if (clean.isNotEmpty) {
             VideoCacheManager.instance.preCacheVideo(clean);
-            VideoFrameManager.instance.extractFirstFrame(clean).ignore();
           }
         }
       }

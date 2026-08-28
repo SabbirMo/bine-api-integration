@@ -114,11 +114,11 @@ class StoryModel {
   });
 
   String get effectiveMediaUrl {
-    if (mediaUrl != null && mediaUrl!.trim().isNotEmpty) {
-      return mediaUrl!;
-    }
     if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
       return hlsUrl!;
+    }
+    if (mediaUrl != null && mediaUrl!.trim().isNotEmpty) {
+      return mediaUrl!;
     }
     return '';
   }
@@ -192,11 +192,11 @@ class ProductModel {
   List<MediaModel> get safeMedia => media ?? const <MediaModel>[];
 
   String get effectiveVideoUrl {
-    if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
-      return videoUrl!;
-    }
     if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
       return hlsUrl!;
+    }
+    if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
+      return videoUrl!;
     }
     for (final m in safeMedia) {
       if (m.mediaType.toLowerCase() == 'video' &&

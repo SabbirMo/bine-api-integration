@@ -1,7 +1,6 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/presentation/home/widget/full_screen_player.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -142,6 +141,27 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
   void _initializePlayer() {
     _player.setPlaylistMode(PlaylistMode.loop);
     _player.setVolume(0.0); // Default muted
+
+    try {
+      final platform = _player.platform;
+      if (platform != null) {
+        (platform as dynamic).setProperty('hls-bitrate', 'auto');
+        (platform as dynamic).setProperty('cache', 'yes');
+        (platform as dynamic).setProperty('cache-secs', '15');
+        (platform as dynamic).setProperty('demuxer-readahead-secs', '5');
+      }
+    } catch (_) {}
+
+    _player.stream.width.listen((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+    _player.stream.height.listen((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
 
     _player.stream.playing.listen((playing) {
       if (mounted) {
@@ -458,7 +478,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                 ),
               ),
 
-              // 2. Video First Frame / Loading State (Fades out seamlessly when playback begins)
+              // 2. Video Thumbnail / Loading State (Fades out seamlessly when playback begins)
               Positioned.fill(
                 child: ValueListenableBuilder<bool>(
                   valueListenable: _hasStartedPlaying,
@@ -470,27 +490,15 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                         ignoring: hasStartedPlaying,
                         child: Container(
                           color: const Color(0xFF161616),
-                          child: ListenableBuilder(
-                            listenable: VideoFrameManager.instance,
-                            builder: (context, _) {
-                              final frameBytes = VideoFrameManager.instance
-                                  .getCachedFrame(_resolvedVideoUrl);
-
-                              if (frameBytes != null && frameBytes.isNotEmpty) {
-                                return Image.memory(
-                                  frameBytes,
+                          child: widget.thumbnailUrl != null &&
+                                  widget.thumbnailUrl!.trim().isNotEmpty
+                              ? Image.network(
+                                  widget.thumbnailUrl!,
                                   fit: BoxFit.cover,
-                                  gaplessPlayback: true,
-                                );
-                              }
-
-                              VideoFrameManager.instance.extractFirstFrame(
-                                _resolvedVideoUrl,
-                              );
-
-                              return _buildDefaultPlaceholder(isLoading: true);
-                            },
-                          ),
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      _buildDefaultPlaceholder(isLoading: true),
+                                )
+                              : _buildDefaultPlaceholder(isLoading: true),
                         ),
                       ),
                     );

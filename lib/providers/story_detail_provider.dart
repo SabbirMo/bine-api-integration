@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
-import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/providers/story_provider.dart';
 
@@ -145,6 +144,14 @@ class StoryDetailProvider extends ChangeNotifier {
       }
     });
 
+    p.stream.width.listen((_) {
+      if (!_isDisposed) notifyListeners();
+    });
+
+    p.stream.height.listen((_) {
+      if (!_isDisposed) notifyListeners();
+    });
+
     p.stream.error.listen((error) {
       if (_isDisposed) return;
       final errorStr = error.toString().toLowerCase();
@@ -216,10 +223,6 @@ class StoryDetailProvider extends ChangeNotifier {
         );
         final playPath = cachedPath ?? cleanUrl;
 
-        // Extract first frame only for video (skip for audio)
-        if (story.isVideo && !story.isAudio) {
-          VideoFrameManager.instance.extractFirstFrame(cleanUrl);
-        }
 
         // Format URI properly with file:// scheme for local files
         final String mediaUri;
@@ -323,10 +326,6 @@ class StoryDetailProvider extends ChangeNotifier {
         }
       }
 
-      // Pre-extract first frame only for video
-      if (nextStory.isVideo && !nextStory.isAudio) {
-        VideoFrameManager.instance.extractFirstFrame(cleanNext);
-      }
     } catch (e) {
       debugPrint("Error preloading next story: $e");
     }
