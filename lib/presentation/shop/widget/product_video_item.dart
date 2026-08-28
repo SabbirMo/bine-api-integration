@@ -62,6 +62,10 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   @override
   void initState() {
     super.initState();
+    final cleanUrl = _resolvedVideoUrl;
+    if (cleanUrl.isNotEmpty) {
+      VideoFrameManager.instance.extractFirstFrame(cleanUrl);
+    }
     _initPlayer();
   }
 
@@ -168,6 +172,10 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       _player?.dispose();
       _player = null;
       _controller = null;
+      final cleanUrl = _resolvedVideoUrl;
+      if (cleanUrl.isNotEmpty) {
+        VideoFrameManager.instance.extractFirstFrame(cleanUrl);
+      }
       _initPlayer();
     } else {
       if (oldWidget.isMuted != widget.isMuted && _player != null) {
@@ -220,111 +228,90 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Video Player Layer
-            if (_isVideoReady)
-              Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Blurred Background Video
-                  Positioned.fill(
-                    child: ClipRect(
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(
-                          sigmaX: 15.0,
-                          sigmaY: 15.0,
-                        ),
-                        child: FittedBox(
-                          fit: BoxFit.cover,
-                          clipBehavior: Clip.hardEdge,
-                          child: SizedBox(
-                            width: videoWidth,
-                            height: videoHeight,
-                            child: Video(
-                              controller: _controller!,
-                              controls: NoVideoControls,
-                              fill: Colors.transparent,
+            // 1. Blurred Background Layer using the extracted video frame
+            ListenableBuilder(
+              listenable: VideoFrameManager.instance,
+              builder: (context, _) {
+                final frameBytes = VideoFrameManager.instance.getCachedFrame(
+                  cleanUrl,
+                );
+                if (frameBytes != null && frameBytes.isNotEmpty) {
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned.fill(
+                        child: ClipRect(
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(
+                              sigmaX: 15.0,
+                              sigmaY: 15.0,
+                            ),
+                            child: Image.memory(
+                              frameBytes,
+                              fit: BoxFit.cover,
+                              color: Colors.black.withValues(alpha: 0.35),
+                              colorBlendMode: BlendMode.darken,
+                              gaplessPlayback: true,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  // Dark overlay to dim the background
-                  Positioned.fill(
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.25),
-                    ),
-                  ),
-                  // Foreground Clear Video
-                  Center(
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      child: SizedBox(
-                        width: videoWidth,
-                        height: videoHeight,
-                        child: Video(
-                          controller: _controller!,
-                          controls: NoVideoControls,
-                          fill: Colors.transparent,
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.25),
                         ),
                       ),
+                    ],
+                  );
+                }
+                return Container(color: Colors.black);
+              },
+            ),
+
+            // 2. Video Player Layer (Single Video Widget)
+            if (_isVideoReady)
+              Center(
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                    width: videoWidth,
+                    height: videoHeight,
+                    child: Video(
+                      controller: _controller!,
+                      controls: NoVideoControls,
+                      fill: Colors.transparent,
                     ),
                   ),
-                ],
+                ),
               ),
 
-            // Pre-decoded Video First Frame (No catalog image thumbnail!)
+            // 3. Pre-decoded Video First Frame (Shown seamlessly before playback starts)
             if (!_hasStartedPlaying)
               Positioned.fill(
-                child: Container(
-                  color: Colors.black,
-                  child: ListenableBuilder(
-                    listenable: VideoFrameManager.instance,
-                    builder: (context, _) {
-                      final frameBytes = VideoFrameManager.instance
-                          .getCachedFrame(cleanUrl);
+                child: ListenableBuilder(
+                  listenable: VideoFrameManager.instance,
+                  builder: (context, _) {
+                    final frameBytes = VideoFrameManager.instance
+                        .getCachedFrame(cleanUrl);
 
-                      if (frameBytes != null && frameBytes.isNotEmpty) {
-                        return Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Positioned.fill(
-                              child: ClipRect(
-                                child: ImageFiltered(
-                                  imageFilter: ImageFilter.blur(
-                                    sigmaX: 15.0,
-                                    sigmaY: 15.0,
-                                  ),
-                                  child: Image.memory(
-                                    frameBytes,
-                                    fit: BoxFit.cover,
-                                    color: Colors.black.withValues(alpha: 0.35),
-                                    colorBlendMode: BlendMode.darken,
-                                    gaplessPlayback: true,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Center(
-                              child: Image.memory(
-                                frameBytes,
-                                fit: BoxFit.contain,
-                                gaplessPlayback: true,
-                              ),
-                            ),
-                          ],
-                        );
-                      }
-
-                      // Seamless minimal loading
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFF6900),
-                          strokeWidth: 3,
+                    if (frameBytes != null && frameBytes.isNotEmpty) {
+                      return Center(
+                        child: Image.memory(
+                          frameBytes,
+                          fit: BoxFit.contain,
+                          gaplessPlayback: true,
                         ),
                       );
-                    },
-                  ),
+                    }
+
+                    // Minimal sleek loading spinner
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFF6900),
+                        strokeWidth: 3,
+                      ),
+                    );
+                  },
                 ),
               ),
 

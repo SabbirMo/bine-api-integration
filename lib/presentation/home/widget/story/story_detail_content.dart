@@ -41,8 +41,7 @@ class StoryDetailContent extends StatelessWidget {
       onLongPressStart: (_) => provider.pauseStory(),
       onLongPressEnd: (_) => provider.resumeStory(),
       onVerticalDragEnd: (details) {
-        if (details.primaryVelocity != null &&
-            details.primaryVelocity! > 300) {
+        if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
           onClose();
         }
       },
@@ -114,31 +113,39 @@ class StoryDetailContent extends StatelessWidget {
       return Stack(
         alignment: Alignment.center,
         children: [
-          // 1. Video Player with blurred background
+          // 1. Video Player with blurred frame background
           SizedBox.expand(
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Positioned.fill(
-                  child: ClipRect(
-                    child: ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: videoWidth,
-                          height: videoHeight,
-                          child: Video(
-                            key: ValueKey('blur_${provider.currentIndex}'),
-                            controller: provider.videoController!,
-                            controls: NoVideoControls,
-                            fill: Colors.transparent,
+                ListenableBuilder(
+                  listenable: VideoFrameManager.instance,
+                  builder: (context, _) {
+                    final frameBytes = VideoFrameManager.instance
+                        .getCachedFrame(cleanUrl);
+                    if (frameBytes != null && frameBytes.isNotEmpty) {
+                      return Positioned.fill(
+                        child: ClipRect(
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(
+                              sigmaX: 15.0,
+                              sigmaY: 15.0,
+                            ),
+                            child: Image.memory(
+                              frameBytes,
+                              fit: BoxFit.cover,
+                              color: Colors.black.withValues(alpha: 0.35),
+                              colorBlendMode: BlendMode.darken,
+                              gaplessPlayback: true,
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  ),
+                      );
+                    }
+                    return Positioned.fill(
+                      child: Container(color: Colors.black),
+                    );
+                  },
                 ),
                 Positioned.fill(
                   child: Container(color: Colors.black.withValues(alpha: 0.25)),
@@ -168,43 +175,19 @@ class StoryDetailContent extends StatelessWidget {
               child: ListenableBuilder(
                 listenable: VideoFrameManager.instance,
                 builder: (context, _) {
-                  final frameBytes = VideoFrameManager.instance
-                      .getCachedFrame(cleanUrl);
+                  final frameBytes = VideoFrameManager.instance.getCachedFrame(
+                    cleanUrl,
+                  );
 
                   Widget? backgroundWidget;
                   if (frameBytes != null && frameBytes.isNotEmpty) {
-                    backgroundWidget = Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Positioned.fill(
-                          child: ClipRect(
-                            child: ImageFiltered(
-                              imageFilter: ImageFilter.blur(
-                                sigmaX: 15.0,
-                                sigmaY: 15.0,
-                              ),
-                              child: Image.memory(
-                                frameBytes,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned.fill(
-                          child: Container(
-                            color: Colors.black.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        Center(
-                          child: Image.memory(
-                            frameBytes,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ],
+                    backgroundWidget = Center(
+                      child: Image.memory(
+                        frameBytes,
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                      ),
                     );
-                  } else {
-                    VideoFrameManager.instance.extractFirstFrame(cleanUrl);
                   }
 
                   return Stack(
@@ -221,7 +204,9 @@ class StoryDetailContent extends StatelessWidget {
                             color: Colors.black54,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: const Color(0xFFFF6900).withValues(alpha: 0.3),
+                              color: const Color(
+                                0xFFFF6900,
+                              ).withValues(alpha: 0.3),
                               width: 1.5,
                             ),
                           ),
@@ -361,8 +346,7 @@ class StoryDetailContent extends StatelessWidget {
             radius: 18,
             backgroundColor: Colors.grey[800],
             backgroundImage:
-                userProfile.isNotEmpty &&
-                    userProfile.startsWith('http')
+                userProfile.isNotEmpty && userProfile.startsWith('http')
                 ? NetworkImage(userProfile)
                 : (userProfile.isNotEmpty
                       ? AssetImage(userProfile) as ImageProvider

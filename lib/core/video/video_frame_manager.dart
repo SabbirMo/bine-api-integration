@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -7,11 +9,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 
-/// Ultra-Fast Central Video Frame / First-Part Extractor:
-/// - Pure video first-frame extraction (no catalog thumbnail fallback)
-/// - Memory + Disk instant caching
-/// - Eager disk warm-up on app launch
-/// - Optimized resolution & seek for < 20ms frame extraction
+/// Ultra-Fast & Non-Blocking Video Frame Extractor:
+/// - Extracts actual video first frame with 0ms RAM caching
+/// - Fully asynchronous, no synchronous disk reads in build methods
+/// - Sequential worker queue with strict timeout to prevent Android ANRs
+/// - Automatic caching & instant local-file extraction
 class VideoFrameManager extends ChangeNotifier {
   static final VideoFrameManager _instance = VideoFrameManager._internal();
   static VideoFrameManager get instance => _instance;
@@ -22,6 +24,11 @@ class VideoFrameManager extends ChangeNotifier {
   final Map<String, String> _diskPathMap = {};
   final Set<String> _pendingUrls = {};
   final Set<String> _failedUrls = {};
+  final Set<String> _loadingFromDisk = {};
+
+  final Queue<String> _extractionQueue = Queue<String>();
+  bool _isProcessingQueue = false;
+
   Directory? _thumbDir;
   File? _indexFile;
   bool _isInitialized = false;
@@ -62,14 +69,15 @@ class VideoFrameManager extends ChangeNotifier {
           for (final entry in jsonMap.entries) {
             final filePath = entry.value.toString();
             final file = File(filePath);
-            if (file.existsSync() && file.lengthSync() > 100) {
+            if (await file.exists()) {
               _diskPathMap[entry.key] = filePath;
-              // Preload first 20 most recent frames into memory for 0ms initial render
-              if (_memoryFrameCache.length < 25) {
-                try {
-                  _memoryFrameCache[entry.key] = await file.readAsBytes();
-                } catch (_) {}
-              }
+              try {
+                // Preload frame bytes directly into memory for 0ms retrieval
+                final bytes = await file.readAsBytes();
+                if (bytes.isNotEmpty) {
+                  _memoryFrameCache[entry.key] = bytes;
+                }
+              } catch (_) {}
             }
           }
         }
@@ -95,7 +103,8 @@ class VideoFrameManager extends ChangeNotifier {
     return 'frame_${safeHash}_$prefix.jpg';
   }
 
-  /// Synchronously retrieve cached frame bytes if available in memory (0ms)
+  /// Synchronously retrieve cached frame bytes from RAM (0ms).
+  /// Never blocks the UI thread with synchronous file I/O.
   Uint8List? getCachedFrame(String videoUrl) {
     final clean = videoUrl.trim();
     if (clean.isEmpty) return null;
@@ -108,26 +117,38 @@ class VideoFrameManager extends ChangeNotifier {
       return _memoryFrameCache[resolved];
     }
 
-    // Try synchronous disk read if mapped
+    // If on disk but not yet in memory, trigger async load without blocking build
     final diskPath = _diskPathMap[clean] ?? _diskPathMap[resolved];
-    if (diskPath != null) {
-      final file = File(diskPath);
-      if (file.existsSync()) {
-        try {
-          final bytes = file.readAsBytesSync();
-          if (bytes.isNotEmpty) {
-            _memoryFrameCache[clean] = bytes;
-            _memoryFrameCache[resolved] = bytes;
-            return bytes;
-          }
-        } catch (_) {}
-      }
+    if (diskPath != null && !_loadingFromDisk.contains(diskPath)) {
+      _loadDiskFrameAsync(clean, resolved, diskPath);
     }
 
     return null;
   }
 
-  /// Batch pre-extract all video frames sequentially so codec threads are never exhausted
+  Future<void> _loadDiskFrameAsync(
+    String clean,
+    String resolved,
+    String diskPath,
+  ) async {
+    _loadingFromDisk.add(diskPath);
+    try {
+      final file = File(diskPath);
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+        if (bytes.isNotEmpty) {
+          _memoryFrameCache[clean] = bytes;
+          _memoryFrameCache[resolved] = bytes;
+          notifyListeners();
+        }
+      }
+    } catch (_) {
+    } finally {
+      _loadingFromDisk.remove(diskPath);
+    }
+  }
+
+  /// Batch pre-extract video frames
   Future<void> preExtractBatch(List<String> videoUrls) async {
     for (final url in videoUrls) {
       final clean = url.trim();
@@ -136,17 +157,16 @@ class VideoFrameManager extends ChangeNotifier {
           !_memoryFrameCache.containsKey(clean) &&
           !_diskPathMap.containsKey(clean) &&
           !_failedUrls.contains(clean)) {
-        await extractFirstFrame(clean);
+        extractFirstFrame(clean);
       }
     }
   }
 
-  /// Extract the video's first frame with ultra-fast decoder settings
+  /// Request frame extraction asynchronously through a safe queue
   Future<Uint8List?> extractFirstFrame(String videoUrl) async {
     final clean = videoUrl.trim();
     if (clean.isEmpty) return null;
 
-    // HLS (.m3u8) streams do not support static frame extraction via VideoThumbnail
     if (clean.toLowerCase().contains('.m3u8')) {
       return null;
     }
@@ -157,7 +177,7 @@ class VideoFrameManager extends ChangeNotifier {
       return null;
     }
 
-    // 1. Instant Memory Cache (0ms)
+    // 1. Instant RAM Cache (0ms)
     if (_memoryFrameCache.containsKey(clean)) {
       return _memoryFrameCache[clean];
     }
@@ -169,72 +189,95 @@ class VideoFrameManager extends ChangeNotifier {
       await init();
     }
 
-    // 2. Instant Disk Cache (< 5ms)
-    if (_thumbDir != null) {
-      final filename = _getThumbFilename(resolved);
-      final file = File('${_thumbDir!.path}/$filename');
-      if (file.existsSync() && file.lengthSync() > 100) {
-        try {
-          final bytes = await file.readAsBytes();
-          _memoryFrameCache[clean] = bytes;
-          _memoryFrameCache[resolved] = bytes;
-          _diskPathMap[clean] = file.path;
-          _diskPathMap[resolved] = file.path;
-          _saveIndex().ignore();
-          notifyListeners();
-          return bytes;
-        } catch (_) {}
-      }
+    // 2. Check Disk Cache
+    if (_diskPathMap.containsKey(clean) || _diskPathMap.containsKey(resolved)) {
+      final diskPath = _diskPathMap[clean] ?? _diskPathMap[resolved]!;
+      _loadDiskFrameAsync(clean, resolved, diskPath);
+      return null;
     }
 
     if (_pendingUrls.contains(clean) || _pendingUrls.contains(resolved)) {
       return null;
     }
+
     _pendingUrls.add(clean);
     _pendingUrls.add(resolved);
+    _extractionQueue.add(clean);
 
-    try {
-      // Prefer locally cached video for instantaneous offline extraction
-      final localVideoPath =
-          VideoCacheManager.instance.getCachedFilePath(resolved) ??
-          VideoCacheManager.instance.getCachedFilePath(clean);
-      final source = localVideoPath ?? resolved;
+    _processQueue();
+    return null;
+  }
 
-      final bytes = await VideoThumbnail.thumbnailData(
-        video: source,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 360,
-        quality: 50,
-        timeMs: 0,
-      );
+  void _processQueue() async {
+    if (_isProcessingQueue || _extractionQueue.isEmpty) return;
+    _isProcessingQueue = true;
 
-      if (bytes.isNotEmpty) {
-        _memoryFrameCache[clean] = bytes;
+    while (_extractionQueue.isNotEmpty) {
+      final url = _extractionQueue.removeFirst();
+      final resolved = resolveUrl(url);
 
-        // Persist to disk asynchronously
-        if (_thumbDir != null) {
-          final filename = _getThumbFilename(clean);
-          final file = File('${_thumbDir!.path}/$filename');
-          await file.writeAsBytes(bytes, flush: false);
-          _diskPathMap[clean] = file.path;
-          _saveIndex().ignore();
+      if (_memoryFrameCache.containsKey(url) ||
+          _memoryFrameCache.containsKey(resolved)) {
+        _pendingUrls.remove(url);
+        _pendingUrls.remove(resolved);
+        continue;
+      }
+
+      String? localVideoPath;
+      try {
+        // Prefer locally cached video for instantaneous offline extraction (< 15ms)
+        localVideoPath =
+            VideoCacheManager.instance.getCachedFilePath(resolved) ??
+            VideoCacheManager.instance.getCachedFilePath(url);
+        final source = localVideoPath ?? resolved;
+
+        // If it's a remote URL, start background downloading so next attempt is from local disk
+        if (localVideoPath == null && resolved.startsWith('http')) {
+          VideoCacheManager.instance.preCacheVideo(resolved);
         }
 
-        notifyListeners();
-        return bytes;
-      } else {
-        _failedUrls.add(clean);
+        // Extract frame with strict timeout to NEVER hang the Android platform thread
+        final bytes = await VideoThumbnail.thumbnailData(
+          video: source,
+          imageFormat: ImageFormat.JPEG,
+          maxWidth: 360,
+          quality: 50,
+          timeMs: 0,
+        ).timeout(const Duration(seconds: 3));
+
+        if (bytes.isNotEmpty) {
+          _memoryFrameCache[url] = bytes;
+          _memoryFrameCache[resolved] = bytes;
+
+          // Persist to disk asynchronously
+          if (_thumbDir != null) {
+            final filename = _getThumbFilename(url);
+            final file = File('${_thumbDir!.path}/$filename');
+            await file.writeAsBytes(bytes, flush: false);
+            _diskPathMap[url] = file.path;
+            _diskPathMap[resolved] = file.path;
+            _saveIndex().ignore();
+          }
+
+          notifyListeners();
+        } else {
+          _failedUrls.add(url);
+        }
+      } catch (e) {
+        debugPrint(
+          '⚠️ [VideoFrameManager] Extraction skipped or timed out for $url: $e',
+        );
+        // Do not permanently fail if it was a network timeout; background cache will retry on disk
+        if (localVideoPath != null) {
+          _failedUrls.add(url);
+        }
+      } finally {
+        _pendingUrls.remove(url);
+        _pendingUrls.remove(resolved);
       }
-    } catch (e) {
-      _failedUrls.add(clean);
-      debugPrint(
-        '⚠️ [VideoFrameManager] Frame extraction skipped for $clean: $e',
-      );
-    } finally {
-      _pendingUrls.remove(clean);
     }
 
-    return null;
+    _isProcessingQueue = false;
   }
 
   /// Clear frame caches if needed
@@ -243,6 +286,7 @@ class VideoFrameManager extends ChangeNotifier {
     _diskPathMap.clear();
     _failedUrls.clear();
     _pendingUrls.clear();
+    _extractionQueue.clear();
     try {
       if (_thumbDir != null && await _thumbDir!.exists()) {
         await _thumbDir!.delete(recursive: true);

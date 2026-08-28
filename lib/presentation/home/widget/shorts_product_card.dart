@@ -144,9 +144,6 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
           );
         }
 
-        // Trigger extraction in background if not already cached
-        VideoFrameManager.instance.extractFirstFrame(widget.videoUrl);
-
         // Sleek minimal dark placeholder while extracting the actual video frame
         return Container(
           color: const Color(0xFF161616),

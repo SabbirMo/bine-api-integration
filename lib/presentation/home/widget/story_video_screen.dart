@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:binetatour/core/video/video_frame_manager.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -242,26 +243,31 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
           alignment: Alignment.center,
           children: [
             if (!story.isAudio) ...[
-              // Blurred Background Video
-              Positioned.fill(
-                child: ClipRect(
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      clipBehavior: Clip.hardEdge,
-                      child: SizedBox(
-                        width: videoWidth,
-                        height: videoHeight,
-                        child: Video(
-                          controller: _videoController!,
-                          controls: NoVideoControls,
-                          fill: Colors.transparent,
+              // Blurred Background using frame
+              ListenableBuilder(
+                listenable: VideoFrameManager.instance,
+                builder: (context, _) {
+                  final frameBytes = VideoFrameManager.instance.getCachedFrame(story.url);
+                  if (frameBytes != null && frameBytes.isNotEmpty) {
+                    return Positioned.fill(
+                      child: ClipRect(
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                          child: Image.memory(
+                            frameBytes,
+                            fit: BoxFit.cover,
+                            color: Colors.black.withValues(alpha: 0.35),
+                            colorBlendMode: BlendMode.darken,
+                            gaplessPlayback: true,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ),
+                    );
+                  }
+                  return Positioned.fill(
+                    child: Container(color: Colors.black),
+                  );
+                },
               ),
               // Dark overlay to dim the background
               Positioned.fill(
@@ -270,7 +276,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
                 ),
               ),
             ],
-            // Foreground Clear Video
+            // Foreground Clear Video (Single Video Widget)
             SizedBox.expand(
               child: FittedBox(
                 fit: BoxFit.contain,

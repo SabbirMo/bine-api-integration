@@ -33,7 +33,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  VisibilityDetectorController.instance.updateInterval =
+      const Duration(milliseconds: 200);
 
   // Pre-initialize and warm up disk video & thumbnail caches for 0ms cold-start playback
   await VideoCacheManager.instance.init();
