@@ -8,7 +8,6 @@ import 'package:binetatour/presentation/home/widget/notificaiton_screen.dart';
 import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/presentation/home/widget/video_widget.dart';
-import 'package:binetatour/presentation/landing_page/main_dashboard.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
@@ -1002,20 +1001,18 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
           CategorySectionHeader(
             title: widget.section.categoryName ?? 'Category',
             imagePath: widget.section.categoryImageUrl,
-            onSeeMoreTap: () {
-              final dashboard = MainDashboard.of(context);
-              if (dashboard != null) {
-                dashboard.switchToTab(1, categoryId: widget.section.categoryId);
-              } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => BoutiqueScreen(
-                      initialCategoryId: widget.section.categoryId,
-                    ),
+            onSeeMoreTap: () async {
+              FeedVideoManager.instance.pauseAll();
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BoutiqueScreen(
+                    initialCategoryId: widget.section.categoryId,
+                    showBackButton: true,
                   ),
-                );
-              }
+                ),
+              );
+              FeedVideoManager.instance.resume();
             },
           ),
 

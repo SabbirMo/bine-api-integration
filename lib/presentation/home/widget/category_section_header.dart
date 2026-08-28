@@ -16,14 +16,14 @@ class CategorySectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Left Side: Image and Title
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onSeeMoreTap,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onSeeMoreTap,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Left Side: Image and Title
+            Expanded(
               child: Row(
                 children: [
                   Container(
@@ -67,14 +67,10 @@ class CategorySectionHeader extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-          const SizedBox(width: 16),
+            const SizedBox(width: 16),
 
-          // Right Side: Voir plus Link
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onSeeMoreTap,
-            child: Row(
+            // Right Side: Voir plus Link
+            Row(
               children: [
                 const Text(
                   'Voir plus',
@@ -95,8 +91,8 @@ class CategorySectionHeader extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

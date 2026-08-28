@@ -18,7 +18,9 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CartProvider>().fetchCart();
+      final cartProvider = context.read<CartProvider>();
+      final hasData = cartProvider.cart != null;
+      cartProvider.fetchCart(showLoading: !hasData);
     });
   }
 
@@ -26,20 +28,24 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
   Widget build(BuildContext context) {
     return Consumer<CartProvider>(
       builder: (context, cartProvider, child) {
-        if (cartProvider.isLoading) {
+        if (cartProvider.isLoading && cartProvider.cart == null) {
           return Container(
             height: MediaQuery.of(context).size.height * 0.85,
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
             ),
-            child: const Center(child: CircularProgressIndicator()),
+            child: const Center(
+              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+            ),
           );
         }
 
         final cart = cartProvider.cart;
         final items = cart?.items ?? [];
-        String totalDisplay = cart?.total.toStringAsFixed(2) ?? "0";
+        String totalDisplay = cart?.total.isNotEmpty == true
+            ? cart!.total
+            : "0";
 
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,
@@ -218,7 +224,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  "${item.priceAfterDiscount.toDouble()} FCFA",
+                  "${item.effectivePrice.isNotEmpty ? item.effectivePrice : (item.priceAfterDiscount.isNotEmpty ? item.priceAfterDiscount : item.sellingPrice)} FCFA",
                   style: const TextStyle(
                     color: Color(0xFFFF6900),
                     fontWeight: FontWeight.bold,
@@ -228,7 +234,8 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                     (item.size != null && item.size!.isNotEmpty)) ...[
                   const SizedBox(height: 2),
                   Text(
-                    "${item.colorName ?? ''} ${item.size != null && item.size!.isNotEmpty ? '(${item.size})' : ''}".trim(),
+                    "${item.colorName ?? ''} ${item.size != null && item.size!.isNotEmpty ? '(${item.size})' : ''}"
+                        .trim(),
                     style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ],

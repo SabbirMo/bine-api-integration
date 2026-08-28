@@ -1,6 +1,5 @@
 import 'package:binetatour/presentation/common/widgets/product_thumbnail_or_video_frame.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
@@ -160,16 +159,6 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     return Color(int.tryParse(hexString, radix: 16) ?? 0xFF000000);
   }
 
-  String _formatPrice(double price) {
-    if (price % 1 == 0) {
-      final formatter = NumberFormat('#,###', 'fr_FR');
-      return formatter.format(price.toInt()).replaceAll(',', ' ');
-    } else {
-      final formatter = NumberFormat('#,##0.00', 'fr_FR');
-      return formatter.format(price).replaceAll(',', ' ');
-    }
-  }
-
   bool _hasVariantsOrOptions(ProductModel product) {
     if (product.isMixedMode && product.unassignedStock > 0) return true;
     if (product.isProductMode || product.variants.isEmpty) return false;
@@ -249,7 +238,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      "${_formatPrice(widget.item.priceAfterDiscount)} FCFA",
+                      "${widget.item.effectivePrice.isNotEmpty ? widget.item.effectivePrice : (widget.item.priceAfterDiscount.isNotEmpty ? widget.item.priceAfterDiscount : widget.item.sellingPrice)} FCFA",
                       style: const TextStyle(
                         color: Color(0xFFFF6900),
                         fontWeight: FontWeight.bold,

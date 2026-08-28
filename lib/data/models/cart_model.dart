@@ -1,19 +1,19 @@
 class CartModel {
   final List<CartItemModel> items;
-  double total;
+  String total;
 
-  CartModel({
-    required this.items,
-    required this.total,
-  });
+  CartModel({required this.items, required this.total});
 
   factory CartModel.fromJson(Map<String, dynamic> json) {
     return CartModel(
-      items: (json['items'] as List?)
+      items:
+          (json['items'] as List?)
               ?.map((item) => CartItemModel.fromJson(item))
               .toList() ??
           [],
-      total: _parseDouble(json['total']),
+      total:
+          (json['total'] ?? json['total_amount'] ?? json['total_price'] ?? '')
+              .toString(),
     );
   }
 
@@ -23,16 +23,6 @@ class CartModel {
     if (value is String) return int.tryParse(value) ?? fallback;
     return fallback;
   }
-
-  static double _parseDouble(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is num) return value.toDouble();
-    if (value is String) {
-      final clean = value.replaceAll(' ', '').replaceAll(',', '.').trim();
-      return double.tryParse(clean) ?? 0.0;
-    }
-    return 0.0;
-  }
 }
 
 class CartItemModel {
@@ -40,8 +30,8 @@ class CartItemModel {
   final int productId;
   final int? variantId;
   final String productName;
-  final double sellingPrice;
-  final double priceAfterDiscount;
+  final String sellingPrice;
+  final String priceAfterDiscount;
   final String? mainImage;
   final String? videoUrl;
   final String? thumbnailUrl;
@@ -66,6 +56,22 @@ class CartItemModel {
     this.size,
   });
 
+  String get effectivePrice {
+    if (priceAfterDiscount.isNotEmpty &&
+        priceAfterDiscount != '0' &&
+        priceAfterDiscount != '0.0' &&
+        priceAfterDiscount != '0.00') {
+      return priceAfterDiscount;
+    }
+    if (sellingPrice.isNotEmpty &&
+        sellingPrice != '0' &&
+        sellingPrice != '0.0' &&
+        sellingPrice != '0.00') {
+      return sellingPrice;
+    }
+    return priceAfterDiscount.isNotEmpty ? priceAfterDiscount : sellingPrice;
+  }
+
   static bool isVideoUrl(String? url) {
     if (url == null || url.trim().isEmpty) return false;
     final clean = url.trim().toLowerCase().split('?').first.split('#').first;
@@ -82,10 +88,14 @@ class CartItemModel {
   }
 
   String get effectiveThumbnailUrl {
-    if (thumbnailUrl != null && thumbnailUrl!.trim().isNotEmpty && !isVideoUrl(thumbnailUrl)) {
+    if (thumbnailUrl != null &&
+        thumbnailUrl!.trim().isNotEmpty &&
+        !isVideoUrl(thumbnailUrl)) {
       return thumbnailUrl!.trim();
     }
-    if (mainImage != null && mainImage!.trim().isNotEmpty && !isVideoUrl(mainImage)) {
+    if (mainImage != null &&
+        mainImage!.trim().isNotEmpty &&
+        !isVideoUrl(mainImage)) {
       return mainImage!.trim();
     }
     return '';
@@ -95,10 +105,14 @@ class CartItemModel {
     if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
       return videoUrl!.trim();
     }
-    if (mainImage != null && mainImage!.trim().isNotEmpty && isVideoUrl(mainImage)) {
+    if (mainImage != null &&
+        mainImage!.trim().isNotEmpty &&
+        isVideoUrl(mainImage)) {
       return mainImage!.trim();
     }
-    if (thumbnailUrl != null && thumbnailUrl!.trim().isNotEmpty && isVideoUrl(thumbnailUrl)) {
+    if (thumbnailUrl != null &&
+        thumbnailUrl!.trim().isNotEmpty &&
+        isVideoUrl(thumbnailUrl)) {
       return thumbnailUrl!.trim();
     }
     return '';
@@ -114,32 +128,39 @@ class CartItemModel {
         : json['variant_id'];
 
     final int? parsedVariantId = rawVariantId != null && rawVariantId != 0
-        ? (rawVariantId is num ? rawVariantId.toInt() : int.tryParse(rawVariantId.toString()))
+        ? (rawVariantId is num
+              ? rawVariantId.toInt()
+              : int.tryParse(rawVariantId.toString()))
         : null;
 
     final productMap = json['product'] is Map ? (json['product'] as Map) : null;
-    final rawProductId = json['product_id'] ?? (productMap != null ? productMap['id'] : null);
+    final rawProductId =
+        json['product_id'] ?? (productMap != null ? productMap['id'] : null);
 
-    String? vUrl = json['video_url']?.toString() ??
+    String? vUrl =
+        json['video_url']?.toString() ??
         json['video']?.toString() ??
         (productMap != null
             ? (productMap['video_url']?.toString() ??
-                productMap['video']?.toString() ??
-                productMap['hls_url']?.toString())
+                  productMap['video']?.toString() ??
+                  productMap['hls_url']?.toString())
             : null);
 
-    String? tUrl = json['thumbnail_url']?.toString() ??
+    String? tUrl =
+        json['thumbnail_url']?.toString() ??
         json['thumbnail']?.toString() ??
         (productMap != null
             ? (productMap['thumbnail_url']?.toString() ??
-                productMap['thumbnail']?.toString() ??
-                productMap['thumb_url']?.toString())
+                  productMap['thumbnail']?.toString() ??
+                  productMap['thumb_url']?.toString())
             : null);
 
-    String? mImg = json['main_image']?.toString() ??
+    String? mImg =
+        json['main_image']?.toString() ??
         (productMap != null ? productMap['main_image']?.toString() : null);
 
-    final rawMedia = json['media'] ??
+    final rawMedia =
+        json['media'] ??
         json['product_media'] ??
         (productMap != null
             ? (productMap['media'] ?? productMap['product_media'])
@@ -149,10 +170,12 @@ class CartItemModel {
       for (final item in rawMedia) {
         if (item is Map) {
           final mType = item['media_type']?.toString().toLowerCase().trim();
-          final mUrl = item['media_url']?.toString() ??
+          final mUrl =
+              item['media_url']?.toString() ??
               item['video_url']?.toString() ??
               item['file']?.toString();
-          final itemThumb = item['thumbnail_url']?.toString() ??
+          final itemThumb =
+              item['thumbnail_url']?.toString() ??
               item['thumbnail']?.toString() ??
               item['thumb_url']?.toString();
 
@@ -165,37 +188,57 @@ class CartItemModel {
               mUrl.isNotEmpty) {
             vUrl = mUrl;
           }
-          if (mImg == null && mType == 'image' && mUrl != null && mUrl.isNotEmpty) {
+          if (mImg == null &&
+              mType == 'image' &&
+              mUrl != null &&
+              mUrl.isNotEmpty) {
             mImg = mUrl;
           }
         }
       }
     }
 
+    final rawSellingPrice =
+        json['selling_price'] ??
+        json['price'] ??
+        json['item_price'] ??
+        (productMap != null
+            ? (productMap['selling_price'] ?? productMap['price'])
+            : null);
+
+    final rawPriceAfterDiscount =
+        json['price_after_discount'] ??
+        json['discount_price'] ??
+        json['price'] ??
+        json['item_price'] ??
+        (productMap != null
+            ? (productMap['price_after_discount'] ??
+                  productMap['discount_price'] ??
+                  productMap['selling_price'] ??
+                  productMap['price'])
+            : null);
+
     return CartItemModel(
       id: CartModel._parseInt(json['id']),
       productId: CartModel._parseInt(rawProductId),
       variantId: parsedVariantId,
-      productName: (json['product_name'] ??
-              (productMap != null ? productMap['product_name'] : ''))
-          ?.toString() ??
+      productName:
+          (json['product_name'] ??
+                  (productMap != null ? productMap['product_name'] : ''))
+              ?.toString() ??
           '',
-      sellingPrice: CartModel._parseDouble(json['selling_price'] ??
-          (productMap != null ? productMap['selling_price'] : null)),
-      priceAfterDiscount: CartModel._parseDouble(json['price_after_discount'] ??
-          (productMap != null ? productMap['price_after_discount'] : null)),
+      sellingPrice: (rawSellingPrice ?? '').toString(),
+      priceAfterDiscount: (rawPriceAfterDiscount ?? '').toString(),
       mainImage: mImg,
       videoUrl: vUrl,
       thumbnailUrl: tUrl,
       quantity: CartModel._parseInt(json['quantity']),
-      colorName: (variantData != null
-              ? variantData['color_name']
-              : json['color_name'])
-          ?.toString(),
-      colorCode: (variantData != null
-              ? variantData['color_code']
-              : json['color_code'])
-          ?.toString(),
+      colorName:
+          (variantData != null ? variantData['color_name'] : json['color_name'])
+              ?.toString(),
+      colorCode:
+          (variantData != null ? variantData['color_code'] : json['color_code'])
+              ?.toString(),
       size: (variantData != null ? variantData['size'] : json['size'])
           ?.toString(),
     );

@@ -16,8 +16,13 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 class BoutiqueScreen extends StatefulWidget {
   final int? initialCategoryId;
+  final bool? showBackButton;
 
-  const BoutiqueScreen({super.key, this.initialCategoryId});
+  const BoutiqueScreen({
+    super.key,
+    this.initialCategoryId,
+    this.showBackButton,
+  });
 
   @override
   State<BoutiqueScreen> createState() => BoutiqueScreenState();
@@ -193,6 +198,19 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
       if (index != -1) {
         selectedCategory = index;
         selectedCategoryName = categories[index].name;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_categoryScrollController.hasClients) {
+            final targetOffset = (index * 90.0).clamp(
+              0.0,
+              _categoryScrollController.position.maxScrollExtent,
+            );
+            _categoryScrollController.animateTo(
+              targetOffset,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+          }
+        });
       }
       _initialCategorySet = true;
     }
@@ -228,9 +246,18 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
 
     _precacheVideos(filteredProducts);
 
+    final bool showBack = widget.showBackButton == true;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        leading: showBack
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        automaticallyImplyLeading: false,
         title: const Text(
           "Boutique",
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),

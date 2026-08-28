@@ -100,7 +100,10 @@ class ProductProvider extends ChangeNotifier {
 
   bool isProductDetailsCached(int id) {
     final p = _productDetailsCache[id];
-    return p != null && p.media.isNotEmpty;
+    return p != null &&
+        ((p.description != null && p.description!.isNotEmpty) ||
+            p.variants.isNotEmpty ||
+            p.totalStock > 0);
   }
 
   ProductModel? getCachedProduct(int id) {
@@ -118,10 +121,14 @@ class ProductProvider extends ChangeNotifier {
     int id, {
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh &&
-        _productDetailsCache.containsKey(id) &&
-        _productDetailsCache[id]!.media.isNotEmpty) {
-      return _productDetailsCache[id];
+    final cached = _productDetailsCache[id];
+    final isFullDetails = cached != null &&
+        ((cached.description != null && cached.description!.isNotEmpty) ||
+            cached.variants.isNotEmpty ||
+            cached.totalStock > 0);
+
+    if (!forceRefresh && isFullDetails) {
+      return cached;
     }
     if (_inFlightFetches.containsKey(id)) {
       return await _inFlightFetches[id];

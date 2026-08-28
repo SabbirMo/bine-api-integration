@@ -38,7 +38,12 @@ class CartProvider extends ChangeNotifier {
       final dynamic data = response.data;
 
       if (data != null && data is Map<String, dynamic>) {
-        _cart = CartModel.fromJson(data);
+        if (data['data'] is Map<String, dynamic> &&
+            (data['data'] as Map<String, dynamic>).containsKey('items')) {
+          _cart = CartModel.fromJson(data['data'] as Map<String, dynamic>);
+        } else {
+          _cart = CartModel.fromJson(data);
+        }
       } else {
         _cart = null;
       }
@@ -92,9 +97,26 @@ class CartProvider extends ChangeNotifier {
   }
 
   double _getPrice(CartItemModel item) {
-    return item.priceAfterDiscount > 0
-        ? item.priceAfterDiscount
-        : item.sellingPrice;
+    final effective = item.effectivePrice.replaceAll(' ', '').replaceAll(',', '.');
+    final p = double.tryParse(effective);
+    if (p != null && p > 0) return p;
+    final pad = double.tryParse(item.priceAfterDiscount.replaceAll(' ', '').replaceAll(',', '.'));
+    if (pad != null && pad > 0) return pad;
+    final sp = double.tryParse(item.sellingPrice.replaceAll(' ', '').replaceAll(',', '.'));
+    return sp ?? 0.0;
+  }
+
+  void _adjustTotal(double delta) {
+    if (_cart == null) return;
+    final current = double.tryParse(_cart!.total.replaceAll(' ', '').replaceAll(',', '.')) ?? 0.0;
+    final updated = current + delta;
+    if (updated <= 0) {
+      _cart!.total = "0";
+    } else if (updated % 1 == 0) {
+      _cart!.total = updated.toInt().toString();
+    } else {
+      _cart!.total = updated.toStringAsFixed(2);
+    }
   }
 
   Future<void> increment(int itemId, BuildContext context) async {
@@ -199,7 +221,7 @@ class CartProvider extends ChangeNotifier {
     }
 
     item.quantity++;
-    _cart?.total += _getPrice(item);
+    _adjustTotal(_getPrice(item));
     notifyListeners();
 
     try {
@@ -222,9 +244,7 @@ class CartProvider extends ChangeNotifier {
     final price = _getPrice(item);
 
     item.quantity = newQuantity;
-    if (_cart != null) {
-      _cart!.total += price * (newQuantity - oldQuantity);
-    }
+    _adjustTotal(price * (newQuantity - oldQuantity));
     notifyListeners();
 
     try {
@@ -245,7 +265,7 @@ class CartProvider extends ChangeNotifier {
     if (item == null || item.quantity <= 1) return;
 
     item.quantity--;
-    _cart?.total -= _getPrice(item);
+    _adjustTotal(-_getPrice(item));
     notifyListeners();
 
     try {
@@ -265,7 +285,7 @@ class CartProvider extends ChangeNotifier {
     if (item == null) return;
 
     _cart?.items.remove(item);
-    _cart?.total -= _getPrice(item) * item.quantity;
+    _adjustTotal(-(_getPrice(item) * item.quantity));
     notifyListeners();
 
     try {
@@ -276,7 +296,11 @@ class CartProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addToCart(ProductModel product, {int quantity = 1}) async {
+  Future<void> addToCart(
+    ProductModel product, {
+    int quantity = 1,
+    bool syncImmediately = true,
+  }) async {
     _productDetailsCache[product.id] = product;
     if (product.effectiveVideoUrl.isNotEmpty) {
       VideoFrameManager.instance
@@ -284,18 +308,39 @@ class CartProvider extends ChangeNotifier {
           .ignore();
     }
     if (product.isOutOfStock) {
-      debugPrint("❌ Cannot add to cart: Product is out of stock (ID: ${product.id}, TotalStock: ${product.totalStock}, Status: ${product.status})");
+      debugPrint(
+        "❌ Cannot add to cart: Product is out of stock (ID: ${product.id}, TotalStock: ${product.totalStock}, Status: ${product.status})",
+      );
       throw Exception("Ce produit est en rupture de stock !");
     }
     try {
-      debugPrint("🛒 [AddToCart Request]: POST /api/mobile/cart/ with {'product_id': ${product.id}, 'quantity': $quantity}");
+      debugPrint(
+        "🛒 [AddToCart Request]: POST /api/mobile/cart/ with {'product_id': ${product.id}, 'quantity': $quantity}",
+      );
       final response = await _apiServices.post(
         '/api/mobile/cart/',
         data: {'product_id': product.id, 'quantity': quantity},
         requireAuth: true,
       );
       debugPrint("✅ [AddToCart Success]: ${response.data}");
-      await fetchCart(showLoading: false);
+
+      final responseData = response.data;
+      if (responseData is Map<String, dynamic>) {
+        if (responseData.containsKey('items')) {
+          _cart = CartModel.fromJson(responseData);
+          notifyListeners();
+        } else if (responseData['data'] is Map<String, dynamic> &&
+            (responseData['data'] as Map<String, dynamic>).containsKey('items')) {
+          _cart = CartModel.fromJson(responseData['data'] as Map<String, dynamic>);
+          notifyListeners();
+        }
+      }
+
+      if (syncImmediately) {
+        await fetchCart(showLoading: false);
+      } else {
+        fetchCart(showLoading: false).ignore();
+      }
     } catch (e) {
       debugPrint("❌ [AddToCart Error]: $e");
       _errorMessage = e.toString();

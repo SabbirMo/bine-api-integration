@@ -80,8 +80,18 @@ class AuthInterceptor extends QueuedInterceptor {
         return false;
       }
 
-      final response = await dio.post(
-        '${BaseUrl.baseUrl}/api/mobile/auth/token/refresh/',
+      final refreshDio = Dio(
+        BaseOptions(
+          baseUrl: BaseUrl.baseUrl,
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+          sendTimeout: const Duration(seconds: 10),
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+
+      final response = await refreshDio.post(
+        '/api/mobile/auth/token/refresh/',
         data: {'refresh': refreshToken},
       );
 
