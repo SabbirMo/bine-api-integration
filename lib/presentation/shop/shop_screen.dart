@@ -163,15 +163,11 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
 
   void _precacheVideos(List<ProductModel> products) {
     final List<String> videoUrls = [];
-    final productProvider = context.read<ProductProvider>();
     for (final p in products) {
       final vUrl = _resolveProductVideo(p);
       if (vUrl.isNotEmpty) {
         videoUrls.add(vUrl);
         VideoCacheManager.instance.preCacheVideo(vUrl);
-      } else if (p.media.isEmpty &&
-          !productProvider.isProductDetailsCached(p.id)) {
-        productProvider.fetchProductDetails(p.id);
       }
     }
     if (videoUrls.isNotEmpty) {

@@ -50,6 +50,11 @@ class ProductProvider extends ChangeNotifier {
       } else {
         _allProducts = [];
       }
+      for (final p in _allProducts) {
+        if (!_productDetailsCache.containsKey(p.id)) {
+          _productDetailsCache[p.id] = p;
+        }
+      }
     } catch (e) {
       _errorMessage = e.toString();
       debugPrint("❌ [Error Products List]: $e");
@@ -76,34 +81,54 @@ class ProductProvider extends ChangeNotifier {
   }
 
   final Map<int, ProductModel> _productDetailsCache = {};
-  final Set<int> _fetchingDetailIds = {};
+  final Map<int, Future<ProductModel?>> _inFlightFetches = {};
 
   void clearCache() {
     _productDetailsCache.clear();
-    _fetchingDetailIds.clear();
+    _inFlightFetches.clear();
   }
 
-  bool isProductDetailsCached(int id) => _productDetailsCache.containsKey(id);
+  /// Store or update a product in memory cache
+  void seedProductCache(ProductModel product) {
+    if (product.id > 0) {
+      final existing = _productDetailsCache[product.id];
+      if (existing == null || existing.media.isEmpty) {
+        _productDetailsCache[product.id] = product;
+      }
+    }
+  }
+
+  bool isProductDetailsCached(int id) {
+    final p = _productDetailsCache[id];
+    return p != null && p.media.isNotEmpty;
+  }
 
   ProductModel? getCachedProduct(int id) {
     if (_productDetailsCache.containsKey(id)) {
       return _productDetailsCache[id];
     }
-    return _allProducts.where((p) => p.id == id).firstOrNull;
+    final fallback = _allProducts.where((p) => p.id == id).firstOrNull;
+    if (fallback != null) {
+      _productDetailsCache[id] = fallback;
+    }
+    return fallback;
   }
 
   Future<ProductModel?> fetchProductDetails(
     int id, {
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh && _productDetailsCache.containsKey(id)) {
+    if (!forceRefresh &&
+        _productDetailsCache.containsKey(id) &&
+        _productDetailsCache[id]!.media.isNotEmpty) {
       return _productDetailsCache[id];
     }
-    if (_fetchingDetailIds.contains(id)) {
-      return null;
+    if (_inFlightFetches.containsKey(id)) {
+      return await _inFlightFetches[id];
     }
-    _fetchingDetailIds.add(id);
-    return await _fetchProductDetailsBackground(id);
+    final future = _fetchProductDetailsBackground(id);
+    _inFlightFetches[id] = future;
+    return await future;
   }
 
   Future<ProductModel?> _fetchProductDetailsBackground(int id) async {
@@ -122,9 +147,9 @@ class ProductProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Failed to fetch product details ID: $id: $e');
     } finally {
-      _fetchingDetailIds.remove(id);
+      _inFlightFetches.remove(id);
     }
-    return null;
+    return _productDetailsCache[id];
   }
 
   Future<void> trackVideoView(int id) async {

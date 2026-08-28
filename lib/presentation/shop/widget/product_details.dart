@@ -75,49 +75,29 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     }
   }
 
+  String _resolveUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    String clean = url.trim();
+    if (!clean.startsWith('http') &&
+        !clean.startsWith('file://') &&
+        !clean.startsWith('/data')) {
+      final base = BaseUrl.baseUrl;
+      clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+    }
+    return clean;
+  }
+
   void _precacheAround(int index) {
     if (!mounted) return;
-    final productProvider = context.read<ProductProvider>();
-    final indices = [index, index + 1, index + 2, index - 1];
-
-    for (final i in indices) {
-      if (i >= 0 && i < widget.allProducts.length) {
-        final p = widget.allProducts[i];
-        productProvider.fetchProductDetails(p.id);
-
-        for (final m in p.media) {
-          final mType = m.mediaType.toLowerCase().trim();
-          final mUrl = m.effectiveMediaUrl.isNotEmpty
-              ? m.effectiveMediaUrl
-              : m.mediaUrl;
-          if (mUrl.isNotEmpty &&
-              (mType == 'video' ||
-                  mUrl.endsWith('.mp4') ||
-                  mUrl.endsWith('.mov') ||
-                  mUrl.endsWith('.m3u8'))) {
-            String clean = mUrl.trim();
-            if (!clean.startsWith('http')) {
-              final base = BaseUrl.baseUrl;
-              clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
-            }
-            VideoCacheManager.instance.preCacheVideo(clean);
-            VideoFrameManager.instance.extractFirstFrame(clean);
-          }
-        }
-
-        if (p.mainImage != null && p.mainImage!.isNotEmpty) {
-          final mainImg = p.mainImage!.toLowerCase().trim();
-          if (mainImg.endsWith('.mp4') ||
-              mainImg.endsWith('.mov') ||
-              mainImg.endsWith('.m3u8')) {
-            String clean = p.mainImage!.trim();
-            if (!clean.startsWith('http')) {
-              final base = BaseUrl.baseUrl;
-              clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
-            }
-            VideoCacheManager.instance.preCacheVideo(clean);
-            VideoFrameManager.instance.extractFirstFrame(clean);
-          }
+    final nextIndex = index + 1;
+    if (nextIndex < widget.allProducts.length) {
+      final p = widget.allProducts[nextIndex];
+      final vUrl = p.effectiveVideoUrl;
+      if (vUrl.isNotEmpty) {
+        final clean = _resolveUrl(vUrl);
+        if (clean.isNotEmpty) {
+          VideoCacheManager.instance.preCacheVideo(clean);
+          VideoFrameManager.instance.extractFirstFrame(clean).ignore();
         }
       }
     }
@@ -255,21 +235,40 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
       });
 
       return list;
-    } else if (_product.mainImage != null && _product.mainImage!.isNotEmpty) {
-      final resolvedMain = _resolveUrl(_product.mainImage!);
-      final isVid = _isVideoUrl(resolvedMain);
-      return [
+    }
+
+    final List<ProductContent> fallbackList = [];
+    final vUrl = _product.effectiveVideoUrl;
+    if (vUrl.isNotEmpty) {
+      final resolvedVid = _resolveUrl(vUrl);
+      fallbackList.add(
         ProductContent(
-          url: resolvedMain,
-          isVideo: isVid,
-          isImage: !isVid,
+          url: resolvedVid,
+          isVideo: true,
+          isImage: false,
           isAudio: false,
           isNetwork: true,
         ),
-      ];
-    } else {
-      return [];
+      );
     }
+
+    if (_product.mainImage != null && _product.mainImage!.isNotEmpty) {
+      final resolvedMain = _resolveUrl(_product.mainImage!);
+      final isVid = _isVideoUrl(resolvedMain);
+      if (!fallbackList.any((e) => e.url == resolvedMain)) {
+        fallbackList.add(
+          ProductContent(
+            url: resolvedMain,
+            isVideo: isVid,
+            isImage: !isVid,
+            isAudio: false,
+            isNetwork: true,
+          ),
+        );
+      }
+    }
+
+    return fallbackList;
   }
 
   @override
@@ -280,7 +279,9 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
       widget.product.id,
     );
     _product = cachedProduct ?? widget.product;
-    if (cachedProduct != null && cachedProduct.media.isNotEmpty) {
+    if (_product.media.isNotEmpty ||
+        (_product.mainImage != null && _product.mainImage!.isNotEmpty) ||
+        _product.effectiveVideoUrl.isNotEmpty) {
       _isLoadingDetails = false;
     }
     _fetchDetails();

@@ -13,7 +13,6 @@ import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
 import 'package:binetatour/providers/cart_provider.dart';
-import 'package:binetatour/providers/category_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:binetatour/providers/store_settings_provider.dart';
@@ -40,20 +39,38 @@ class _AccueilScreenState extends State<AccueilScreen>
   final ScrollController _storyScrollController = ScrollController();
 
   Future<void> _refreshHomeData() async {
-    context.read<ProductProvider>().clearCache();
     try {
-      await Future.wait([
-        context.read<HomeProvider>().fetchHomeData(),
-        context.read<CartProvider>().fetchCart(showLoading: false),
-        context.read<ProductProvider>().fetchProducts(),
-        context.read<CategoryProvider>().fetchCategories(),
-        context.read<StoreSettingsProvider>().fetchStoreSettings(),
-        context.read<NotificationProvider>().fetchNotifications(
-          forceRefresh: true,
-        ),
-      ]).timeout(const Duration(seconds: 10));
+      // 1. Fetch Home Data with highest priority (fastest UI update) with timeout
+      await context.read<HomeProvider>().fetchHomeData().timeout(
+        const Duration(seconds: 6),
+      );
     } catch (e) {
-      debugPrint("Home refresh timeout or network error: $e");
+      debugPrint("Home refresh error or timeout: $e");
+    }
+
+    // 2. Fetch non-blocking background data asynchronously
+    if (mounted) {
+      context
+          .read<CartProvider>()
+          .fetchCart(showLoading: false)
+          .timeout(const Duration(seconds: 5))
+          .catchError((e) {
+            debugPrint("Cart background fetch error: $e");
+          });
+      context
+          .read<StoreSettingsProvider>()
+          .fetchStoreSettings()
+          .timeout(const Duration(seconds: 5))
+          .catchError((e) {
+            debugPrint("StoreSettings background fetch error: $e");
+          });
+      context
+          .read<NotificationProvider>()
+          .fetchNotifications(forceRefresh: true)
+          .timeout(const Duration(seconds: 5))
+          .catchError((e) {
+            debugPrint("Notifications background fetch error: $e");
+          });
     }
   }
 
@@ -791,7 +808,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     );
     _scrollController.addListener(_onHorizontalScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadMissingDetails();
       _precacheSectionVideos();
       _notifySectionActiveCard();
     });
@@ -805,7 +821,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       context,
     );
     if (oldWidget.section.products != widget.section.products) {
-      _loadMissingDetails();
       _precacheSectionVideos();
       _notifySectionActiveCard();
     }
@@ -901,15 +916,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     }
     if (videoUrls.isNotEmpty) {
       VideoFrameManager.instance.preExtractBatch(videoUrls);
-    }
-  }
-
-  void _loadMissingDetails() {
-    final productProvider = context.read<ProductProvider>();
-    for (final prod in widget.section.products) {
-      if (prod.effectiveVideoUrl.isEmpty) {
-        productProvider.fetchProductDetails(prod.id);
-      }
     }
   }
 
