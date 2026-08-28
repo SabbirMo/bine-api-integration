@@ -54,8 +54,14 @@ class SnappyStoryScrollPhysics extends PageScrollPhysics {
   }
 
   @override
+  double get minFlingVelocity => 50.0;
+
+  @override
+  double get dragStartDistanceMotionThreshold => 3.5;
+
+  @override
   SpringDescription get spring =>
-      const SpringDescription(mass: 0.5, stiffness: 260.0, damping: 23.0);
+      const SpringDescription(mass: 0.45, stiffness: 280.0, damping: 24.0);
 
   @override
   Simulation? createBallisticSimulation(
@@ -77,9 +83,9 @@ class SnappyStoryScrollPhysics extends PageScrollPhysics {
 
     double targetPage = page.roundToDouble();
 
-    // Facebook Story style flick/drag thresholds:
-    const double velocityThreshold = 100.0;
-    const double dragThreshold = 0.20; // 20% drag
+    // Sensitive swipe thresholds (15% drag or 50px/s flick):
+    const double velocityThreshold = 50.0;
+    const double dragThreshold = 0.15;
 
     if (velocity > velocityThreshold) {
       targetPage = basePage + 1.0;

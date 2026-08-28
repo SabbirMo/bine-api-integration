@@ -164,167 +164,170 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
           _reportVisibility(info.visibleFraction);
         }
       },
-      child: GestureDetector(
-        onTap: () {
-          if (hasVideo) {
-            FeedVideoManager.instance.playSingle(
-              widget.keyString,
-              widget.videoUrl,
-            );
-          }
-          widget.onTap();
-        },
-        child: Container(
-          width: widget.width,
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: const Color(0xFF161616),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // 1. Base Layer: The ACTUAL FIRST FRAME extracted directly from the video file (NO external catalog thumbnail!)
-              if (hasVideo)
-                _buildVideoFirstFrame()
-              else
-                Container(color: const Color(0xFF161616)),
+      child: RepaintBoundary(
+        child: GestureDetector(
+          onTap: () {
+            if (hasVideo) {
+              FeedVideoManager.instance.playSingle(
+                widget.keyString,
+                widget.videoUrl,
+              );
+            }
+            widget.onTap();
+          },
+          child: Container(
+            width: widget.width,
+            height: widget.height,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: const Color(0xFF161616),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. Base Layer: The ACTUAL FIRST FRAME extracted directly from the video file (NO external catalog thumbnail!)
+                if (hasVideo)
+                  _buildVideoFirstFrame()
+                else
+                  Container(color: const Color(0xFF161616)),
 
-              // 2. Active Video Player Layer (Plays smoothly right on top of the first frame)
-              if (hasVideo)
-                ListenableBuilder(
-                  listenable: FeedVideoManager.instance,
-                  builder: (context, _) {
-                    final playerState = FeedVideoManager.instance
-                        .getPlayerState(widget.keyString);
-                    final isAttached =
-                        playerState != null &&
-                        playerState.currentUrl == widget.videoUrl;
+                // 2. Active Video Player Layer (Plays smoothly right on top of the first frame)
+                if (hasVideo)
+                  ListenableBuilder(
+                    listenable: FeedVideoManager.instance,
+                    builder: (context, _) {
+                      final playerState = FeedVideoManager.instance
+                          .getPlayerState(widget.keyString);
+                      final isAttached =
+                          playerState != null &&
+                          playerState.currentUrl == widget.videoUrl;
 
-                    if (isAttached) {
-                      return Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          SizedBox.expand(
-                            child: Video(
-                              controller: playerState.videoController,
-                              fit: BoxFit.cover,
-                              controls: NoVideoControls,
-                            ),
-                          ),
-                          if (playerState.isPlaying && playerState.isBuffering)
-                            _buildBannerStyleLoading(),
-                        ],
-                      );
-                    }
-
-                    return const SizedBox();
-                  },
-                ),
-
-              // 3. Bottom Gradient for high text readability
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.15),
-                        Colors.black.withValues(alpha: 0.88),
-                      ],
-                      stops: const [0.4, 0.65, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-
-              // 4. Discount Badge (Top Left)
-              if (widget.discount != null && widget.discount!.isNotEmpty)
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF1111),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      widget.discount!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-
-              // 5. Product Title & Price Details (Bottom)
-              Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
-                        shadows: [
-                          Shadow(
-                            blurRadius: 4,
-                            color: Colors.black87,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          widget.price,
-                          style: const TextStyle(
-                            color: Color(0xFFFF8000),
-                            fontWeight: FontWeight.w900,
-                            fontSize: 13,
-                          ),
-                        ),
-                        if (widget.oldPrice != null &&
-                            widget.oldPrice!.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              widget.oldPrice!,
-                              style: TextStyle(
-                                color: Colors.red.withValues(alpha: 0.65),
-                                fontSize: 10,
-                                decoration: TextDecoration.lineThrough,
-                                decorationThickness: 1.5,
+                      if (isAttached) {
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            SizedBox.expand(
+                              child: Video(
+                                controller: playerState.videoController,
+                                fit: BoxFit.cover,
+                                controls: NoVideoControls,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (playerState.isPlaying &&
+                                playerState.isBuffering)
+                              _buildBannerStyleLoading(),
+                          ],
+                        );
+                      }
+
+                      return const SizedBox();
+                    },
+                  ),
+
+                // 3. Bottom Gradient for high text readability
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.15),
+                          Colors.black.withValues(alpha: 0.88),
+                        ],
+                        stops: const [0.4, 0.65, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 4. Discount Badge (Top Left)
+                if (widget.discount != null && widget.discount!.isNotEmpty)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF1111),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        widget.discount!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // 5. Product Title & Price Details (Bottom)
+                Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          letterSpacing: 0.2,
+                          shadows: [
+                            Shadow(
+                              blurRadius: 4,
+                              color: Colors.black87,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            widget.price,
+                            style: const TextStyle(
+                              color: Color(0xFFFF8000),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
                             ),
                           ),
+                          if (widget.oldPrice != null &&
+                              widget.oldPrice!.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                widget.oldPrice!,
+                                style: TextStyle(
+                                  color: Colors.red.withValues(alpha: 0.65),
+                                  fontSize: 10,
+                                  decoration: TextDecoration.lineThrough,
+                                  decorationThickness: 1.5,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

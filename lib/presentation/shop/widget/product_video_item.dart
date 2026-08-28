@@ -66,7 +66,9 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     if (cleanUrl.isNotEmpty) {
       VideoFrameManager.instance.extractFirstFrame(cleanUrl);
     }
-    _initPlayer();
+    if (widget.isActive) {
+      _initPlayer();
+    }
   }
 
   Future<void> _initPlayer() async {
@@ -176,16 +178,22 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       if (cleanUrl.isNotEmpty) {
         VideoFrameManager.instance.extractFirstFrame(cleanUrl);
       }
-      _initPlayer();
+      if (widget.isActive) {
+        _initPlayer();
+      }
     } else {
       if (oldWidget.isMuted != widget.isMuted && _player != null) {
         _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
       }
-      if (oldWidget.isActive != widget.isActive && _player != null) {
+      if (oldWidget.isActive != widget.isActive) {
         if (widget.isActive) {
-          _player!.play();
+          if (_player == null) {
+            _initPlayer();
+          } else {
+            _player!.play();
+          }
         } else {
-          _player!.pause();
+          _player?.pause();
         }
       }
     }
@@ -243,8 +251,8 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                         child: ClipRect(
                           child: ImageFiltered(
                             imageFilter: ImageFilter.blur(
-                              sigmaX: 15.0,
-                              sigmaY: 15.0,
+                              sigmaX: 8.0,
+                              sigmaY: 8.0,
                             ),
                             child: Image.memory(
                               frameBytes,
@@ -268,7 +276,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
               },
             ),
 
-            // 2. Video Player Layer (Single Video Widget)
+            // 2. Video Player Layer (Single Video Widget wrapped in RepaintBoundary)
             if (_isVideoReady)
               Center(
                 child: FittedBox(
@@ -276,10 +284,12 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                   child: SizedBox(
                     width: videoWidth,
                     height: videoHeight,
-                    child: Video(
-                      controller: _controller!,
-                      controls: NoVideoControls,
-                      fill: Colors.transparent,
+                    child: RepaintBoundary(
+                      child: Video(
+                        controller: _controller!,
+                        controls: NoVideoControls,
+                        fill: Colors.transparent,
+                      ),
                     ),
                   ),
                 ),

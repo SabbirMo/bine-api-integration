@@ -225,10 +225,7 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
           ),
           // Clear foreground image
           Center(
-            child: Image(
-              image: imageProvider,
-              fit: BoxFit.contain,
-            ),
+            child: Image(image: imageProvider, fit: BoxFit.contain),
           ),
         ],
       );
@@ -247,12 +244,17 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
               ListenableBuilder(
                 listenable: VideoFrameManager.instance,
                 builder: (context, _) {
-                  final frameBytes = VideoFrameManager.instance.getCachedFrame(story.url);
+                  final frameBytes = VideoFrameManager.instance.getCachedFrame(
+                    story.url,
+                  );
                   if (frameBytes != null && frameBytes.isNotEmpty) {
                     return Positioned.fill(
                       child: ClipRect(
                         child: ImageFiltered(
-                          imageFilter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                          imageFilter: ImageFilter.blur(
+                            sigmaX: 8.0,
+                            sigmaY: 8.0,
+                          ),
                           child: Image.memory(
                             frameBytes,
                             fit: BoxFit.cover,
@@ -264,16 +266,12 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
                       ),
                     );
                   }
-                  return Positioned.fill(
-                    child: Container(color: Colors.black),
-                  );
+                  return Positioned.fill(child: Container(color: Colors.black));
                 },
               ),
               // Dark overlay to dim the background
               Positioned.fill(
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.25),
-                ),
+                child: Container(color: Colors.black.withValues(alpha: 0.25)),
               ),
             ],
             // Foreground Clear Video (Single Video Widget)
@@ -283,10 +281,12 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
                 child: SizedBox(
                   width: videoWidth,
                   height: videoHeight,
-                  child: Video(
-                    controller: _videoController!,
-                    controls: NoVideoControls,
-                    fill: Colors.transparent,
+                  child: RepaintBoundary(
+                    child: Video(
+                      controller: _videoController!,
+                      controls: NoVideoControls,
+                      fill: Colors.transparent,
+                    ),
                   ),
                 ),
               ),

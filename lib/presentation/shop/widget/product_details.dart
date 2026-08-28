@@ -22,6 +22,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:binetatour/core/widgets/smooth_reels_scroll_physics.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final List<ProductModel>
@@ -89,15 +90,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
 
   void _precacheAround(int index) {
     if (!mounted) return;
-    final nextIndex = index + 1;
-    if (nextIndex < widget.allProducts.length) {
-      final p = widget.allProducts[nextIndex];
-      final vUrl = p.effectiveVideoUrl;
-      if (vUrl.isNotEmpty) {
-        final clean = _resolveUrl(vUrl);
-        if (clean.isNotEmpty) {
-          VideoCacheManager.instance.preCacheVideo(clean);
-          VideoFrameManager.instance.extractFirstFrame(clean).ignore();
+    final indices = [index + 1, index + 2, index - 1];
+    for (final nextIndex in indices) {
+      if (nextIndex >= 0 && nextIndex < widget.allProducts.length) {
+        final p = widget.allProducts[nextIndex];
+        final vUrl = p.effectiveVideoUrl;
+        if (vUrl.isNotEmpty) {
+          final clean = _resolveUrl(vUrl);
+          if (clean.isNotEmpty) {
+            VideoCacheManager.instance.preCacheVideo(clean);
+            VideoFrameManager.instance.extractFirstFrame(clean).ignore();
+          }
         }
       }
     }
@@ -118,6 +121,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         body: PageView.builder(
           controller: _verticalController,
           scrollDirection: Axis.vertical, // SWIPE UP FOR NEXT PRODUCT
+          physics: const SmoothReelsScrollPhysics(),
           itemCount: widget.allProducts.length,
           onPageChanged: (index) {
             setState(() {
@@ -128,18 +132,20 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           itemBuilder: (context, index) {
             final product = widget.allProducts[index];
             final isActive = index == _currentPageIndex && !_isScreenPaused;
-            return ProductMediaGallery(
-              product: product,
-              isActive: isActive,
-              isMuted: _isMuted,
-              onMuteToggle: () => setState(() => _isMuted = !_isMuted),
-              isExpanded: isExpanded,
-              onPause: () {
-                if (mounted) setState(() => _isScreenPaused = true);
-              },
-              onResume: () {
-                if (mounted) setState(() => _isScreenPaused = false);
-              },
+            return RepaintBoundary(
+              child: ProductMediaGallery(
+                product: product,
+                isActive: isActive,
+                isMuted: _isMuted,
+                onMuteToggle: () => setState(() => _isMuted = !_isMuted),
+                isExpanded: isExpanded,
+                onPause: () {
+                  if (mounted) setState(() => _isScreenPaused = true);
+                },
+                onResume: () {
+                  if (mounted) setState(() => _isScreenPaused = false);
+                },
+              ),
             );
           },
         ),
@@ -284,7 +290,14 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
         _product.effectiveVideoUrl.isNotEmpty) {
       _isLoadingDetails = false;
     }
-    _fetchDetails();
+    // Only fetch if media is not yet available to avoid interrupting swiping animations
+    if (_product.media.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _fetchDetails();
+        }
+      });
+    }
   }
 
   @override
@@ -330,6 +343,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
             : PageView.builder(
                 controller: _horizontalController,
                 scrollDirection: Axis.horizontal,
+                physics: const SmoothReelsScrollPhysics(),
                 itemCount: _mediaContent.length,
                 onPageChanged: (i) => setState(() => _currentMediaIndex = i),
                 itemBuilder: (context, index) {
@@ -337,31 +351,35 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                   final isMediaActive =
                       widget.isActive && index == _currentMediaIndex;
                   if (media.isVideo) {
-                    return ProductVideoItem(
-                      productId: _product.id,
-                      videoUrl: media.url,
-                      thumbnailUrl: _product.mainImage,
-                      isMuted: widget.isMuted,
-                      isActive: isMediaActive,
+                    return RepaintBoundary(
+                      child: ProductVideoItem(
+                        productId: _product.id,
+                        videoUrl: media.url,
+                        thumbnailUrl: _product.mainImage,
+                        isMuted: widget.isMuted,
+                        isActive: isMediaActive,
+                      ),
                     );
                   } else if (media.isAudio) {
-                    return ProductAudioItem(
-                      audioUrl: media.url,
-                      isMuted: widget.isMuted,
-                      isActive: isMediaActive,
+                    return RepaintBoundary(
+                      child: ProductAudioItem(
+                        audioUrl: media.url,
+                        isMuted: widget.isMuted,
+                        isActive: isMediaActive,
+                      ),
                     );
                   } else {
                     return InteractiveViewer(
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // Blurred background image
+                          // Blurred background image with optimal 8.0 sigma
                           Positioned.fill(
                             child: ClipRect(
                               child: ImageFiltered(
                                 imageFilter: ImageFilter.blur(
-                                  sigmaX: 15.0,
-                                  sigmaY: 15.0,
+                                  sigmaX: 8.0,
+                                  sigmaY: 8.0,
                                 ),
                                 child: Image.network(
                                   media.url,
@@ -397,45 +415,47 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
               ),
 
         // 2. TOP UI OVERLAY
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Row(
-              children: [
-                // Media Counter (e.g., 1/3)
-                if (_mediaContent.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      "${_currentMediaIndex + 1} / ${_mediaContent.length}",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+        RepaintBoundary(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(
+                children: [
+                  // Media Counter (e.g., 1/3)
+                  if (_mediaContent.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        "${_currentMediaIndex + 1} / ${_mediaContent.length}",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                const Spacer(),
-                // Mute button only for Videos and Audios
-                if (_mediaContent.isNotEmpty &&
-                    (_mediaContent[_currentMediaIndex].isVideo ||
-                        _mediaContent[_currentMediaIndex].isAudio))
+                  const Spacer(),
+                  // Mute button only for Videos and Audios
+                  if (_mediaContent.isNotEmpty &&
+                      (_mediaContent[_currentMediaIndex].isVideo ||
+                          _mediaContent[_currentMediaIndex].isAudio))
+                    _buildCircleIcon(
+                      icon: widget.isMuted ? Icons.volume_off : Icons.volume_up,
+                      onTap: widget.onMuteToggle,
+                    ),
+                  const SizedBox(width: 10),
                   _buildCircleIcon(
-                    icon: widget.isMuted ? Icons.volume_off : Icons.volume_up,
-                    onTap: widget.onMuteToggle,
+                    icon: Icons.close,
+                    onTap: () => Navigator.pop(context),
                   ),
-                const SizedBox(width: 10),
-                _buildCircleIcon(
-                  icon: Icons.close,
-                  onTap: () => Navigator.pop(context),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

@@ -128,8 +128,8 @@ class StoryDetailContent extends StatelessWidget {
                         child: ClipRect(
                           child: ImageFiltered(
                             imageFilter: ImageFilter.blur(
-                              sigmaX: 15.0,
-                              sigmaY: 15.0,
+                              sigmaX: 8.0,
+                              sigmaY: 8.0,
                             ),
                             child: Image.memory(
                               frameBytes,
@@ -156,11 +156,13 @@ class StoryDetailContent extends StatelessWidget {
                     child: SizedBox(
                       width: videoWidth,
                       height: videoHeight,
-                      child: Video(
-                        key: ValueKey('fg_${provider.currentIndex}'),
-                        controller: provider.videoController!,
-                        controls: NoVideoControls,
-                        fill: Colors.transparent,
+                      child: RepaintBoundary(
+                        child: Video(
+                          key: ValueKey('fg_${provider.currentIndex}'),
+                          controller: provider.videoController!,
+                          controls: NoVideoControls,
+                          fill: Colors.transparent,
+                        ),
                       ),
                     ),
                   ),
