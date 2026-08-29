@@ -29,19 +29,73 @@ class CartProvider extends ChangeNotifier {
     }
 
     try {
+      int page = 1;
       final response = await _apiServices.get(
         '/api/mobile/cart/',
+        queryParameters: {'page': page},
         requireAuth: true,
       );
 
-      final dynamic data = response.data;
+      final dynamic rawData = response.data;
+      final Map<String, dynamic>? data = rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : null;
 
-      if (data != null && data is Map<String, dynamic>) {
-        if (data['data'] is Map<String, dynamic> &&
-            (data['data'] as Map<String, dynamic>).containsKey('items')) {
-          _cart = CartModel.fromJson(data['data'] as Map<String, dynamic>);
+      if (data != null) {
+        if (data['data'] is Map) {
+          _cart = CartModel.fromJson(
+            Map<String, dynamic>.from(data['data'] as Map),
+          );
         } else {
           _cart = CartModel.fromJson(data);
+        }
+
+        // Handle pagination: fetch subsequent pages if present
+        bool hasNext = false;
+        if (data['next'] != null) {
+          hasNext = true;
+        } else if (data['data'] is Map &&
+            (data['data'] as Map)['next'] != null) {
+          hasNext = true;
+        }
+
+        while (hasNext) {
+          page++;
+          try {
+            final nextResp = await _apiServices.get(
+              '/api/mobile/cart/',
+              queryParameters: {'page': page},
+              requireAuth: true,
+            );
+            final dynamic rawNext = nextResp.data;
+            final Map<String, dynamic>? nextData = rawNext is Map
+                ? Map<String, dynamic>.from(rawNext)
+                : null;
+            if (nextData != null) {
+              final pageCart = CartModel.fromJson(
+                nextData['data'] is Map
+                    ? Map<String, dynamic>.from(nextData['data'] as Map)
+                    : nextData,
+              );
+              if (pageCart.items.isNotEmpty && _cart != null) {
+                for (final item in pageCart.items) {
+                  if (!_cart!.items.any((existing) => existing.id == item.id)) {
+                    _cart!.items.add(item);
+                  }
+                }
+              }
+              hasNext =
+                  nextData['next'] != null ||
+                  (nextData['data'] is Map &&
+                      (nextData['data'] as Map)['next'] != null);
+              if (pageCart.items.isEmpty) hasNext = false;
+            } else {
+              hasNext = false;
+            }
+          } catch (e) {
+            debugPrint("Error fetching cart page $page: $e");
+            hasNext = false;
+          }
         }
       } else {
         _cart = null;
@@ -86,18 +140,28 @@ class CartProvider extends ChangeNotifier {
   }
 
   double _getPrice(CartItemModel item) {
-    final effective = item.effectivePrice.replaceAll(' ', '').replaceAll(',', '.');
+    final effective = item.effectivePrice
+        .replaceAll(' ', '')
+        .replaceAll(',', '.');
     final p = double.tryParse(effective);
     if (p != null && p > 0) return p;
-    final pad = double.tryParse(item.priceAfterDiscount.replaceAll(' ', '').replaceAll(',', '.'));
+    final pad = double.tryParse(
+      item.priceAfterDiscount.replaceAll(' ', '').replaceAll(',', '.'),
+    );
     if (pad != null && pad > 0) return pad;
-    final sp = double.tryParse(item.sellingPrice.replaceAll(' ', '').replaceAll(',', '.'));
+    final sp = double.tryParse(
+      item.sellingPrice.replaceAll(' ', '').replaceAll(',', '.'),
+    );
     return sp ?? 0.0;
   }
 
   void _adjustTotal(double delta) {
     if (_cart == null) return;
-    final current = double.tryParse(_cart!.total.replaceAll(' ', '').replaceAll(',', '.')) ?? 0.0;
+    final current =
+        double.tryParse(
+          _cart!.total.replaceAll(' ', '').replaceAll(',', '.'),
+        ) ??
+        0.0;
     final updated = current + delta;
     if (updated <= 0) {
       _cart!.total = "0";
@@ -149,12 +213,16 @@ class CartProvider extends ChangeNotifier {
       } else if (product.isMixedMode && product.unassignedStock > 0) {
         maxStock = product.unassignedStock;
       } else if (product.isProductMode) {
-        maxStock = product.totalStock > 0 ? product.totalStock : product.stockQuantity;
+        maxStock = product.totalStock > 0
+            ? product.totalStock
+            : product.stockQuantity;
       } else if (product.variants.isNotEmpty) {
         // Variant mode with no variant yet or fallback
         ProductVariantModel? matchingVariant;
         for (var v in product.variants) {
-          bool colorMatch = (v.colorCode == item.colorCode) || (v.colorName == item.colorName);
+          bool colorMatch =
+              (v.colorCode == item.colorCode) ||
+              (v.colorName == item.colorName);
           bool sizeMatch = v.size == item.size;
           if (colorMatch && sizeMatch) {
             matchingVariant = v;
@@ -314,8 +382,12 @@ class CartProvider extends ChangeNotifier {
           _cart = CartModel.fromJson(responseData);
           notifyListeners();
         } else if (responseData['data'] is Map<String, dynamic> &&
-            (responseData['data'] as Map<String, dynamic>).containsKey('items')) {
-          _cart = CartModel.fromJson(responseData['data'] as Map<String, dynamic>);
+            (responseData['data'] as Map<String, dynamic>).containsKey(
+              'items',
+            )) {
+          _cart = CartModel.fromJson(
+            responseData['data'] as Map<String, dynamic>,
+          );
           notifyListeners();
         }
       }
@@ -348,8 +420,10 @@ class CartProvider extends ChangeNotifier {
       // 2. Fallback: delete item by item
       for (final item in itemsToDelete) {
         try {
-          await _apiServices.delete('/api/mobile/cart/${item.id}/',
-              requireAuth: true);
+          await _apiServices.delete(
+            '/api/mobile/cart/${item.id}/',
+            requireAuth: true,
+          );
         } catch (e) {
           log("Error deleting cart item ${item.id}: $e");
         }

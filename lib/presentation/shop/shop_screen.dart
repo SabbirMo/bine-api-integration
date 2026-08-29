@@ -325,6 +325,15 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                   (scrollInfo.metrics.extentAfter <= 50 ||
                       pixels >= maxScroll - 50);
               FeedVideoManager.instance.setIsAtBottom(isBottom);
+
+              if (pixels >= maxScroll - 250) {
+                final prodProvider = context.read<ProductProvider>();
+                if (prodProvider.hasMore &&
+                    !prodProvider.isLoadingMore &&
+                    !prodProvider.isLoading) {
+                  prodProvider.loadMoreProducts();
+                }
+              }
               return false;
             },
             child: CustomScrollView(
@@ -536,6 +545,17 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                           },
                         );
                       }, childCount: filteredProducts.length),
+                    ),
+                  ),
+                if (productProvider.isLoadingMore)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF6900),
+                        ),
+                      ),
                     ),
                   ),
               ],

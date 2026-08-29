@@ -18,13 +18,34 @@ class MyOrdersPage extends StatefulWidget {
 
 class _MyOrdersPageState extends State<MyOrdersPage> {
   OrderStatus _selectedStatus = OrderStatus.enCours;
+  late ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<OrderProvider>().fetchOrderHistory();
     });
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      final provider = context.read<OrderProvider>();
+      if (provider.historyHasMore &&
+          !provider.isHistoryLoadingMore &&
+          !provider.isHistoryLoading) {
+        provider.fetchMoreOrderHistory();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -241,25 +262,36 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           onRefresh: () async {
             await context.read<OrderProvider>().fetchOrderHistory();
           },
-          child: ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: filteredOrders.length,
-            itemBuilder: (context, index) {
-              final order = filteredOrders[index];
-              final displayOrderNum = order.orderNumber.isNotEmpty
-                  ? order.orderNumber
-                  : "ORD-${order.id}";
-              return _orderCard(
-                id: displayOrderNum,
-                date: order.createdAt,
-                items: "${order.itemCount} article(s)",
-                price: "${order.totalAmount} FCFA",
-                productNames: order.productNames.join(", "),
-                status: _selectedStatus,
-              );
-            },
-          ),
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: filteredOrders.length + (orderProvider.isHistoryLoadingMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == filteredOrders.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFF6900),
+                      ),
+                    ),
+                  );
+                }
+                final order = filteredOrders[index];
+                final displayOrderNum = order.orderNumber.isNotEmpty
+                    ? order.orderNumber
+                    : "ORD-${order.id}";
+                return _orderCard(
+                  id: displayOrderNum,
+                  date: order.createdAt,
+                  items: "${order.itemCount} article(s)",
+                  price: "${order.totalAmount} FCFA",
+                  productNames: order.productNames.join(", "),
+                  status: _selectedStatus,
+                );
+              },
+            ),
         );
       },
     );

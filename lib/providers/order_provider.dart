@@ -16,6 +16,15 @@ class OrderProvider extends ChangeNotifier {
   bool _isHistoryLoading = false;
   bool get isHistoryLoading => _isHistoryLoading;
 
+  bool _isHistoryLoadingMore = false;
+  bool get isHistoryLoadingMore => _isHistoryLoadingMore;
+
+  bool _historyHasMore = true;
+  bool get historyHasMore => _historyHasMore;
+
+  int _historyCurrentPage = 1;
+  int get historyCurrentPage => _historyCurrentPage;
+
   bool _isDetailLoading = false;
   bool get isDetailLoading => _isDetailLoading;
 
@@ -34,40 +43,79 @@ class OrderProvider extends ChangeNotifier {
   List<OrderHistoryModel> _orderHistory = [];
   List<OrderHistoryModel> get orderHistory => _orderHistory;
 
-  Future<void> fetchOrderHistory() async {
-    _isHistoryLoading = true;
-    _historyErrorMessage = null;
-    notifyListeners();
+  List<OrderHistoryModel> _parseOrderList(dynamic raw) {
+    if (raw == null) return [];
+    List<dynamic> list = [];
+    if (raw is List) {
+      list = raw;
+    } else if (raw is Map) {
+      if (raw['results'] is List) {
+        list = raw['results'];
+      } else if (raw['orders'] is List) {
+        list = raw['orders'];
+      } else if (raw['data'] is List) {
+        list = raw['data'];
+      } else if (raw['data'] is Map && raw['data']['results'] is List) {
+        list = raw['data']['results'];
+      } else if (raw['history'] is List) {
+        list = raw['history'];
+      }
+    }
+
+    return list
+        .where((json) => json != null && json is Map)
+        .map(
+          (json) => OrderHistoryModel.fromJson(
+            Map<String, dynamic>.from(json as Map),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> fetchOrderHistory({bool refresh = true}) async {
+    if (refresh) {
+      _historyCurrentPage = 1;
+      _historyHasMore = true;
+      _isHistoryLoading = true;
+      _historyErrorMessage = null;
+      notifyListeners();
+    }
 
     try {
       final response = await _apiServices.get(
         '/api/mobile/orders/history/',
+        queryParameters: {'page': _historyCurrentPage},
         requireAuth: true,
       );
 
       final dynamic raw = response.data;
-      log("📦 [OrderHistory Response]: $raw");
+      final parsed = _parseOrderList(raw);
 
-      if (raw != null) {
-        List<dynamic> list = [];
-        if (raw is List) {
-          list = raw;
-        } else if (raw is Map) {
-          if (raw['orders'] is List) {
-            list = raw['orders'];
-          } else if (raw['results'] is List) {
-            list = raw['results'];
-          } else if (raw['data'] is List) {
-            list = raw['data'];
-          } else if (raw['history'] is List) {
-            list = raw['history'];
+      if (raw is Map) {
+        if (raw['next'] != null) {
+          _historyHasMore = true;
+        } else if (parsed.length < 5) {
+          _historyHasMore = false;
+        } else {
+          _historyHasMore = true;
+        }
+      } else {
+        _historyHasMore = parsed.length >= 5;
+      }
+
+      if (refresh) {
+        _orderHistory = parsed;
+      } else {
+        for (final order in parsed) {
+          if (!_orderHistory.any(
+            (o) =>
+                o.id == order.id ||
+                (o.orderNumber.isNotEmpty &&
+                    o.orderNumber == order.orderNumber),
+          )) {
+            _orderHistory.add(order);
           }
         }
-
-        _orderHistory = list
-            .where((json) => json != null && json is Map)
-            .map((json) => OrderHistoryModel.fromJson(Map<String, dynamic>.from(json as Map)))
-            .toList();
       }
 
       _isHistoryLoading = false;
@@ -79,6 +127,50 @@ class OrderProvider extends ChangeNotifier {
       );
       log("Error fetching order history: ${e.toString()}");
       _isHistoryLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchMoreOrderHistory() async {
+    if (!_historyHasMore || _isHistoryLoadingMore || _isHistoryLoading) return;
+
+    _isHistoryLoadingMore = true;
+    notifyListeners();
+
+    try {
+      final nextPage = _historyCurrentPage + 1;
+      final response = await _apiServices.get(
+        '/api/mobile/orders/history/',
+        queryParameters: {'page': nextPage},
+        requireAuth: true,
+      );
+
+      final dynamic raw = response.data;
+      final parsed = _parseOrderList(raw);
+
+      if (parsed.isNotEmpty) {
+        _historyCurrentPage = nextPage;
+        for (final order in parsed) {
+          if (!_orderHistory.any(
+            (o) =>
+                o.id == order.id ||
+                (o.orderNumber.isNotEmpty &&
+                    o.orderNumber == order.orderNumber),
+          )) {
+            _orderHistory.add(order);
+          }
+        }
+      }
+
+      if (raw is Map && raw['next'] == null) {
+        _historyHasMore = false;
+      } else if (parsed.isEmpty || parsed.length < 5) {
+        _historyHasMore = false;
+      }
+    } catch (e) {
+      log("Error fetching more order history: ${e.toString()}");
+    } finally {
+      _isHistoryLoadingMore = false;
       notifyListeners();
     }
   }
@@ -244,7 +336,8 @@ class OrderProvider extends ChangeNotifier {
       int? orderId;
       final dynamic raw = response.data;
       if (raw is Map) {
-        final rawId = raw['id'] ??
+        final rawId =
+            raw['id'] ??
             (raw['order'] is Map ? raw['order']['id'] : null) ??
             (raw['data'] is Map ? raw['data']['id'] : null);
         if (rawId is num) {

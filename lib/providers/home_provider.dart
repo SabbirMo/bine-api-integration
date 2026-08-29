@@ -43,7 +43,7 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> fetchHomeData({bool forceLoading = false}) async {
+  Future<void> fetchHomeData({bool forceLoading = false, int page = 1}) async {
     // Only show full-screen blocking spinner if we have NO cached data at all
     if (_homeData == null || forceLoading) {
       _isLoading = true;
@@ -55,16 +55,35 @@ class HomeProvider extends ChangeNotifier {
       // Home API doesn't require strict auth to view banners and products
       final response = await _apiServices.get(
         '/api/mobile/home/',
+        queryParameters: page > 1 ? {'page': page} : null,
         requireAuth: false,
       );
 
       final dynamic data = response.data;
 
-      // Extract JSON map
-      final Map<String, dynamic> jsonMap =
-          data is Map<String, dynamic> && data.containsKey('banner')
-          ? data
-          : (data is Map<String, dynamic> ? (data['data'] ?? {}) : {});
+      // Extract JSON map handling DRF pagination or raw format
+      Map<String, dynamic> jsonMap = {};
+      if (data is Map) {
+        final mapData = Map<String, dynamic>.from(data);
+        if (mapData.containsKey('banner') || mapData.containsKey('story_categories')) {
+          jsonMap = mapData;
+        } else if (mapData['results'] is List && (mapData['results'] as List).isNotEmpty) {
+          final first = (mapData['results'] as List).first;
+          if (first is Map) {
+            jsonMap = Map<String, dynamic>.from(first);
+          }
+        } else if (mapData['data'] is Map) {
+          final dataMap = Map<String, dynamic>.from(mapData['data'] as Map);
+          if (dataMap['results'] is List && (dataMap['results'] as List).isNotEmpty) {
+            final first = (dataMap['results'] as List).first;
+            jsonMap = first is Map ? Map<String, dynamic>.from(first) : dataMap;
+          } else {
+            jsonMap = dataMap;
+          }
+        } else {
+          jsonMap = mapData;
+        }
+      }
 
       _homeData = HomeResponseModel.fromJson(jsonMap);
 

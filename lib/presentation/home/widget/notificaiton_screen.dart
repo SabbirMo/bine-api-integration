@@ -11,14 +11,34 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
+  late ScrollController _scrollController;
+
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<NotificationProvider>().fetchNotifications();
       }
     });
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      final provider = context.read<NotificationProvider>();
+      if (provider.hasMore && !provider.isLoadingMore && !provider.isLoading) {
+        provider.fetchNextNotifications();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -62,6 +82,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             color: const Color(0xFFFF6900),
             onRefresh: refreshAction,
             child: ListView(
+              controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(vertical: 10),
               children: [
@@ -85,7 +106,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     height: MediaQuery.of(context).size.height * 0.7,
                     child: _buildEmptyState(),
                   )
-                else
+                else ...[
                   ...List.generate(provider.notifications.length, (index) {
                     final item = provider.notifications[index];
                     final widgets = <Widget>[_buildNotificationItem(item)];
@@ -94,6 +115,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     }
                     return Column(children: widgets);
                   }),
+                  if (provider.isLoadingMore)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF6900),
+                        ),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),

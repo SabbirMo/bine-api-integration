@@ -8,14 +8,53 @@ class ProductProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
+  bool _isLoadingMore = false;
+  bool get isLoadingMore => _isLoadingMore;
+
+  bool _hasMore = true;
+  bool get hasMore => _hasMore;
+
+  int _currentPage = 1;
+  int get currentPage => _currentPage;
+
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> get allProducts => _allProducts;
 
-  Future<void> fetchProducts() async {
-    if (_allProducts.isEmpty) {
+  List<ProductModel> _parseProducts(dynamic data) {
+    List<dynamic> list = [];
+    if (data != null && data is Map<String, dynamic>) {
+      if (data['results'] is List) {
+        list = data['results'];
+      } else if (data['data'] is List) {
+        list = data['data'];
+      } else if (data['data'] is Map && data['data']['results'] is List) {
+        list = data['data']['results'];
+      } else if (data['products'] is List) {
+        list = data['products'];
+      }
+    } else if (data is List) {
+      list = data;
+    }
+
+    return list
+        .map(
+          (e) => ProductModel.fromJson(
+            Map<String, dynamic>.from(e is Map ? e : {}),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> fetchProducts({bool refresh = true}) async {
+    if (refresh) {
+      _currentPage = 1;
+      _hasMore = true;
+    }
+
+    if (_allProducts.isEmpty || refresh) {
       _isLoading = true;
       notifyListeners();
     }
@@ -24,32 +63,35 @@ class ProductProvider extends ChangeNotifier {
     try {
       final response = await _apiServices.get(
         '/api/mobile/products/',
+        queryParameters: {'page': _currentPage},
         requireAuth: false,
       );
 
       final dynamic data = response.data;
+      final parsed = _parseProducts(data);
 
-      if (data != null &&
-          data is Map<String, dynamic> &&
-          data.containsKey('results')) {
-        _allProducts = (data['results'] as List)
-            .map(
-              (e) => ProductModel.fromJson(
-                Map<String, dynamic>.from(e is Map ? e : {}),
-              ),
-            )
-            .toList();
-      } else if (data is List) {
-        _allProducts = data
-            .map(
-              (e) => ProductModel.fromJson(
-                Map<String, dynamic>.from(e is Map ? e : {}),
-              ),
-            )
-            .toList();
+      if (data is Map) {
+        if (data['next'] != null) {
+          _hasMore = true;
+        } else if (parsed.length < 5) {
+          _hasMore = false;
+        } else {
+          _hasMore = true;
+        }
       } else {
-        _allProducts = [];
+        _hasMore = parsed.length >= 5;
       }
+
+      if (refresh) {
+        _allProducts = parsed;
+      } else {
+        for (final p in parsed) {
+          if (!_allProducts.any((existing) => existing.id == p.id)) {
+            _allProducts.add(p);
+          }
+        }
+      }
+
       for (final p in _allProducts) {
         if (!_productDetailsCache.containsKey(p.id)) {
           _productDetailsCache[p.id] = p;
@@ -60,6 +102,48 @@ class ProductProvider extends ChangeNotifier {
       debugPrint("❌ [Error Products List]: $e");
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMoreProducts() async {
+    if (!_hasMore || _isLoadingMore || _isLoading) return;
+
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      final nextPage = _currentPage + 1;
+      final response = await _apiServices.get(
+        '/api/mobile/products/',
+        queryParameters: {'page': nextPage},
+        requireAuth: false,
+      );
+
+      final dynamic data = response.data;
+      final parsed = _parseProducts(data);
+
+      if (parsed.isNotEmpty) {
+        _currentPage = nextPage;
+        for (final p in parsed) {
+          if (!_allProducts.any((existing) => existing.id == p.id)) {
+            _allProducts.add(p);
+          }
+          if (!_productDetailsCache.containsKey(p.id)) {
+            _productDetailsCache[p.id] = p;
+          }
+        }
+      }
+
+      if (data is Map && data['next'] == null) {
+        _hasMore = false;
+      } else if (parsed.isEmpty || parsed.length < 5) {
+        _hasMore = false;
+      }
+    } catch (e) {
+      debugPrint("❌ [Error Load More Products]: $e");
+    } finally {
+      _isLoadingMore = false;
       notifyListeners();
     }
   }

@@ -5,14 +5,30 @@ class CartModel {
   CartModel({required this.items, required this.total});
 
   factory CartModel.fromJson(Map<String, dynamic> json) {
+    final rawItems = (json['items'] ??
+            json['results'] ??
+            (json['data'] is Map
+                ? (json['data']['items'] ?? json['data']['results'])
+                : (json['data'] is List ? json['data'] : null)))
+        as List?;
+
     return CartModel(
       items:
-          (json['items'] as List?)
-              ?.map((item) => CartItemModel.fromJson(item))
+          rawItems
+              ?.where((item) => item != null && item is Map)
+              .map((item) => CartItemModel.fromJson(Map<String, dynamic>.from(item as Map)))
               .toList() ??
           [],
       total:
-          (json['total'] ?? json['total_amount'] ?? json['total_price'] ?? '')
+          (json['total'] ??
+                  json['total_amount'] ??
+                  json['total_price'] ??
+                  (json['data'] is Map
+                      ? (json['data']['total'] ??
+                          json['data']['total_amount'] ??
+                          json['data']['total_price'])
+                      : null) ??
+                  '')
               .toString(),
     );
   }
