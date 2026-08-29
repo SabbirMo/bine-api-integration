@@ -203,7 +203,10 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
   @override
   void dispose() {
-    _player?.dispose();
+    try {
+      _player?.stop();
+      _player?.dispose();
+    } catch (_) {}
     super.dispose();
   }
 

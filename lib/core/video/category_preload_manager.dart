@@ -89,6 +89,7 @@ class CategoryPreloadManager {
     final entry = _warm.remove(categoryId);
     if (entry != null) {
       try {
+        entry.player.stop();
         entry.player.dispose();
       } catch (_) {}
     }
@@ -98,6 +99,7 @@ class CategoryPreloadManager {
   void disposeAll() {
     for (final e in _warm.values) {
       try {
+        e.player.stop();
         e.player.dispose();
       } catch (_) {}
     }
@@ -112,6 +114,7 @@ class CategoryPreloadManager {
       (a, b) => a.value.createdAt.isBefore(b.value.createdAt) ? a : b,
     );
     try {
+      oldest.value.player.stop();
       oldest.value.player.dispose();
     } catch (_) {}
     _warm.remove(oldest.key);

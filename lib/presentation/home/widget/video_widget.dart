@@ -232,7 +232,10 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     FeedVideoManager.instance.removeListener(_onFeedManagerUpdate);
-    _player.dispose();
+    try {
+      _player.stop();
+      _player.dispose();
+    } catch (_) {}
     _isMuted.dispose();
     _isPlaying.dispose();
     _isBuffering.dispose();

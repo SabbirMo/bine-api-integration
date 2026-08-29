@@ -563,6 +563,9 @@ class SmartVideoController {
     }
     _subscriptions.clear();
 
+    try {
+      await _player.stop();
+    } catch (_) {}
     await _player.dispose();
 
     isInitializing.dispose();

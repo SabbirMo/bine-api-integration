@@ -22,6 +22,9 @@ import 'providers/notification_provider.dart';
 import 'providers/store_settings_provider.dart';
 
 import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/feed_video_manager.dart';
+import 'package:binetatour/core/video/category_preload_manager.dart';
+import 'package:binetatour/core/video/story_player_pool.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 @pragma('vm:entry-point')
@@ -73,8 +76,50 @@ void main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      FeedVideoManager.instance.pauseAll();
+      CategoryPreloadManager.instance.disposeAll();
+      StoryPlayerPool.instance.disposeAll();
+    } else if (state == AppLifecycleState.resumed) {
+      FeedVideoManager.instance.resume();
+    }
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    // Stop and clean active video players before hot restart / hot reload
+    // to prevent native libmpv FFI callback race conditions.
+    try {
+      FeedVideoManager.instance.pauseAll();
+      CategoryPreloadManager.instance.disposeAll();
+      StoryPlayerPool.instance.disposeAll();
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {

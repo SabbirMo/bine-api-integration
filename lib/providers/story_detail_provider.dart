@@ -463,6 +463,7 @@ class StoryDetailProvider extends ChangeNotifier {
     _preloadPosSub?.cancel();
     _preloadPosSub = null;
     try {
+      _nextPlayer?.stop();
       _nextPlayer?.dispose();
     } catch (_) {}
     _nextPlayer = null;
@@ -596,11 +597,13 @@ class StoryDetailProvider extends ChangeNotifier {
         );
       } else {
         try {
+          activePlayer.stop();
           activePlayer.dispose();
         } catch (_) {}
       }
     } else {
       try {
+        activePlayer?.stop();
         activePlayer?.dispose();
       } catch (_) {}
     }

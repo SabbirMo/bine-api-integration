@@ -63,7 +63,7 @@ class FeedPlayerState {
 
   void stopAndReset() {
     try {
-      player.pause();
+      player.stop();
     } catch (_) {}
     currentUrl = null;
     currentKey = null;
@@ -78,6 +78,7 @@ class FeedPlayerState {
     _positionSub?.cancel();
     _errorSub?.cancel();
     try {
+      player.stop();
       player.dispose();
     } catch (_) {}
   }

@@ -86,6 +86,7 @@ class StoryPlayerPool {
   void disposeAll() {
     for (final entry in _pool.values) {
       try {
+        entry.player.stop();
         entry.player.dispose();
       } catch (_) {}
     }
@@ -103,6 +104,7 @@ class StoryPlayerPool {
     final evicted = _pool.remove(lruKey);
     if (evicted != null) {
       try {
+        evicted.player.stop();
         evicted.player.dispose();
       } catch (_) {}
       debugPrint('🔴 [StoryPlayerPool] Evicted LRU player for: $lruKey');
