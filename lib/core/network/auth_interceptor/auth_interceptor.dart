@@ -65,9 +65,13 @@ class AuthInterceptor extends QueuedInterceptor {
           return handler.next(err);
         }
       } else {
-        // Keep stored tokens for now; caller can decide logout flow explicitly.
+        // Clear stored tokens when token refresh fails on 401
+        await TokenStorage.clearTokens();
         return handler.next(err);
       }
+    } else if (isUnauthorized) {
+      // Clear stored tokens if refresh request itself failed with 401 or hasRetried
+      await TokenStorage.clearTokens();
     }
     return handler.next(err);
   }

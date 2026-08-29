@@ -106,6 +106,30 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
       success = true;
     } catch (e) {
       debugPrint("Error adding product to cart: $e");
+      final checkToken = await TokenStorage.getAccessToken();
+      if (checkToken == null || checkToken.isEmpty) {
+        if (context.mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (ctx) => Scaffold(
+                backgroundColor: Colors.white,
+                appBar: AppBar(
+                  backgroundColor: Colors.white,
+                  elevation: 0,
+                  iconTheme: const IconThemeData(color: Colors.black),
+                ),
+                body: LoginView(
+                  onLogin: () {
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ),
+            ),
+          );
+        }
+        return;
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -136,9 +160,7 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
 
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const ValidationScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const ValidationScreen()),
     );
 
     widget.onResume?.call();
@@ -154,10 +176,7 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Colors.black.withValues(alpha: 0.9),
-            ],
+            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.9)],
           ),
         ),
         child: Column(
@@ -173,8 +192,9 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                   onPressed: _isBuying ? null : _handleBuyNow,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF6900),
-                    disabledBackgroundColor:
-                        const Color(0xFFFF6900).withValues(alpha: 0.8),
+                    disabledBackgroundColor: const Color(
+                      0xFFFF6900,
+                    ).withValues(alpha: 0.8),
                     minimumSize: const Size(double.infinity, 55),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
@@ -237,8 +257,7 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                           decoration: TextDecoration.lineThrough,
-                          decorationColor:
-                              Colors.white.withValues(alpha: 0.7),
+                          decorationColor: Colors.white.withValues(alpha: 0.7),
                           decorationThickness: 1.5,
                         ),
                         maxLines: 1,
@@ -349,9 +368,7 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                           color: Colors.white,
                           size: 24,
                         )
-                      : SvgPicture.asset(
-                          "assets/icon/mdi_arrow-down-thin.svg",
-                        ),
+                      : SvgPicture.asset("assets/icon/mdi_arrow-down-thin.svg"),
                 ),
               ],
             ),

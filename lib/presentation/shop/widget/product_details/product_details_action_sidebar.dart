@@ -181,6 +181,30 @@ class _ProductDetailsActionSidebarState
       }
       widget.onResume?.call();
       if (!mounted) return;
+
+      final checkToken = await TokenStorage.getAccessToken();
+      if (checkToken == null || checkToken.isEmpty) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (ctx) => Scaffold(
+              backgroundColor: Colors.white,
+              appBar: AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                iconTheme: const IconThemeData(color: Colors.black),
+              ),
+              body: LoginView(
+                onLogin: () {
+                  Navigator.pop(ctx);
+                },
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
