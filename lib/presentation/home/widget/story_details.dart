@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/presentation/home/widget/story/story_group_page_view.dart';
 
@@ -73,30 +72,27 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   void _preloadNearbyGroups(int centerIndex) {
     if (!mounted || _effectiveGroups.isEmpty) return;
     final indicesToPreload = [
-      centerIndex,
       centerIndex + 1,
-      centerIndex + 2,
       centerIndex - 1,
+      centerIndex,
     ];
 
     for (final idx in indicesToPreload) {
-      if (idx >= 0 && idx < _effectiveGroups.length) {
-        final group = _effectiveGroups[idx];
-        if (group.categoryImage.isNotEmpty &&
-            group.categoryImage.startsWith('http')) {
-          precacheImage(
-            NetworkImage(group.categoryImage),
-            context,
-          ).catchError((_) {});
+      if (idx < 0 || idx >= _effectiveGroups.length) continue;
+      final group = _effectiveGroups[idx];
+
+      // 1. Pre-cache category avatar image
+      if (group.categoryImage.isNotEmpty && group.categoryImage.startsWith('http')) {
+        precacheImage(NetworkImage(group.categoryImage), context).catchError((_) {});
+      }
+
+      // 2. Pre-cache story images & thumbnail frames
+      for (final story in group.stories) {
+        if (story.isImage && story.isNetwork && story.url.startsWith('http')) {
+          precacheImage(NetworkImage(story.url), context).catchError((_) {});
         }
-        for (final story in group.stories) {
-          if (story.isImage &&
-              story.isNetwork &&
-              story.url.startsWith('http')) {
-            precacheImage(NetworkImage(story.url), context).catchError((_) {});
-          } else if (story.isVideo && story.url.startsWith('http')) {
-            VideoCacheManager.instance.preCacheVideo(story.url);
-          }
+        if (story.thumbnailUrl != null && story.thumbnailUrl!.startsWith('http')) {
+          precacheImage(NetworkImage(story.thumbnailUrl!), context).catchError((_) {});
         }
       }
     }

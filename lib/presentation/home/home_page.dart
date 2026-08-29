@@ -36,9 +36,13 @@ class AccueilScreen extends StatefulWidget {
 class _AccueilScreenState extends State<AccueilScreen>
     with WidgetsBindingObserver {
   final ScrollController _storyScrollController = ScrollController();
+  bool _storiesPrecached = false;
+  bool _productsPrecached = false;
 
   Future<void> _refreshHomeData() async {
     try {
+      _storiesPrecached = false;
+      _productsPrecached = false;
       // Fetch Home Data with highest priority (fastest UI update) with timeout
       await context.read<HomeProvider>().fetchHomeData().timeout(
         const Duration(seconds: 6),
@@ -550,6 +554,9 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   void _precacheStoryThumbnails(List<StoryCategoryModel> categories) {
+    if (_storiesPrecached || categories.isEmpty) return;
+    _storiesPrecached = true;
+
     for (final cat in categories) {
       String catImg = cat.imageUrl ?? '';
       if (catImg.isNotEmpty && !catImg.startsWith('http')) {
@@ -576,6 +583,9 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   void _precacheProductThumbnails(List<ProductSectionModel> sections) {
+    if (_productsPrecached || sections.isEmpty) return;
+    _productsPrecached = true;
+
     for (final sec in sections) {
       for (final prod in sec.products) {
         String thumb = prod.effectiveThumbnailUrl;
@@ -591,23 +601,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   void _precacheProductVideos(List<ProductSectionModel> sections) {
-    final urls = <String>[];
-    for (final sec in sections) {
-      for (final prod in sec.products) {
-        final vUrl = prod.effectiveVideoUrl;
-        if (vUrl.isNotEmpty) {
-          String clean = vUrl.trim();
-          if (!clean.startsWith('http')) {
-            final base = BaseUrl.baseUrl;
-            clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
-          }
-          urls.add(clean);
-        }
-      }
-    }
-    if (urls.isNotEmpty) {
-      VideoCacheManager.instance.preCacheBatch(urls);
-    }
+    // Disabled aggressive background caching. We now use native media_kit preloading.
   }
 
   StoryGroup _mapCategoryToStoryGroup(StoryCategoryModel cat) {
@@ -659,15 +653,21 @@ class _AccueilScreenState extends State<AccueilScreen>
             isImg = true;
           }
 
-          if (isVid && url.isNotEmpty) {
-            VideoCacheManager.instance.preCacheVideo(url);
+          String? resolvedThumb = s.thumbnailUrl;
+          if (resolvedThumb != null &&
+              resolvedThumb.trim().isNotEmpty &&
+              !resolvedThumb.startsWith('http')) {
+            final base = BaseUrl.baseUrl;
+            resolvedThumb = resolvedThumb.startsWith('/')
+                ? '$base$resolvedThumb'
+                : '$base/$resolvedThumb';
           }
 
           return StoryContent(
             id: s.id,
             url: url,
             fallbackUrl: s.mediaUrl,
-            thumbnailUrl: null,
+            thumbnailUrl: resolvedThumb,
             isVideo: isVid,
             isAudio: isAud,
             isImage: isImg,
@@ -961,7 +961,8 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       if (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty) {
         return _resolveUrl(m.thumbnailUrl!);
       }
-      if (m.mediaType.toLowerCase() == 'image' && m.effectiveMediaUrl.isNotEmpty) {
+      if (m.mediaType.toLowerCase() == 'image' &&
+          m.effectiveMediaUrl.isNotEmpty) {
         return _resolveUrl(m.effectiveMediaUrl);
       }
     }

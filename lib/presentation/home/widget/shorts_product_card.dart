@@ -105,26 +105,6 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
     super.dispose();
   }
 
-  Widget _buildBannerStyleLoading() {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: const BoxDecoration(
-          color: Color(0xFFFFF1E6),
-          shape: BoxShape.circle,
-        ),
-        child: const SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(
-            color: Color(0xFFFF6900),
-            strokeWidth: 3,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildVideoFirstFrame() {
     if (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty) {
       return Image.network(
@@ -187,13 +167,7 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // 1. Base Layer: The ACTUAL FIRST FRAME extracted directly from the video file (NO external catalog thumbnail!)
-                if (hasVideo)
-                  _buildVideoFirstFrame()
-                else
-                  Container(color: const Color(0xFFF5F5F5)),
-
-                // 2. Active Video Player Layer (Plays smoothly right on top of the first frame)
+                // 1. Video Player Layer (Bottom layer - decodes in background)
                 if (hasVideo)
                   ListenableBuilder(
                     listenable: FeedVideoManager.instance,
@@ -205,27 +179,45 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                           playerState.currentUrl == widget.videoUrl;
 
                       if (isAttached) {
-                        return Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            if (playerState.hasFirstFrame)
-                              SizedBox.expand(
-                                child: Video(
-                                  controller: playerState.videoController,
-                                  fit: BoxFit.cover,
-                                  controls: NoVideoControls,
-                                ),
-                              ),
-                            if (playerState.isBuffering ||
-                                !playerState.hasFirstFrame)
-                              _buildBannerStyleLoading(),
-                          ],
+                        return SizedBox.expand(
+                          child: Video(
+                            controller: playerState.videoController,
+                            fit: BoxFit.cover,
+                            controls: NoVideoControls,
+                          ),
                         );
                       }
 
                       return const SizedBox();
                     },
                   ),
+
+                // 2. Poster / Thumbnail Image Layer (Top layer with seamless crossfade - ZERO black flash)
+                ListenableBuilder(
+                  listenable: FeedVideoManager.instance,
+                  builder: (context, _) {
+                    final playerState = FeedVideoManager.instance
+                        .getPlayerState(widget.keyString);
+                    final isAttached =
+                        playerState != null &&
+                        playerState.currentUrl == widget.videoUrl;
+                    final isPlayingAndRendering =
+                        isAttached &&
+                        playerState.isPlaying &&
+                        playerState.hasFirstFrame;
+
+                    return AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                      opacity: isPlayingAndRendering ? 0.0 : 1.0,
+                      child: IgnorePointer(
+                        child: hasVideo
+                            ? _buildVideoFirstFrame()
+                            : Container(color: const Color(0xFFF5F5F5)),
+                      ),
+                    );
+                  },
+                ),
 
                 // 3. Bottom Gradient for high text readability
                 Positioned.fill(

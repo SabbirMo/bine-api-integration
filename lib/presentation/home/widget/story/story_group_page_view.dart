@@ -34,7 +34,7 @@ class _StoryGroupPageViewState extends State<StoryGroupPageView> {
     _provider = StoryDetailProvider(
       stories: widget.group.stories,
       storyProvider: context.read<StoryProvider>(),
-      autoStart: widget.isActive,
+      initiallyActive: widget.isActive,
       onFinished: widget.onNextCategory,
       onPreviousAtStart: widget.onPrevCategory,
     );

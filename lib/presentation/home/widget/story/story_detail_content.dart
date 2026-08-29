@@ -110,14 +110,12 @@ class StoryDetailContent extends StatelessWidget {
       return Stack(
         alignment: Alignment.center,
         children: [
-          // 1. Video Player with blurred frame background
+          // 1. Video Player
           SizedBox.expand(
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Positioned.fill(
-                  child: Container(color: Colors.black),
-                ),
+                Positioned.fill(child: Container(color: Colors.black)),
                 Positioned.fill(
                   child: Container(color: Colors.black.withValues(alpha: 0.25)),
                 ),
@@ -129,7 +127,7 @@ class StoryDetailContent extends StatelessWidget {
                       height: videoHeight,
                       child: RepaintBoundary(
                         child: Video(
-                          key: ValueKey('fg_${provider.currentIndex}'),
+                          key: ObjectKey(provider.videoController),
                           controller: provider.videoController!,
                           controls: NoVideoControls,
                           fill: Colors.transparent,
@@ -142,38 +140,60 @@ class StoryDetailContent extends StatelessWidget {
             ),
           ),
 
-          // 2. Loading Indicator (Shown seamlessly during loading)
+          // Preload the next video natively (invisible, 1x1)
+          if (provider.nextVideoController != null)
+            Opacity(
+              opacity: 0,
+              child: SizedBox(
+                width: 1,
+                height: 1,
+                child: Video(
+                  controller: provider.nextVideoController!,
+                  controls: NoVideoControls,
+                ),
+              ),
+            ),
+
+          // 2. Thumbnail poster frame — fades out once video actually plays
+          if (story.thumbnailUrl != null &&
+              story.thumbnailUrl!.trim().isNotEmpty)
+            AnimatedOpacity(
+              opacity: (isLoading || !provider.hasFirstFrame) ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 400),
+              child: SizedBox.expand(
+                child: Image.network(
+                  story.thumbnailUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, e, s) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+
+          // 3. Loading Indicator (Shows on cold-start AND mid-stream stuttering)
           if (isLoading)
-            Positioned.fill(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Container(color: Colors.black),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(
-                            0xFFFF6900,
-                          ).withValues(alpha: 0.3),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: const CircularProgressIndicator(
-                        color: Color(0xFFFF6900),
-                        strokeWidth: 3.5,
-                      ),
-                    ),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(
+                    alpha: story.thumbnailUrl != null ? 0.3 : 0.45,
                   ),
-                ],
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6900),
+                    strokeWidth: 3.0,
+                  ),
+                ),
               ),
             ),
         ],
       );
     }
+
     return Center(
       child: Container(
         padding: const EdgeInsets.all(16),

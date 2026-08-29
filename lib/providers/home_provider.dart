@@ -87,20 +87,6 @@ class HomeProvider extends ChangeNotifier {
 
       _homeData = HomeResponseModel.fromJson(jsonMap);
 
-      // DEBUG: log thumbnail fields of first product
-      if (_homeData!.productSections.isNotEmpty &&
-          _homeData!.productSections.first.products.isNotEmpty) {
-        final p = _homeData!.productSections.first.products.first;
-        debugPrint(
-          '🖼️ [HOME] Product ${p.id}: mainImage=${p.mainImage}, thumbnailUrl=${p.thumbnailUrl}, effectiveThumbnail=${p.effectiveThumbnailUrl}, mediaCount=${p.safeMedia.length}',
-        );
-        for (final m in p.safeMedia) {
-          debugPrint(
-            '  📎 media type=${m.mediaType}, thumbnailUrl=${m.thumbnailUrl}, mediaUrl=${m.effectiveMediaUrl}',
-          );
-        }
-      }
-
       // Save fresh data to local cache asynchronously
       _saveToCache(jsonMap);
     } catch (e) {

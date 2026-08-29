@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/story_player_pool.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/providers/story_provider.dart';
 
@@ -11,34 +11,44 @@ class StoryDetailProvider extends ChangeNotifier {
   final StoryProvider storyProvider;
   final VoidCallback? onFinished;
   final VoidCallback? onPreviousAtStart;
-  final bool autoStart;
+  final bool initiallyActive;
 
   int _currentIndex = 0;
   bool _isMuted = false;
   Timer? _timer;
   double _imageProgress = 0.0;
   double _currentMediaProgress = 0.0;
-  bool _isLoading = false;
+  bool _isLoading = true;
   bool _isPlaying = false;
   bool _isDisposed = false;
-  bool _hasStarted = false;
+  bool _hasFirstFrame = false;
+  bool _shouldPlay = false;
 
-  Player? _playerA;
-  VideoController? _controllerA;
-  Player? _playerB;
-  VideoController? _controllerB;
+  StreamSubscription? _posSub;
+  StreamSubscription? _durSub;
+  StreamSubscription? _compSub;
+  StreamSubscription? _bufSub;
+  StreamSubscription? _playSub;
+  StreamSubscription? _widthSub;
+  StreamSubscription? _heightSub;
+  StreamSubscription? _errSub;
+  StreamSubscription? _preloadPosSub;
+
+  Player? _player;
+  VideoController? _videoController;
+
+  Player? _nextPlayer;
+  VideoController? _nextVideoController;
+  String _nextPlayerUrl = '';
 
   StoryDetailProvider({
     required this.stories,
     required this.storyProvider,
     this.onFinished,
     this.onPreviousAtStart,
-    this.autoStart = true,
+    this.initiallyActive = true,
   }) {
-    if (autoStart) {
-      _hasStarted = true;
-      _loadStory(_currentIndex);
-    }
+    _loadStory(_currentIndex, play: initiallyActive);
   }
 
   int get currentIndex => _currentIndex;
@@ -47,77 +57,102 @@ class StoryDetailProvider extends ChangeNotifier {
   double get currentMediaProgress => _currentMediaProgress;
   bool get isLoading => _isLoading;
   bool get isPlaying => _isPlaying;
+  bool get hasFirstFrame => _hasFirstFrame;
 
-  Player? get player => (_currentIndex % 2 == 0) ? _playerA : _playerB;
-  VideoController? get videoController =>
-      (_currentIndex % 2 == 0) ? _controllerA : _controllerB;
+  Player? get player => _player;
+  VideoController? get videoController => _videoController;
+  VideoController? get nextVideoController => _nextVideoController;
 
-  Player? get _nextPlayer =>
-      ((_currentIndex + 1) % 2 == 0) ? _playerA : _playerB;
-
-  void _ensurePlayersInitialized() {
-    if (_playerA != null) return;
+  void _ensurePlayerInitialized() {
+    if (_player != null) return;
     try {
-      _playerA = Player();
-      _controllerA = VideoController(
-        _playerA!,
-        configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true,
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          bufferSize: 32 * 1024 * 1024, // 32 MB — smooth buffering
+          logLevel: MPVLogLevel.warn,
         ),
       );
-      _playerA!.setVolume(_isMuted ? 0.0 : 100.0);
-      _setupListeners(_playerA!, 0);
 
-      _playerB = Player();
-      _controllerB = VideoController(
-        _playerB!,
+      try {
+        final platform = _player!.platform;
+        if (platform != null) {
+          (platform as dynamic).setProperty('demuxer-readahead-secs', '15');
+          (platform as dynamic).setProperty('cache', 'yes');
+          (platform as dynamic).setProperty('cache-secs', '20');
+          (platform as dynamic).setProperty('hls-bitrate', 'auto');
+          (platform as dynamic).setProperty('demuxer-max-bytes', '32MiB');
+          (platform as dynamic).setProperty('network-timeout', '10');
+          (platform as dynamic).setProperty(
+            'user-agent',
+            'CloudflareStream-Flutter-MediaKit',
+          );
+        }
+      } catch (_) {}
+
+      _videoController = VideoController(
+        _player!,
         configuration: const VideoControllerConfiguration(
           enableHardwareAcceleration: true,
         ),
       );
-      _playerB!.setVolume(_isMuted ? 0.0 : 100.0);
-      _setupListeners(_playerB!, 1);
+      _player!.setVolume(_isMuted ? 0.0 : 100.0);
+      _setupListeners(_player!);
     } catch (e) {
       debugPrint('Story player initialization error: $e');
     }
   }
 
-  void _setupListeners(Player p, int pIdx) {
-    p.stream.position.listen((pos) {
+  void _cancelListeners() {
+    _posSub?.cancel();
+    _durSub?.cancel();
+    _compSub?.cancel();
+    _bufSub?.cancel();
+    _playSub?.cancel();
+    _widthSub?.cancel();
+    _heightSub?.cancel();
+    _errSub?.cancel();
+  }
+
+  void _setupListeners(Player p) {
+    _cancelListeners();
+    _posSub = p.stream.position.listen((pos) {
       if (_isDisposed) return;
-      if ((_currentIndex % 2) == pIdx) {
-        if (pos > Duration.zero && _isLoading) {
-          _isLoading = false;
-        }
-        final dur = p.state.duration;
-        if (dur.inMilliseconds > 0) {
-          _currentMediaProgress = (pos.inMilliseconds / dur.inMilliseconds)
-              .clamp(0.0, 1.0);
+      if (pos > Duration.zero) {
+        if (_isLoading) _isLoading = false;
+        if (!_hasFirstFrame) {
+          _hasFirstFrame = true;
           notifyListeners();
-          if (pos >= dur && dur > const Duration(seconds: 1)) {
-            nextStory();
-          }
+        }
+      }
+      final dur = p.state.duration;
+      if (dur.inMilliseconds > 0) {
+        _currentMediaProgress = (pos.inMilliseconds / dur.inMilliseconds).clamp(
+          0.0,
+          1.0,
+        );
+        notifyListeners();
+        if (pos >= dur && dur > const Duration(seconds: 1)) {
+          nextStory();
         }
       }
     });
 
-    p.stream.duration.listen((dur) {
+    _durSub = p.stream.duration.listen((dur) {
       if (_isDisposed) return;
-      if ((_currentIndex % 2) == pIdx) {
-        final pos = p.state.position;
-        if (dur.inMilliseconds > 0 && pos.inMilliseconds > 0) {
-          _currentMediaProgress = (pos.inMilliseconds / dur.inMilliseconds)
-              .clamp(0.0, 1.0);
-          notifyListeners();
-        }
+      final pos = p.state.position;
+      if (dur.inMilliseconds > 0 && pos.inMilliseconds > 0) {
+        _currentMediaProgress = (pos.inMilliseconds / dur.inMilliseconds).clamp(
+          0.0,
+          1.0,
+        );
+        notifyListeners();
       }
     });
 
-    p.stream.completed.listen((completed) {
-      if (!_isDisposed && completed && (_currentIndex % 2) == pIdx) {
+    _compSub = p.stream.completed.listen((completed) {
+      if (!_isDisposed && completed) {
         final pos = p.state.position;
         final dur = p.state.duration;
-        // Strictly verify that media has actually loaded and played to near the end
         if (dur > const Duration(milliseconds: 500) &&
             (pos.inMilliseconds >= dur.inMilliseconds - 600 || pos >= dur)) {
           nextStory();
@@ -125,17 +160,17 @@ class StoryDetailProvider extends ChangeNotifier {
       }
     });
 
-    p.stream.buffering.listen((buffering) {
-      if (!_isDisposed && (_currentIndex % 2) == pIdx) {
-        if (!_isLoading) {
+    _bufSub = p.stream.buffering.listen((buffering) {
+      if (!_isDisposed) {
+        if (_isLoading != buffering) {
           _isLoading = buffering;
           notifyListeners();
         }
       }
     });
 
-    p.stream.playing.listen((playing) {
-      if (!_isDisposed && (_currentIndex % 2) == pIdx) {
+    _playSub = p.stream.playing.listen((playing) {
+      if (!_isDisposed) {
         _isPlaying = playing;
         if (playing && _isLoading) {
           _isLoading = false;
@@ -144,25 +179,38 @@ class StoryDetailProvider extends ChangeNotifier {
       }
     });
 
-    p.stream.width.listen((_) {
+    _widthSub = p.stream.width.listen((_) {
       if (!_isDisposed) notifyListeners();
     });
 
-    p.stream.height.listen((_) {
+    _heightSub = p.stream.height.listen((_) {
       if (!_isDisposed) notifyListeners();
     });
 
-    p.stream.error.listen((error) {
+    _errSub = p.stream.error.listen((error) {
       if (_isDisposed) return;
       final errorStr = error.toString().toLowerCase();
       if (errorStr.contains('audio device') || errorStr.contains('no sound')) {
         return;
       }
-      debugPrint("⚠️ [StoryDetailProvider] Error on p$pIdx: $error");
-      if ((_currentIndex % 2) == pIdx) {
-        _isLoading = false;
-        notifyListeners();
+      debugPrint("⚠️ [StoryDetailProvider] Error: $error");
+      final currentStory =
+          (_currentIndex >= 0 && _currentIndex < stories.length)
+          ? stories[_currentIndex]
+          : null;
+      if (currentStory != null && currentStory.url.isNotEmpty) {
+        final source = p.state.playlist.medias.isNotEmpty
+            ? p.state.playlist.medias.first.uri
+            : '';
+        if (source != currentStory.url) {
+          try {
+            p.open(Media(currentStory.url), play: true);
+            return;
+          } catch (_) {}
+        }
       }
+      _isLoading = false;
+      notifyListeners();
     });
   }
 
@@ -173,28 +221,43 @@ class StoryDetailProvider extends ChangeNotifier {
     }
   }
 
-  void _loadStory(int index) {
+  void _forcePlay() {
+    if (_isDisposed || _player == null || !_shouldPlay) return;
+    try {
+      _player!.play();
+    } catch (_) {}
+
+    // Robust retry mechanism to defeat libmpv state machine race conditions
+    // where a recent pause() command swallows our play() command.
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (!_isDisposed && _shouldPlay && _player != null) {
+        if (!_player!.state.playing) {
+          try {
+            debugPrint(
+              '⚡ [StoryDetailProvider] Forcing play retry due to race condition!',
+            );
+            _player!.play();
+          } catch (_) {}
+        }
+      }
+    });
+  }
+
+  void _loadStory(int index, {bool play = true}) {
     _cancelTimer();
     _imageProgress = 0.0;
     _currentMediaProgress = 0.0;
+    _hasFirstFrame = false;
 
-    if (_isDisposed || stories.isEmpty || index < 0 || index >= stories.length) {
+    if (_isDisposed ||
+        stories.isEmpty ||
+        index < 0 ||
+        index >= stories.length) {
       return;
     }
 
-    final oldIndex = _currentIndex;
     _currentIndex = index;
     final story = stories[index];
-
-    _ensurePlayersInitialized();
-
-    // Pause previous player if switching index
-    final prevPlayer = (oldIndex % 2 == 0) ? _playerA : _playerB;
-    if (prevPlayer != null && oldIndex != index) {
-      try {
-        prevPlayer.pause();
-      } catch (_) {}
-    }
 
     if (story.id != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -207,7 +270,107 @@ class StoryDetailProvider extends ChangeNotifier {
     }
 
     if (story.isVideo || story.isAudio) {
-      final activePlayer = player;
+      // ── 0. Native Preload HIT (0ms transition inside same category) ──────
+      if (_nextPlayer != null &&
+          _nextVideoController != null &&
+          _nextPlayerUrl == story.url) {
+        debugPrint(
+          '⚡⚡ [StoryDetailProvider] Native Preload HIT for story #$index',
+        );
+
+        final oldUrl = (_currentIndex > 0)
+            ? stories[_currentIndex - 1].url
+            : '';
+        if (_player != null &&
+            _videoController != null &&
+            oldUrl.isNotEmpty &&
+            oldUrl != story.url) {
+          StoryPlayerPool.instance.donate(
+            url: oldUrl,
+            player: _player!,
+            controller: _videoController!,
+          );
+        } else {
+          try {
+            _player?.dispose();
+          } catch (_) {}
+        }
+
+        _player = _nextPlayer;
+        _videoController = _nextVideoController;
+
+        _nextPlayer = null;
+        _nextVideoController = null;
+        _nextPlayerUrl = '';
+
+        _preloadPosSub?.cancel();
+        _preloadPosSub = null;
+
+        try {
+          _player!.setVolume(_isMuted ? 0.0 : 100.0);
+          _setupListeners(_player!);
+
+          _shouldPlay = play;
+          if (_shouldPlay) _forcePlay();
+        } catch (e) {
+          debugPrint('Preload player resume error: $e');
+        }
+
+        // The first frame was already rendered in the background by the auto-pause logic!
+        _isLoading = false;
+        _currentMediaProgress = 0.0;
+        _hasFirstFrame = true;
+        notifyListeners();
+
+        _preloadNextStory(index + 1);
+        return;
+      }
+
+      // ── 1. Check warm player pool first (0ms instant replay) ─────────────
+      final StoryPoolEntry? poolEntry = StoryPlayerPool.instance.remove(
+        story.url,
+      );
+      if (poolEntry != null) {
+        final oldUrl = (_currentIndex >= 0 && _currentIndex < stories.length)
+            ? stories[_currentIndex].url
+            : '';
+        if (_player != null &&
+            _videoController != null &&
+            oldUrl.isNotEmpty &&
+            oldUrl != story.url) {
+          StoryPlayerPool.instance.donate(
+            url: oldUrl,
+            player: _player!,
+            controller: _videoController!,
+          );
+        } else {
+          try {
+            _player?.dispose();
+          } catch (_) {}
+        }
+
+        _player = poolEntry.player;
+        _videoController = poolEntry.controller;
+
+        try {
+          _player!.setVolume(_isMuted ? 0.0 : 100.0);
+          _setupListeners(_player!);
+          _player!.play();
+        } catch (e) {
+          debugPrint('Pool player resume error: $e');
+        }
+
+        _isLoading =
+            true; // Let the player stream set this to false when first frame renders
+        _currentMediaProgress = 0.0;
+        _hasFirstFrame = false;
+        notifyListeners();
+        return;
+      }
+
+      // ── Normal load (first story or pool miss) ─────────────────
+      _ensurePlayerInitialized();
+      final activePlayer = _player;
       if (activePlayer == null) {
         _isLoading = false;
         notifyListeners();
@@ -216,129 +379,100 @@ class StoryDetailProvider extends ChangeNotifier {
 
       try {
         activePlayer.setVolume(_isMuted ? 0.0 : 100.0);
+        final playPath = story.url;
 
-        final cleanUrl = story.url;
-        final cachedPath = VideoCacheManager.instance.getCachedFilePath(
-          cleanUrl,
-        );
-        final playPath = cachedPath ?? cleanUrl;
+        _isLoading = true;
+        _currentMediaProgress = 0.0;
+        _hasFirstFrame = false;
+        _shouldPlay = play;
+        notifyListeners();
 
+        final playerToOpen = activePlayer;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          try {
+            playerToOpen.open(Media(playPath), play: false);
+            if (_shouldPlay) _forcePlay();
+          } catch (_) {}
+        });
 
-        // Format URI properly with file:// scheme for local files
-        final String mediaUri;
-        if (cachedPath != null && cachedPath.isNotEmpty) {
-          mediaUri = cachedPath.startsWith('file://')
-              ? cachedPath
-              : 'file://$cachedPath';
-        } else if (playPath.startsWith('/')) {
-          mediaUri = playPath.startsWith('file://')
-              ? playPath
-              : 'file://$playPath';
-        } else {
-          mediaUri = playPath;
-        }
-
-        // Check if active player was already pre-buffered with this URL!
-        final currentSource = activePlayer.state.playlist.medias.isNotEmpty
-            ? activePlayer.state.playlist.medias.first.uri
-            : '';
-
-        final bool isAlreadyPrebuffered =
-            currentSource == playPath ||
-            currentSource == cleanUrl ||
-            currentSource == mediaUri ||
-            currentSource == 'file://$playPath' ||
-            currentSource == 'file://$cleanUrl';
-
-        if (isAlreadyPrebuffered) {
-          _isLoading = activePlayer.state.position == Duration.zero;
-          activePlayer.play();
-        } else {
-          _isLoading = true;
-          activePlayer.open(Media(mediaUri), play: true);
-          if (story.isNetwork && cachedPath == null) {
-            VideoCacheManager.instance.preCacheVideo(cleanUrl);
-          }
-        }
+        _preloadNextStory(index + 1);
       } catch (e) {
         debugPrint("Error loading media in StoryDetailProvider: $e");
         _isLoading = false;
       }
       notifyListeners();
-
-      // Pre-buffer next story in background on the secondary player!
-      _preloadNextStory(index + 1);
     } else {
       _isLoading = false;
+      try {
+        _player?.pause();
+      } catch (_) {}
       startImageTimer();
       notifyListeners();
-
-      // Pre-buffer next story in background even if current is an image!
-      _preloadNextStory(index + 1);
     }
   }
 
   void _preloadNextStory(int nextIndex) {
-    if (_isDisposed || nextIndex < 0 || nextIndex >= stories.length) return;
+    if (nextIndex >= stories.length) {
+      _disposeNextPlayer();
+      return;
+    }
     final nextStory = stories[nextIndex];
-    if (!nextStory.isVideo && !nextStory.isAudio) return;
-    if (nextStory.url.isEmpty) return;
-
-    final nextP = _nextPlayer;
-    if (nextP == null) return;
+    if (nextStory.isImage) {
+      _disposeNextPlayer();
+      return;
+    }
 
     try {
-      final cleanNext = nextStory.url;
-      final cachedPath = VideoCacheManager.instance.getCachedFilePath(
-        cleanNext,
-      );
-      final playPath = cachedPath ?? cleanNext;
-
-      final String mediaUri;
-      if (cachedPath != null && cachedPath.isNotEmpty) {
-        mediaUri = cachedPath.startsWith('file://')
-            ? cachedPath
-            : 'file://$cachedPath';
-      } else if (playPath.startsWith('/')) {
-        mediaUri = playPath.startsWith('file://')
-            ? playPath
-            : 'file://$playPath';
-      } else {
-        mediaUri = playPath;
+      if (_nextPlayer == null) {
+        _nextPlayer = Player(
+          configuration: const PlayerConfiguration(
+            bufferSize: 32 * 1024 * 1024,
+            logLevel: MPVLogLevel.warn,
+          ),
+        );
+        _nextVideoController = VideoController(
+          _nextPlayer!,
+          configuration: const VideoControllerConfiguration(
+            enableHardwareAcceleration: true,
+          ),
+        );
       }
+      _nextPlayerUrl = nextStory.url;
+      _nextPlayer!.setVolume(0.0);
 
-      final currentSource = nextP.state.playlist.medias.isNotEmpty
-          ? nextP.state.playlist.medias.first.uri
-          : '';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          // Force media_kit to fetch the HLS segment by playing it
+          _nextPlayer!.open(Media(nextStory.url), play: true);
 
-      final bool isAlreadyPreloaded =
-          currentSource == playPath ||
-          currentSource == cleanNext ||
-          currentSource == mediaUri ||
-          currentSource == 'file://$playPath' ||
-          currentSource == 'file://$cleanNext';
+          // Immediately pause it once it actually renders a few frames
+          _preloadPosSub?.cancel();
+          _preloadPosSub = _nextPlayer!.stream.position.listen((pos) {
+            if (pos.inMilliseconds > 50) {
+              _nextPlayer?.pause();
+              _preloadPosSub?.cancel();
+              _preloadPosSub = null;
+            }
+          });
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }
 
-      if (!isAlreadyPreloaded) {
-        nextP.setVolume(_isMuted ? 0.0 : 100.0);
-        nextP.open(Media(mediaUri), play: false);
-        if (nextStory.isNetwork && cachedPath == null) {
-          VideoCacheManager.instance.preCacheVideo(cleanNext);
-        }
-      }
-
-    } catch (e) {
-      debugPrint("Error preloading next story: $e");
-    }
+  void _disposeNextPlayer() {
+    _preloadPosSub?.cancel();
+    _preloadPosSub = null;
+    try {
+      _nextPlayer?.dispose();
+    } catch (_) {}
+    _nextPlayer = null;
+    _nextVideoController = null;
+    _nextPlayerUrl = '';
   }
 
   void startOrResumeStory() {
     if (_isDisposed) return;
-    if (!_hasStarted) {
-      _hasStarted = true;
-      _loadStory(_currentIndex);
-    } else {
-      resumeStory();
-    }
+    resumeStory();
   }
 
   void startImageTimer() {
@@ -372,8 +506,7 @@ class StoryDetailProvider extends ChangeNotifier {
     } else {
       _cancelTimer();
       try {
-        _playerA?.pause();
-        _playerB?.pause();
+        _player?.pause();
       } catch (_) {}
       if (onFinished != null) {
         onFinished!();
@@ -396,15 +529,14 @@ class StoryDetailProvider extends ChangeNotifier {
     if (_isDisposed) return;
     _isMuted = !_isMuted;
     try {
-      _playerA?.setVolume(_isMuted ? 0.0 : 100.0);
-      _playerB?.setVolume(_isMuted ? 0.0 : 100.0);
+      _player?.setVolume(_isMuted ? 0.0 : 100.0);
     } catch (_) {}
     notifyListeners();
   }
 
   void togglePlayPause() {
     if (_isDisposed) return;
-    final p = player;
+    final p = _player;
     if (p == null) return;
     try {
       if (_isPlaying) {
@@ -416,6 +548,7 @@ class StoryDetailProvider extends ChangeNotifier {
   }
 
   void pauseStory() {
+    _shouldPlay = false;
     if (_isDisposed || stories.isEmpty) return;
     if (_currentIndex < 0 || _currentIndex >= stories.length) return;
     final story = stories[_currentIndex];
@@ -423,12 +556,13 @@ class StoryDetailProvider extends ChangeNotifier {
       _cancelTimer();
     } else {
       try {
-        player?.pause();
+        _player?.pause();
       } catch (_) {}
     }
   }
 
   void resumeStory() {
+    _shouldPlay = true;
     if (_isDisposed || stories.isEmpty) return;
     if (_currentIndex < 0 || _currentIndex >= stories.length) return;
     final story = stories[_currentIndex];
@@ -436,7 +570,7 @@ class StoryDetailProvider extends ChangeNotifier {
       startImageTimer();
     } else {
       try {
-        player?.play();
+        _player?.play();
       } catch (_) {}
     }
   }
@@ -445,10 +579,34 @@ class StoryDetailProvider extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _cancelTimer();
-    try {
-      _playerA?.dispose();
-      _playerB?.dispose();
-    } catch (_) {}
+
+    // Donate the active player to pool so it can be instantly reused
+    final activePlayer = _player;
+    final activeCtrl = _videoController;
+    final activeUrl = (_currentIndex >= 0 && _currentIndex < stories.length)
+        ? stories[_currentIndex].url
+        : '';
+    if (activePlayer != null && activeCtrl != null && activeUrl.isNotEmpty) {
+      final story = stories[_currentIndex];
+      if (story.isVideo || story.isAudio) {
+        StoryPlayerPool.instance.donate(
+          url: activeUrl,
+          player: activePlayer,
+          controller: activeCtrl,
+        );
+      } else {
+        try {
+          activePlayer.dispose();
+        } catch (_) {}
+      }
+    } else {
+      try {
+        activePlayer?.dispose();
+      } catch (_) {}
+    }
+
+    _disposeNextPlayer();
+    _cancelListeners();
     super.dispose();
   }
 }

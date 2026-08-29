@@ -36,7 +36,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   bool _hasError = false;
   bool _isInitializing = false;
   bool _isPlaying = false;
-  bool _isBuffering = false;
   bool _hasStartedPlaying = false;
 
   String get _resolvedVideoUrl {
@@ -77,7 +76,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     setState(() {
       _isInitializing = true;
       _hasError = false;
-      _isBuffering = true;
       _hasStartedPlaying = false;
     });
 
@@ -89,7 +87,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
       _player = Player(
         configuration: const PlayerConfiguration(
-          bufferSize: 10 * 1024 * 1024,
+          bufferSize: 1024 * 1024,
           logLevel: MPVLogLevel.warn,
         ),
       );
@@ -128,7 +126,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           setState(() {
             _isPlaying = playing;
             if (playing && _hasStartedPlaying) {
-              _isBuffering = false;
               _isInitializing = false;
             }
           });
@@ -139,16 +136,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         if (mounted && pos > Duration.zero && !_hasStartedPlaying) {
           setState(() {
             _hasStartedPlaying = true;
-            _isBuffering = false;
             _isInitializing = false;
-          });
-        }
-      });
-
-      _player!.stream.buffering.listen((buffering) {
-        if (mounted) {
-          setState(() {
-            _isBuffering = buffering;
           });
         }
       });
@@ -174,7 +162,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         setState(() {
           _hasError = true;
           _isInitializing = false;
-          _isBuffering = false;
           _hasStartedPlaying = false;
         });
         _player?.dispose();
@@ -279,8 +266,8 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
               child: Container(color: Colors.black.withValues(alpha: 0.25)),
             ),
 
-            // 2. Video Player Layer (Single Video Widget wrapped in RepaintBoundary)
-            if (_isVideoReady && hasValidDimensions)
+            // 2. Video Player Layer (Always attached to surface when ready)
+            if (_isVideoReady)
               Center(
                 child: FittedBox(
                   fit: BoxFit.contain,
@@ -298,9 +285,12 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                 ),
               ),
 
-            // 3. Instant Thumbnail / Loading Cover (Instant clean cut right as frame 1 plays)
-            if (!_hasStartedPlaying)
-              Positioned.fill(
+            // 3. Instant Thumbnail / Poster Layer with Smooth Fade
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              opacity: _hasStartedPlaying ? 0.0 : 1.0,
+              child: IgnorePointer(
                 child:
                     widget.thumbnailUrl != null &&
                         widget.thumbnailUrl!.trim().isNotEmpty
@@ -309,28 +299,11 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                         fit: BoxFit.cover,
                         gaplessPlayback: true,
                         errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                              child: CircularProgressIndicator(
-                                color: Color(0xFFFF6900),
-                                strokeWidth: 3,
-                              ),
-                            ),
+                            Container(color: Colors.black),
                       )
-                    : const Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFF6900),
-                          strokeWidth: 3,
-                        ),
-                      ),
+                    : Container(color: Colors.black),
               ),
-
-            if (_hasStartedPlaying && _isBuffering)
-              const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFFFF6900),
-                  strokeWidth: 3,
-                ),
-              ),
+            ),
 
             // Play icon overlay when paused
             if (!_isPlaying && _isVideoReady && !_isInitializing)

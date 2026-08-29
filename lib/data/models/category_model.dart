@@ -12,15 +12,21 @@ class CategoryModel {
   });
 
   factory CategoryModel.fromJson(Map<String, dynamic> json) {
+    final rawSub = json['subcategories'] is List
+        ? (json['subcategories'] as List)
+        : (json['subcategories'] is Map && json['subcategories']['results'] is List
+            ? (json['subcategories']['results'] as List)
+            : null);
+
     return CategoryModel(
       id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      imageUrl: json['image_url'] ?? '',
-      subcategories: json['subcategories'] != null
-          ? (json['subcategories'] as List)
-                .map((i) => SubcategoryModel.fromJson(i))
-                .toList()
-          : [],
+      name: json['name']?.toString() ?? '',
+      imageUrl: json['image_url']?.toString() ?? '',
+      subcategories: rawSub
+              ?.where((i) => i != null && i is Map)
+              .map((i) => SubcategoryModel.fromJson(Map<String, dynamic>.from(i as Map)))
+              .toList() ??
+          [],
     );
   }
 }

@@ -27,7 +27,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
     with WidgetsBindingObserver {
   late final Player _player = Player(
     configuration: const PlayerConfiguration(
-      bufferSize: 10 * 1024 * 1024,
+      bufferSize: 1024 * 1024,
       logLevel: MPVLogLevel.warn,
     ),
   );
@@ -107,7 +107,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
     if (targetUrl.trim().isEmpty) return;
     final cachedPath = VideoCacheManager.instance.getCachedFilePath(targetUrl);
     final playPath = cachedPath ?? targetUrl;
-    _player.open(Media(playPath));
+    _player.open(Media(playPath), play: true);
     if (cachedPath == null && targetUrl.startsWith('http')) {
       VideoCacheManager.instance.preCacheVideo(targetUrl);
     }

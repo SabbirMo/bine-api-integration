@@ -1,4 +1,17 @@
-import 'package:binetatour/data/models/product_model.dart' show MediaModel;
+import 'package:binetatour/data/models/product_model.dart';
+
+List<dynamic>? _extractList(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is List) return raw;
+  if (raw is Map) {
+    if (raw['results'] is List) return raw['results'] as List;
+    if (raw['data'] is List) return raw['data'] as List;
+    if (raw['data'] is Map && raw['data']['results'] is List) {
+      return raw['data']['results'] as List;
+    }
+  }
+  return null;
+}
 
 class HomeResponseModel {
   final BannerModel? banner;
@@ -14,19 +27,34 @@ class HomeResponseModel {
   });
 
   factory HomeResponseModel.fromJson(Map<String, dynamic> json) {
+    final rawStoryCat = _extractList(json['story_categories']);
+    final rawProdSections = _extractList(json['product_sections']);
+
     return HomeResponseModel(
-      banner: json['banner'] != null
-          ? BannerModel.fromJson(json['banner'])
+      banner: json['banner'] != null && json['banner'] is Map
+          ? BannerModel.fromJson(
+              Map<String, dynamic>.from(json['banner'] as Map),
+            )
           : null,
-      storeAddress: json['store_address'],
+      storeAddress: json['store_address']?.toString(),
       storyCategories:
-          (json['story_categories'] as List?)
-              ?.map((e) => StoryCategoryModel.fromJson(e))
+          rawStoryCat
+              ?.where((e) => e != null && e is Map)
+              .map(
+                (e) => StoryCategoryModel.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
               .toList() ??
           [],
       productSections:
-          (json['product_sections'] as List?)
-              ?.map((e) => ProductSectionModel.fromJson(e))
+          rawProdSections
+              ?.where((e) => e != null && e is Map)
+              .map(
+                (e) => ProductSectionModel.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
               .toList() ??
           [],
     );
@@ -47,21 +75,23 @@ class BannerModel {
   });
 
   String get effectiveVideoUrl {
-    if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
-      return videoUrl!;
-    }
     if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
       return hlsUrl!;
+    }
+    if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
+      return videoUrl!;
     }
     return '';
   }
 
   factory BannerModel.fromJson(Map<String, dynamic> json) {
     return BannerModel(
-      id: json['id'],
-      videoUrl: json['video_url'],
-      hlsUrl: json['hls_url'],
-      thumbnailUrl: json['thumbnail_url'],
+      id: json['id'] is num
+          ? (json['id'] as num).toInt()
+          : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
+      videoUrl: json['video_url']?.toString(),
+      hlsUrl: json['hls_url']?.toString(),
+      thumbnailUrl: json['thumbnail_url']?.toString(),
     );
   }
 }
@@ -82,14 +112,26 @@ class StoryCategoryModel {
   });
 
   factory StoryCategoryModel.fromJson(Map<String, dynamic> json) {
+    final rawStories = _extractList(json['stories']);
+
     return StoryCategoryModel(
-      id: json['id'],
-      name: json['name'],
-      imageUrl: json['image_url'],
-      type: json['type'],
+      id: json['id'] is num
+          ? (json['id'] as num).toInt()
+          : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
+      name: json['name']?.toString(),
+      imageUrl:
+          json['image_url']?.toString() ??
+          json['image']?.toString() ??
+          json['icon']?.toString() ??
+          json['category_image']?.toString() ??
+          json['thumbnail_url']?.toString(),
+      type: json['type']?.toString(),
       stories:
-          (json['stories'] as List?)
-              ?.map((e) => StoryModel.fromJson(e))
+          rawStories
+              ?.where((e) => e != null && e is Map)
+              .map(
+                (e) => StoryModel.fromJson(Map<String, dynamic>.from(e as Map)),
+              )
               .toList() ??
           [],
     );
@@ -125,12 +167,14 @@ class StoryModel {
 
   factory StoryModel.fromJson(Map<String, dynamic> json) {
     return StoryModel(
-      id: json['id'] ?? 0,
-      contentType: json['content_type'],
-      mediaUrl: json['media_url'],
-      hlsUrl: json['hls_url'],
-      thumbnailUrl: json['thumbnail_url'],
-      createdAt: json['created_at'],
+      id: json['id'] is num
+          ? (json['id'] as num).toInt()
+          : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
+      contentType: json['content_type']?.toString(),
+      mediaUrl: json['media_url']?.toString() ?? json['media']?.toString(),
+      hlsUrl: json['hls_url']?.toString(),
+      thumbnailUrl: json['thumbnail_url']?.toString(),
+      createdAt: json['created_at']?.toString(),
     );
   }
 }
@@ -149,13 +193,25 @@ class ProductSectionModel {
   });
 
   factory ProductSectionModel.fromJson(Map<String, dynamic> json) {
+    final rawProducts = _extractList(json['products']);
+
     return ProductSectionModel(
-      categoryId: json['category_id'],
-      categoryName: json['category_name'],
-      categoryImageUrl: json['category_image_url'],
+      categoryId: json['category_id'] is num
+          ? (json['category_id'] as num).toInt()
+          : (int.tryParse(json['category_id']?.toString() ?? '0') ?? 0),
+      categoryName: json['category_name']?.toString(),
+      categoryImageUrl:
+          json['category_image_url']?.toString() ??
+          json['category_image']?.toString() ??
+          json['image_url']?.toString() ??
+          json['image']?.toString(),
       products:
-          (json['products'] as List?)
-              ?.map((e) => ProductModel.fromJson(e))
+          rawProducts
+              ?.where((e) => e != null && e is Map)
+              .map(
+                (e) =>
+                    ProductModel.fromJson(Map<String, dynamic>.from(e as Map)),
+              )
               .toList() ??
           [],
     );
@@ -237,9 +293,9 @@ class ProductModel {
   }
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
-    final rawMedia = json['product_media'] ?? json['media'];
+    final rawMedia = _extractList(json['product_media'] ?? json['media']);
     final List<MediaModel> parsedMedia = [];
-    if (rawMedia is List) {
+    if (rawMedia != null) {
       for (final item in rawMedia) {
         if (item != null && item is Map) {
           try {

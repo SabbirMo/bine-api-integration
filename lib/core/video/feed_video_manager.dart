@@ -151,7 +151,7 @@ class FeedVideoManager extends ChangeNotifier {
   FeedPlayerState _createPlayerState() {
     final player = Player(
       configuration: const PlayerConfiguration(
-        bufferSize: 10 * 1024 * 1024,
+        bufferSize: 32 * 1024 * 1024, // 32 MB — enough for HLS segments
         logLevel: MPVLogLevel.warn,
       ),
     );
@@ -162,6 +162,9 @@ class FeedVideoManager extends ChangeNotifier {
         enableHardwareAcceleration: true,
       ),
     );
+
+    // Apply HLS-optimized MPV properties asynchronously
+    _applyMpvProperties(player);
 
     try {
       player.setPlaylistMode(PlaylistMode.loop);
@@ -177,6 +180,23 @@ class FeedVideoManager extends ChangeNotifier {
     return state;
   }
 
+  /// Applies Cloudflare Stream-optimized MPV properties to a [Player].
+  Future<void> _applyMpvProperties(Player player) async {
+    try {
+      final platform = player.platform;
+      if (platform == null) return;
+      final p = platform as dynamic;
+      await p.setProperty('hls-bitrate', 'auto');
+      await p.setProperty('cache', 'yes');
+      await p.setProperty('cache-secs', '5');
+      await p.setProperty('demuxer-readahead-secs', '5');
+      await p.setProperty('demuxer-max-bytes', '32MiB');
+      await p.setProperty('demuxer-max-back-bytes', '8MiB');
+      await p.setProperty('network-timeout', '10');
+      await p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit');
+    } catch (_) {}
+  }
+
   FeedPlayerState _getOrCreatePlayer(
     String key,
     String url, {
@@ -185,25 +205,40 @@ class FeedVideoManager extends ChangeNotifier {
     final cachedPath = VideoCacheManager.instance.getCachedFilePath(url);
     final targetUrl = cachedPath ?? url;
 
+    // A. Check if the player mapped to this key already has this exact URL loaded
     if (_keyToPlayer.containsKey(key)) {
       final state = _keyToPlayer[key]!;
-      if (state.currentUrl != url) {
-        state.currentUrl = url;
-        state.hasFirstFrame = false;
-        state.isBuffering = true;
-        try {
-          state.player.open(Media(targetUrl), play: autoPlay);
-        } catch (_) {}
-      } else if (autoPlay && !state.isPlaying) {
-        try {
-          state.player.play();
-        } catch (_) {}
-      } else if (!autoPlay && state.isPlaying) {
-        try {
-          state.player.pause();
-        } catch (_) {}
+      if (state.currentUrl == url) {
+        if (autoPlay && !state.isPlaying) {
+          try {
+            state.player.play();
+          } catch (_) {}
+        } else if (!autoPlay && state.isPlaying) {
+          try {
+            state.player.pause();
+          } catch (_) {}
+        }
+        return state;
       }
-      return state;
+    }
+
+    // B. Check if ANY player in the pool already has this exact URL loaded in memory
+    for (final p in _playerPool) {
+      if (p.currentUrl == url) {
+        if (p.currentKey != null && p.currentKey != key) {
+          _keyToPlayer.remove(p.currentKey);
+        }
+        p.currentKey = key;
+        _keyToPlayer[key] = p;
+        p.hasFirstFrame = true;
+        p.isBuffering = false;
+        if (autoPlay && !p.isPlaying) {
+          try {
+            p.player.play();
+          } catch (_) {}
+        }
+        return p;
+      }
     }
 
     FeedPlayerState? state;
@@ -255,9 +290,12 @@ class FeedVideoManager extends ChangeNotifier {
       state.currentUrl = url;
       state.hasFirstFrame = false;
       state.isBuffering = true;
-      try {
-        state.player.open(Media(targetUrl), play: autoPlay);
-      } catch (_) {}
+      final playerToOpen = state.player;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          playerToOpen.open(Media(targetUrl), play: autoPlay);
+        } catch (_) {}
+      });
     } else if (autoPlay && !state.isPlaying) {
       try {
         state.player.play();
@@ -545,6 +583,34 @@ class FeedVideoManager extends ChangeNotifier {
         if (!playerState.isPlaying) {
           try {
             playerState.player.play();
+          } catch (_) {}
+        }
+
+        // ── Pre-warm the next nearby video into an idle pool player ──────────
+        // Find a URL that's registered but NOT currently playing
+        String? nextUrl;
+        for (final entry in _urlMap.entries) {
+          if (entry.key != bestKey && entry.value.isNotEmpty) {
+            // Only pre-warm if this URL isn't already loaded in any pool player
+            final alreadyLoaded = _playerPool.any(
+              (p) => p.currentUrl == entry.value,
+            );
+            if (!alreadyLoaded) {
+              nextUrl = entry.value;
+              break;
+            }
+          }
+        }
+        if (nextUrl != null && _playerPool.length < maxPoolSize) {
+          // Silently open nextUrl in a new idle player so it's buffered
+          final idleState = _getOrCreatePlayer(
+            '__prewarm__${nextUrl.hashCode}',
+            nextUrl,
+            autoPlay: false,
+          );
+          // Immediately pause — we just want it buffered
+          try {
+            idleState.player.pause();
           } catch (_) {}
         }
       }
