@@ -11,9 +11,32 @@ class LoginProvider extends ChangeNotifier {
   bool isGoogleLoading = false;
   bool isAppleLoading = false;
   String? errorMessage;
+  bool _isLoggedIn = false;
+
+  bool get isLoggedIn => _isLoggedIn;
 
   final ApiServices apiServices = ApiServices();
   final AuthService _authService = AuthService();
+
+  LoginProvider() {
+    checkLoginStatus();
+  }
+
+  Future<void> checkLoginStatus() async {
+    final token = await TokenStorage.getAccessToken();
+    final status = token != null && token.isNotEmpty;
+    if (_isLoggedIn != status) {
+      _isLoggedIn = status;
+      notifyListeners();
+    }
+  }
+
+  Future<void> logout() async {
+    await TokenStorage.clearTokens();
+    await _authService.signOut();
+    _isLoggedIn = false;
+    notifyListeners();
+  }
 
   Future<bool> loginWithApple() async {
     final stopwatch = Stopwatch()..start();
@@ -59,6 +82,7 @@ class LoginProvider extends ChangeNotifier {
           userId: userId.isNotEmpty ? userId : null,
         );
 
+        _isLoggedIn = true;
         FirebaseService.instance.registerCurrentToken();
 
         log(
@@ -129,6 +153,8 @@ class LoginProvider extends ChangeNotifier {
         final storageEnd = stopwatch.elapsedMilliseconds;
         debugPrint("Session tokens saved in ${storageEnd - storageStart}ms");
 
+        _isLoggedIn = true;
+
         // Register token in the background so it doesn't block the login flow
         FirebaseService.instance.registerCurrentToken();
 
@@ -181,6 +207,8 @@ class LoginProvider extends ChangeNotifier {
         userId: userId?.toString(),
       );
 
+      _isLoggedIn = true;
+
       // Register token in the background so it doesn't block the login flow
       FirebaseService.instance.registerCurrentToken();
 
@@ -211,6 +239,7 @@ class LoginProvider extends ChangeNotifier {
       );
 
       log("Delete account success response: $response");
+      await logout();
       return true;
     } catch (e) {
       log("Delete account API failed: $e");

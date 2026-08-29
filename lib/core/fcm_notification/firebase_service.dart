@@ -2,8 +2,10 @@ import 'dart:developer';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:binetatour/core/network/api_services/api_services.dart';
+import 'package:binetatour/core/token_storage/token_storage.dart';
 
 import 'notification_service.dart';
 
@@ -18,13 +20,6 @@ class FirebaseService {
   Function()? onNotificationReceived;
 
   Future<void> init() async {
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
-
     // Allow iOS to show notification banners in the foreground
     await messaging.setForegroundNotificationPresentationOptions(
       alert: true,
@@ -32,18 +27,11 @@ class FirebaseService {
       sound: true,
     );
 
-    // Defer device token registration to background after 3 seconds to prioritize Home API bandwidth
+    // If user is already logged in, refresh and register FCM token silently in background
     Future.delayed(const Duration(seconds: 3), () async {
-      try {
-        final token = await messaging.getToken();
-        if (token != null) {
-          await _registerDeviceToken(token);
-        }
-        log("FCM TOKEN => $token");
-      } catch (e) {
-        log(
-          "FCM getToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e",
-        );
+      final token = await TokenStorage.getAccessToken();
+      if (token != null && token.isNotEmpty) {
+        await registerCurrentToken();
       }
     });
 
@@ -103,10 +91,23 @@ class FirebaseService {
 
   Future<void> registerCurrentToken() async {
     try {
+      // Prompt user for Notification Permission after successful login on Android and iOS
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      log(
+        'FCM Notification permission status: ${settings.authorizationStatus}',
+      );
+
+      await NotificationService.instance.requestPermissions();
+
       final token = await messaging.getToken();
       if (token != null) {
         await _registerDeviceToken(token);
-        log('FCM token registered after login');
+        log('FCM token registered after login => $token');
       }
     } catch (e) {
       log(
@@ -117,13 +118,28 @@ class FirebaseService {
 
   Future<void> _registerDeviceToken(String token) async {
     try {
-      await apiServices.post(
+      debugPrint('==================================================');
+      debugPrint('🚀 SENDING FCM TOKEN TO BACKEND:');
+      debugPrint('TOKEN => $token');
+      debugPrint('ENDPOINT => /api/notifications/devices/');
+      debugPrint('==================================================');
+      log('FCM TOKEN => $token');
+
+      final response = await apiServices.post(
         '/api/notifications/devices/',
         data: {'registration_token': token},
         requireAuth: true,
       );
-      log('FCM Token registered successfully');
+
+      debugPrint('==================================================');
+      debugPrint('✅ FCM TOKEN REGISTERED SUCCESSFULLY ON BACKEND!');
+      debugPrint('RESPONSE => ${response.data}');
+      debugPrint('==================================================');
+      log('FCM Token registered successfully: ${response.data}');
     } catch (e) {
+      debugPrint('==================================================');
+      debugPrint('❌ FAILED TO REGISTER FCM TOKEN ON BACKEND: $e');
+      debugPrint('==================================================');
       log('Failed to register FCM token: $e');
     }
   }

@@ -24,6 +24,7 @@ import 'package:binetatour/data/models/product_model.dart' as shop_model;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/fcm_notification/firebase_service.dart';
+import 'package:binetatour/core/login/login_provider.dart';
 
 class AccueilScreen extends StatefulWidget {
   const AccueilScreen({super.key});
@@ -200,57 +201,66 @@ class _AccueilScreenState extends State<AccueilScreen>
               child: SvgPicture.asset("assets/icon/whatsapp.svg"),
             ),
           ),
-          Consumer<NotificationProvider>(
-            builder: (context, notificationProvider, child) {
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    onPressed: () async {
-                      FeedVideoManager.instance.pauseAll();
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => NotificationScreen()),
-                      );
-                      FeedVideoManager.instance.resume();
-                    },
-                    icon: const Icon(
-                      Icons.notifications_none,
-                      color: Colors.black,
-                    ),
-                  ),
-                  if (notificationProvider.unreadCount > 0)
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFF6900),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          notificationProvider.unreadCount > 99
-                              ? '99+'
-                              : notificationProvider.unreadCount.toString(),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
+          Consumer<LoginProvider>(
+            builder: (context, loginProvider, child) {
+              if (!loginProvider.isLoggedIn) {
+                return const SizedBox.shrink();
+              }
+              return Consumer<NotificationProvider>(
+                builder: (context, notificationProvider, child) {
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        onPressed: () async {
+                          FeedVideoManager.instance.pauseAll();
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => NotificationScreen(),
+                            ),
+                          );
+                          FeedVideoManager.instance.resume();
+                        },
+                        icon: const Icon(
+                          Icons.notifications_none,
+                          color: Colors.black,
                         ),
                       ),
-                    ),
-                ],
+                      if (notificationProvider.unreadCount > 0)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Container(
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFF6900),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              notificationProvider.unreadCount > 99
+                                  ? '99+'
+                                  : notificationProvider.unreadCount.toString(),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               );
             },
           ),

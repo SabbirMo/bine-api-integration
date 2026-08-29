@@ -1,4 +1,3 @@
-import 'package:binetatour/auth/auth_service.dart';
 import 'package:binetatour/core/login/login_provider.dart';
 import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/core/network/dio_client/dio_client.dart';
@@ -63,9 +62,7 @@ class _MonCompteScreenState extends State<MonCompteScreen> {
       return const Scaffold(
         backgroundColor: Colors.white,
         body: Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFFFF6900),
-          ),
+          child: CircularProgressIndicator(color: Color(0xFFFF6900)),
         ),
       );
     }
@@ -85,8 +82,9 @@ class _MonCompteScreenState extends State<MonCompteScreen> {
       body: _isLoggedIn
           ? ProfileView(
               onLogout: () async {
-                await TokenStorage.clearTokens();
-                await AuthService().signOut();
+                if (context.mounted) {
+                  await context.read<LoginProvider>().logout();
+                }
                 DioClient.reset(); // Reset Dio so headers are cleared and clean next session
                 if (context.mounted) {
                   context.read<CartProvider>().clearCart();

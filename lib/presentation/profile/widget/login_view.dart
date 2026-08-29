@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:binetatour/core/login/login_provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
@@ -104,85 +106,75 @@ class LoginView extends StatelessWidget {
                   ),
           ),
           const SizedBox(height: 10),
-          OutlinedButton(
-            onPressed: loginProvider.isAppleLoading
-                ? null
-                : () async {
-                    // If not iOS (e.g. Android), show friendly guidance message instead of error
-                    if (Theme.of(context).platform != TargetPlatform.iOS) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            "La connexion avec Apple est disponible sur les appareils iOS. Veuillez continuer avec Google.",
-                          ),
-                          backgroundColor: Color(0xFFFF8A00),
-                          behavior: SnackBarBehavior.floating,
-                          duration: Duration(seconds: 3),
-                        ),
-                      );
-                      return;
-                    }
 
-                    final success = await loginProvider.loginWithApple();
-                    if (success) {
-                      if (context.mounted) {
-                        context.read<CartProvider>().fetchCart().catchError((
-                          e,
-                        ) {
-                          debugPrint("Error fetching cart: $e");
-                        });
-                        context
-                            .read<NotificationProvider>()
-                            .fetchNotifications()
-                            .catchError((e) {
-                              debugPrint("Error fetching notifications: $e");
-                            });
-                        context
-                            .read<OrderProvider>()
-                            .fetchOrderHistory()
-                            .catchError((e) {
-                              debugPrint("Error fetching order history: $e");
-                            });
-                        onLogin();
+          if (Platform.isIOS)
+            OutlinedButton(
+              onPressed: loginProvider.isAppleLoading
+                  ? null
+                  : () async {
+                      final success = await loginProvider.loginWithApple();
+                      if (success) {
+                        if (context.mounted) {
+                          context.read<CartProvider>().fetchCart().catchError((
+                            e,
+                          ) {
+                            debugPrint("Error fetching cart: $e");
+                          });
+                          context
+                              .read<NotificationProvider>()
+                              .fetchNotifications()
+                              .catchError((e) {
+                                debugPrint("Error fetching notifications: $e");
+                              });
+                          context
+                              .read<OrderProvider>()
+                              .fetchOrderHistory()
+                              .catchError((e) {
+                                debugPrint("Error fetching order history: $e");
+                              });
+                          onLogin();
+                        }
+                      } else if (context.mounted &&
+                          loginProvider.errorMessage != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(loginProvider.errorMessage!),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
                       }
-                    } else if (context.mounted &&
-                        loginProvider.errorMessage != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(loginProvider.errorMessage!),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                    },
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 20,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                side: BorderSide(color: Colors.grey[300]!),
               ),
-              side: BorderSide(color: Colors.grey[300]!),
-            ),
-            child: loginProvider.isAppleLoading
-                ? const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.black,
-                    ),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SvgPicture.asset("assets/icon/apple.svg"),
-                      const SizedBox(width: 12),
-                      const Text(
-                        "Continuer avec Apple",
-                        style: TextStyle(color: Colors.black, fontSize: 16),
+              child: loginProvider.isAppleLoading
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.black,
                       ),
-                    ],
-                  ),
-          ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SvgPicture.asset("assets/icon/apple.svg"),
+                        const SizedBox(width: 12),
+                        const Text(
+                          "Continuer avec Apple",
+                          style: TextStyle(color: Colors.black, fontSize: 16),
+                        ),
+                      ],
+                    ),
+            ),
         ],
       ),
     );
