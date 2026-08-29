@@ -32,18 +32,20 @@ class FirebaseService {
       sound: true,
     );
 
-    String? token;
-    try {
-      token = await messaging.getToken();
-      if (token != null) {
-        await _registerDeviceToken(token);
+    // Defer device token registration to background after 3 seconds to prioritize Home API bandwidth
+    Future.delayed(const Duration(seconds: 3), () async {
+      try {
+        final token = await messaging.getToken();
+        if (token != null) {
+          await _registerDeviceToken(token);
+        }
+        log("FCM TOKEN => $token");
+      } catch (e) {
+        log(
+          "FCM getToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e",
+        );
       }
-      log("FCM TOKEN => $token");
-    } catch (e) {
-      log(
-        "FCM getToken failed (SERVICE_NOT_AVAILABLE or no Play Services): $e",
-      );
-    }
+    });
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;

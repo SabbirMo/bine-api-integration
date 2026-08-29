@@ -37,7 +37,7 @@ void main() async {
       const Duration(milliseconds: 200);
 
   // Pre-initialize and warm up disk video cache for 0ms cold-start playback
-  await VideoCacheManager.instance.init();
+  VideoCacheManager.instance.init();
 
   await dotenv.load(fileName: ".env");
 

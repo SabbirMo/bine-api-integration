@@ -18,7 +18,12 @@ class HomeProvider extends ChangeNotifier {
   HomeResponseModel? get homeData => _homeData;
 
   HomeProvider() {
-    _loadFromCache();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadFromCache();
+    fetchHomeData();
   }
 
   /// Instant load from disk cache (0ms startup delay)

@@ -170,7 +170,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
     });
 
     _player.stream.position.listen((pos) {
-      if (mounted && pos > Duration.zero) {
+      if (mounted && pos > const Duration(milliseconds: 150)) {
         _hasStartedPlaying.value = true;
         _isBuffering.value = false;
       }
@@ -489,7 +489,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                       child: IgnorePointer(
                         ignoring: hasStartedPlaying,
                         child: Container(
-                          color: const Color(0xFF161616),
+                          color: const Color(0xFFFFF5EE),
                           child: widget.thumbnailUrl != null &&
                                   widget.thumbnailUrl!.trim().isNotEmpty
                               ? Image.network(

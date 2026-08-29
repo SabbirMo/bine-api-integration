@@ -7,13 +7,13 @@ import 'package:binetatour/presentation/home/widget/notificaiton_screen.dart';
 import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/home/widget/story_details.dart';
 import 'package:binetatour/presentation/home/widget/video_widget.dart';
+import 'package:binetatour/presentation/home/widget/home_skeleton_loader.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
-import 'package:binetatour/providers/store_settings_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/svg.dart';
@@ -38,37 +38,12 @@ class _AccueilScreenState extends State<AccueilScreen>
 
   Future<void> _refreshHomeData() async {
     try {
-      // 1. Fetch Home Data with highest priority (fastest UI update) with timeout
+      // Fetch Home Data with highest priority (fastest UI update) with timeout
       await context.read<HomeProvider>().fetchHomeData().timeout(
         const Duration(seconds: 6),
       );
     } catch (e) {
       debugPrint("Home refresh error or timeout: $e");
-    }
-
-    // 2. Fetch non-blocking background data asynchronously
-    if (mounted) {
-      context
-          .read<CartProvider>()
-          .fetchCart(showLoading: false)
-          .timeout(const Duration(seconds: 5))
-          .catchError((e) {
-            debugPrint("Cart background fetch error: $e");
-          });
-      context
-          .read<StoreSettingsProvider>()
-          .fetchStoreSettings()
-          .timeout(const Duration(seconds: 5))
-          .catchError((e) {
-            debugPrint("StoreSettings background fetch error: $e");
-          });
-      context
-          .read<NotificationProvider>()
-          .fetchNotifications(forceRefresh: true)
-          .timeout(const Duration(seconds: 5))
-          .catchError((e) {
-            debugPrint("Notifications background fetch error: $e");
-          });
     }
   }
 
@@ -341,9 +316,7 @@ class _AccueilScreenState extends State<AccueilScreen>
       body: Consumer<HomeProvider>(
         builder: (context, provider, child) {
           if (provider.isLoading) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFE8500A)),
-            );
+            return const HomeSkeletonLoader();
           }
 
           if (provider.errorMessage != null) {
@@ -438,9 +411,8 @@ class _AccueilScreenState extends State<AccueilScreen>
                       ),
 
                     // Address Section
-                    if (homeData.storeAddress != null)
-                      _buildAddressBar(homeData.storeAddress!),
-
+                    // if (homeData.storeAddress != null)
+                    //   _buildAddressBar(homeData.storeAddress!),
                     _buildSectionHeader(
                       "Clients Livrés 🙍‍♂️",
                       "assets/icon/right.svg",
@@ -488,27 +460,27 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  Widget _buildAddressBar(String address) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF1E6),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.location_on_outlined, color: Colors.orange, size: 20),
-          SizedBox(width: 8),
-          Text("Adresse :", style: TextStyle(fontWeight: FontWeight.bold)),
-          SizedBox(width: 6),
-          Expanded(
-            child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildAddressBar(String address) {
+  //   return Container(
+  //     margin: const EdgeInsets.symmetric(horizontal: 16),
+  //     padding: const EdgeInsets.all(12),
+  //     decoration: BoxDecoration(
+  //       color: const Color(0xFFFFF1E6),
+  //       borderRadius: BorderRadius.circular(10),
+  //     ),
+  //     child: Row(
+  //       children: [
+  //         Icon(Icons.location_on_outlined, color: Colors.orange, size: 20),
+  //         SizedBox(width: 8),
+  //         Text("Adresse :", style: TextStyle(fontWeight: FontWeight.bold)),
+  //         SizedBox(width: 6),
+  //         Expanded(
+  //           child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildSectionHeader(
     String title,
@@ -800,7 +772,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _precacheSectionVideos();
       _notifySectionActiveCard();
-      _prefetchMissingThumbnails();
     });
   }
 
@@ -905,19 +876,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     }
   }
 
-  /// Silently fetch product details for cards that have no thumbnail/video.
-  /// When done, ProductProvider notifies listeners → section rebuilds with CDN thumbnail.
-  void _prefetchMissingThumbnails() {
-    if (!mounted) return;
-    final productProvider = context.read<ProductProvider>();
-    for (final prod in widget.section.products) {
-      final thumb = _resolveProductThumbnail(prod, productProvider);
-      if (thumb.isEmpty && prod.id > 0) {
-        productProvider.fetchProductDetails(prod.id).ignore();
-      }
-    }
-  }
-
   String _resolveUrl(String? url) {
     if (url == null || url.trim().isEmpty) return '';
     String clean = url.trim();
@@ -983,12 +941,26 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     String tUrl = product.effectiveThumbnailUrl;
     if (tUrl.isNotEmpty) return _resolveUrl(tUrl);
 
-    // 2. Cached product detail (fetched lazily) — has CDN thumbnail_url
+    // 2. Direct mainImage if not a video
+    if (product.mainImage != null && !_isVideoUrl(product.mainImage!)) {
+      return _resolveUrl(product.mainImage!);
+    }
+
+    // 3. Check media items from product
+    for (final m in product.safeMedia) {
+      if (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty) {
+        return _resolveUrl(m.thumbnailUrl!);
+      }
+      if (m.mediaType.toLowerCase() == 'image' && m.effectiveMediaUrl.isNotEmpty) {
+        return _resolveUrl(m.effectiveMediaUrl);
+      }
+    }
+
+    // 4. Cached product detail (if already in memory cache)
     final cached = productProvider.getCachedProduct(product.id);
     if (cached != null) {
       final cThumb = cached.effectiveThumbnailUrl;
       if (cThumb.isNotEmpty) return _resolveUrl(cThumb);
-      // Also try thumbnail from media items
       for (final m in cached.media) {
         if (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty) {
           return _resolveUrl(m.thumbnailUrl!);
@@ -1015,7 +987,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
           const SizedBox(height: 10),
           CategorySectionHeader(
             title: widget.section.categoryName ?? 'Category',
-            imagePath: widget.section.categoryImageUrl,
+            imagePath: _resolveUrl(widget.section.categoryImageUrl),
             onSeeMoreTap: () async {
               FeedVideoManager.instance.pauseAll();
               await Navigator.push(

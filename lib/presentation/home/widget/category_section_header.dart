@@ -29,25 +29,27 @@ class CategorySectionHeader extends StatelessWidget {
                   Container(
                     height: 50,
                     width: 50,
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.grey[300], // Background color when no image
-                      image: imagePath != null && imagePath!.isNotEmpty
-                          ? DecorationImage(
-                              image: imagePath!.startsWith('http')
-                                  ? NetworkImage(imagePath!) as ImageProvider
-                                  : AssetImage(imagePath!),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
+                      color: Color(0xFFFFF1E6),
                     ),
-                    child: imagePath == null || imagePath!.isEmpty
-                        ? const Icon(
-                            Icons.image_not_supported,
-                            size: 24,
-                            color: Colors.grey,
+                    clipBehavior: Clip.antiAlias,
+                    child: imagePath != null && imagePath!.isNotEmpty && imagePath!.startsWith('http')
+                        ? Image.network(
+                            imagePath!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                              Icons.category_outlined,
+                              size: 24,
+                              color: Color(0xFFFF6900),
+                            ),
                           )
-                        : null,
+                        : const Icon(
+                            Icons.category_outlined,
+                            size: 24,
+                            color: Color(0xFFFF6900),
+                          ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(

@@ -53,7 +53,10 @@ class AuthService {
       final t3 = stopwatch.elapsedMilliseconds;
       log("Firebase sign-in completed in ${t3 - t2}ms (total: ${t3}ms)");
 
-      final String? firebaseIdToken = await userCredential.user?.getIdToken();
+      // Use cached token (false) to avoid redundant network refresh
+      final String? firebaseIdToken = await userCredential.user?.getIdToken(
+        false,
+      );
       final totalTime = stopwatch.elapsedMilliseconds;
       log(
         "Firebase ID token obtained in ${totalTime - t3}ms (total sign-in time: ${totalTime}ms)",

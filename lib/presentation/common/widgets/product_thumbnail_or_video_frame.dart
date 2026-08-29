@@ -38,7 +38,6 @@ class _ProductThumbnailOrVideoFrameState
     extends State<ProductThumbnailOrVideoFrame> {
   bool _imageLoadFailed = false;
   ProductModel? _fetchedProduct;
-  bool _isFetchingProduct = false;
 
   @override
   void initState() {
@@ -105,30 +104,6 @@ class _ProductThumbnailOrVideoFrameState
         _fetchedProduct = cartProv.getProductFromCache(productId);
       } else if (prodProv.getCachedProduct(productId) != null) {
         _fetchedProduct = prodProv.getCachedProduct(productId);
-      } else {
-        _fetchProductDetailsAsync(productId);
-      }
-    }
-  }
-
-  Future<void> _fetchProductDetailsAsync(int productId) async {
-    if (_isFetchingProduct) return;
-    _isFetchingProduct = true;
-    try {
-      final product = await context.read<ProductProvider>().fetchProductDetails(
-        productId,
-      );
-      if (mounted && product != null) {
-        setState(() {
-          _fetchedProduct = product;
-        });
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isFetchingProduct = false;
-        });
       }
     }
   }

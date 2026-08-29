@@ -34,7 +34,9 @@ class LoginProvider extends ChangeNotifier {
           requireAuth: false,
         );
         final apiEnd = stopwatch.elapsedMilliseconds;
-        log("Apple login backend API returned in ${apiEnd - apiStart}ms: $response");
+        log(
+          "Apple login backend API returned in ${apiEnd - apiStart}ms: $response",
+        );
 
         final data = response.data;
 
@@ -59,7 +61,9 @@ class LoginProvider extends ChangeNotifier {
 
         FirebaseService.instance.registerCurrentToken();
 
-        log("Apple Login Successful (total: ${stopwatch.elapsedMilliseconds}ms)");
+        log(
+          "Apple Login Successful (total: ${stopwatch.elapsedMilliseconds}ms)",
+        );
         return true;
       }
 
@@ -97,7 +101,9 @@ class LoginProvider extends ChangeNotifier {
           requireAuth: false,
         );
         final apiEnd = stopwatch.elapsedMilliseconds;
-        debugPrint("Google login backend API returned in ${apiEnd - apiStart}ms: $response");
+        debugPrint(
+          "Google login backend API returned in ${apiEnd - apiStart}ms: $response",
+        );
 
         final data = response.data;
 
@@ -126,7 +132,9 @@ class LoginProvider extends ChangeNotifier {
         // Register token in the background so it doesn't block the login flow
         FirebaseService.instance.registerCurrentToken();
 
-        debugPrint("Google Login Successful (total: ${stopwatch.elapsedMilliseconds}ms)");
+        debugPrint(
+          "Google Login Successful (total: ${stopwatch.elapsedMilliseconds}ms)",
+        );
         return true;
       }
 
@@ -134,7 +142,9 @@ class LoginProvider extends ChangeNotifier {
       errorMessage = null;
       return false;
     } catch (e, stack) {
-      debugPrint("Google Login Failed after ${stopwatch.elapsedMilliseconds}ms: $e");
+      debugPrint(
+        "Google Login Failed after ${stopwatch.elapsedMilliseconds}ms: $e",
+      );
       debugPrint("Stacktrace: $stack");
       errorMessage = "Connexion Google échouée: ${e.toString()}";
       return false;

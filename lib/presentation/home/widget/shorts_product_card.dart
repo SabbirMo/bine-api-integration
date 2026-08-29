@@ -131,11 +131,11 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
         widget.thumbnailUrl!,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => Container(
-          color: const Color(0xFF161616),
+          color: const Color(0xFFF5F5F5),
           child: const Center(
             child: Icon(
               Icons.shopping_bag_outlined,
-              color: Color(0xFF444444),
+              color: Color(0xFFB0B0B0),
               size: 32,
             ),
           ),
@@ -143,11 +143,11 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
       );
     }
     return Container(
-      color: const Color(0xFF161616),
+      color: const Color(0xFFF5F5F5),
       child: const Center(
         child: Icon(
           Icons.shopping_bag_outlined,
-          color: Color(0xFF444444),
+          color: Color(0xFFB0B0B0),
           size: 32,
         ),
       ),
@@ -181,7 +181,7 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
             height: widget.height,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: const Color(0xFF161616),
+              color: const Color(0xFFF5F5F5),
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(
@@ -191,7 +191,7 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                 if (hasVideo)
                   _buildVideoFirstFrame()
                 else
-                  Container(color: const Color(0xFF161616)),
+                  Container(color: const Color(0xFFF5F5F5)),
 
                 // 2. Active Video Player Layer (Plays smoothly right on top of the first frame)
                 if (hasVideo)
@@ -208,15 +208,16 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                         return Stack(
                           fit: StackFit.expand,
                           children: [
-                            SizedBox.expand(
-                              child: Video(
-                                controller: playerState.videoController,
-                                fit: BoxFit.cover,
-                                controls: NoVideoControls,
+                            if (playerState.hasFirstFrame)
+                              SizedBox.expand(
+                                child: Video(
+                                  controller: playerState.videoController,
+                                  fit: BoxFit.cover,
+                                  controls: NoVideoControls,
+                                ),
                               ),
-                            ),
-                            if (playerState.isPlaying &&
-                                playerState.isBuffering)
+                            if (playerState.isBuffering ||
+                                !playerState.hasFirstFrame)
                               _buildBannerStyleLoading(),
                           ],
                         );
