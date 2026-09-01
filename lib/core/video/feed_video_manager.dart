@@ -94,8 +94,8 @@ class FeedVideoManager extends ChangeNotifier {
 
   FeedVideoManager._internal();
 
-  /// Strictly keep pool size <= 3 to ensure stability across all Android/iOS devices
-  static const int maxPoolSize = 3;
+  /// Strictly keep pool size <= 2 to ensure stability and free hardware codecs for Story/Shorts
+  static const int maxPoolSize = 2;
 
   final Map<String, String> _urlMap = {};
 
@@ -679,14 +679,15 @@ class FeedVideoManager extends ChangeNotifier {
     _evaluatePlayback();
   }
 
-  /// Pause all active video players (e.g. route transitions, app in background)
+  /// Pause and release all active video players (e.g. route transitions, app in background)
   void pauseAll() {
     _isGloballyPaused = true;
     for (final p in _playerPool) {
       try {
-        p.player.pause();
+        p.stopAndReset();
       } catch (_) {}
     }
+    _keyToPlayer.clear();
     _currentPlayingKey = null;
     notifyListeners();
   }

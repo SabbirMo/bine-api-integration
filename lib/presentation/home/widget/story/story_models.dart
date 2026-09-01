@@ -35,9 +35,9 @@ class StoryContent {
     required this.url,
     this.fallbackUrl,
     this.thumbnailUrl,
-    required this.isVideo,
-    required this.isAudio,
-    required this.isImage,
+    this.isVideo = false,
+    this.isAudio = false,
+    this.isImage = false,
     this.isNetwork = false,
     this.createdAt,
   });

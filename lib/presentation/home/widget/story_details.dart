@@ -1,15 +1,17 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:binetatour/core/story/story_hls_preloader.dart';
+import 'package:binetatour/core/story/story_preloader.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/presentation/home/widget/story/story_group_page_view.dart';
 
-// Re-export models so all other files retain backwards compatibility
+// Re-export models for backwards compatibility
 export 'package:binetatour/presentation/home/widget/story/story_models.dart';
 export 'package:binetatour/presentation/home/widget/story/story_audio_wave.dart';
 export 'package:binetatour/presentation/home/widget/story/story_detail_content.dart';
 export 'package:binetatour/presentation/home/widget/story/story_group_page_view.dart';
 
-/// Multi-Category Facebook / Instagram-like Story Viewer
+/// Multi-Category Instagram/Facebook 3D Cube Story Viewer
 class StoryDetailScreen extends StatefulWidget {
   final List<StoryGroup>? storyGroups;
   final int initialGroupIndex;
@@ -64,46 +66,34 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 
     _pageController = PageController(initialPage: _currentGroupIndex);
 
+    // Eagerly precache all category images and first stories in background
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _preloadNearbyGroups(_currentGroupIndex);
+      if (!mounted) return;
+      for (final group in _effectiveGroups) {
+        if (group.categoryImage.isNotEmpty &&
+            group.categoryImage.startsWith('http')) {
+          precacheImage(
+            NetworkImage(group.categoryImage),
+            context,
+          ).catchError((_) {});
+        }
+        if (group.stories.isNotEmpty) {
+          StoryPreloader.preloadNextStory(group.stories.first, context);
+        }
+      }
     });
-  }
-
-  void _preloadNearbyGroups(int centerIndex) {
-    if (!mounted || _effectiveGroups.isEmpty) return;
-    final indicesToPreload = [
-      centerIndex + 1,
-      centerIndex - 1,
-      centerIndex,
-    ];
-
-    for (final idx in indicesToPreload) {
-      if (idx < 0 || idx >= _effectiveGroups.length) continue;
-      final group = _effectiveGroups[idx];
-
-      // 1. Pre-cache category avatar image
-      if (group.categoryImage.isNotEmpty && group.categoryImage.startsWith('http')) {
-        precacheImage(NetworkImage(group.categoryImage), context).catchError((_) {});
-      }
-
-      // 2. Pre-cache story images & thumbnail frames
-      for (final story in group.stories) {
-        if (story.isImage && story.isNetwork && story.url.startsWith('http')) {
-          precacheImage(NetworkImage(story.url), context).catchError((_) {});
-        }
-        if (story.thumbnailUrl != null && story.thumbnailUrl!.startsWith('http')) {
-          precacheImage(NetworkImage(story.thumbnailUrl!), context).catchError((_) {});
-        }
-      }
-    }
   }
 
   void _onPageChanged(int index) {
     setState(() {
       _currentGroupIndex = index;
     });
-    _preloadNearbyGroups(index);
     _isPageAnimating = false;
+
+    // Silently prefetch category N+1 first story in background
+    if (index + 1 < _effectiveGroups.length && mounted) {
+      StoryPreloader.preloadCategoryFirstStory(_effectiveGroups[index + 1], context);
+    }
   }
 
   void _goToNextCategory() {
@@ -118,14 +108,10 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             curve: Curves.easeOutCubic,
           )
           .then((_) {
-            if (mounted) {
-              _isPageAnimating = false;
-            }
+            if (mounted) _isPageAnimating = false;
           })
           .catchError((_) {
-            if (mounted) {
-              _isPageAnimating = false;
-            }
+            if (mounted) _isPageAnimating = false;
           });
     } else {
       _isPageAnimating = false;
@@ -147,14 +133,10 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             curve: Curves.easeOutCubic,
           )
           .then((_) {
-            if (mounted) {
-              _isPageAnimating = false;
-            }
+            if (mounted) _isPageAnimating = false;
           })
           .catchError((_) {
-            if (mounted) {
-              _isPageAnimating = false;
-            }
+            if (mounted) _isPageAnimating = false;
           });
     }
   }
@@ -162,6 +144,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    StoryHlsPreloader.instance.cancel();
     super.dispose();
   }
 
@@ -212,8 +195,10 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                 ..setEntry(3, 2, 0.001) // 3D perspective depth
                 ..rotateY(angle);
 
-              final double shadowOpacity =
-                  (pageOffset.abs() * 0.5).clamp(0.0, 0.6);
+              final double shadowOpacity = (pageOffset.abs() * 0.5).clamp(
+                0.0,
+                0.6,
+              );
 
               return Transform(
                 transform: matrix,
@@ -226,6 +211,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                     StoryGroupPageView(
                       key: ValueKey('story_group_${group.categoryId}_$index'),
                       group: group,
+                      categoryIndex: index,
                       isActive: (index == _currentGroupIndex),
                       onNextCategory: _goToNextCategory,
                       onPrevCategory: _goToPrevCategory,
@@ -235,12 +221,14 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                         }
                       },
                     ),
-                    // Realistic 3D Cube face shadow overlay
+                    // 3D Cube face shadow overlay
                     if (shadowOpacity > 0.01)
                       Positioned.fill(
                         child: IgnorePointer(
                           child: Container(
-                            color: Colors.black.withValues(alpha: shadowOpacity),
+                            color: Colors.black.withValues(
+                              alpha: shadowOpacity,
+                            ),
                           ),
                         ),
                       ),

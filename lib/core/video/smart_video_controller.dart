@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
 
 /// Available video quality options for Cloudflare Stream HLS playback.
 enum VideoQuality {
@@ -16,6 +17,17 @@ enum VideoQuality {
   final String? maxRes;
 
   const VideoQuality({required this.label, required this.maxRes});
+}
+
+/// Explicit lifecycle states for [SmartVideoController].
+enum SmartVideoState {
+  uninitialized,
+  preloading,
+  ready,
+  playing,
+  paused,
+  failed,
+  disposed,
 }
 
 /// Advanced configuration options for [SmartVideoController].
@@ -53,6 +65,12 @@ class SmartVideoConfig {
   /// Whether the video is muted initially (default: false).
   final bool initialMuted;
 
+  /// Whether to use hardware accelerated video decoding (MediaCodec).
+  ///
+  /// Set to `false` for short-form clips / stories to avoid exhausting
+  /// Android's concurrent hardware codec session limits (OMX_ErrorInsufficientResources).
+  final bool enableHardwareAcceleration;
+
   const SmartVideoConfig({
     this.cacheSecs = 45,
     this.demuxerReadaheadSecs = 30,
@@ -65,6 +83,27 @@ class SmartVideoConfig {
     this.loop = false,
     this.initialVolume = 100.0,
     this.initialMuted = false,
+    this.enableHardwareAcceleration = true,
+  });
+
+  /// Story-optimized lightweight configuration profile for short-form clips (3-15s).
+  ///
+  /// Features minimal cache and readahead limits for instant startup,
+  /// with software decoding (`enableHardwareAcceleration: false`) to completely
+  /// prevent Android "Could not open codec" resource exhaustion.
+  const SmartVideoConfig.story({
+    this.cacheSecs = 5,
+    this.demuxerReadaheadSecs = 1,
+    this.demuxerMaxBytes = 6 * 1024 * 1024,
+    this.demuxerMaxBackBytes = 2 * 1024 * 1024,
+    this.networkTimeoutSecs = 8,
+    this.maxRetries = 2,
+    this.retryDelay = const Duration(seconds: 1),
+    this.autoPlay = false,
+    this.loop = false,
+    this.initialVolume = 0.0,
+    this.initialMuted = true,
+    this.enableHardwareAcceleration = false,
   });
 }
 
@@ -96,43 +135,94 @@ class SmartVideoController {
   int _currentRetryAttempt = 0;
 
   // Reactive State Notifiers
+  final ValueNotifier<SmartVideoState> lifecycleState =
+      ValueNotifier<SmartVideoState>(SmartVideoState.uninitialized);
   final ValueNotifier<bool> isInitializing = ValueNotifier<bool>(true);
   final ValueNotifier<bool> isPlaying = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isBuffering = ValueNotifier<bool>(true);
   final ValueNotifier<bool> hasStartedPlaying = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isCompleted = ValueNotifier<bool>(false);
-  final ValueNotifier<Duration> position = ValueNotifier<Duration>(Duration.zero);
-  final ValueNotifier<Duration> duration = ValueNotifier<Duration>(Duration.zero);
+  final ValueNotifier<Duration> position = ValueNotifier<Duration>(
+    Duration.zero,
+  );
+  final ValueNotifier<Duration> duration = ValueNotifier<Duration>(
+    Duration.zero,
+  );
   final ValueNotifier<Duration> buffer = ValueNotifier<Duration>(Duration.zero);
   final ValueNotifier<double> volume = ValueNotifier<double>(100.0);
   final ValueNotifier<bool> isMuted = ValueNotifier<bool>(false);
   final ValueNotifier<double> playbackRate = ValueNotifier<double>(1.0);
-  final ValueNotifier<VideoQuality> selectedQuality = ValueNotifier<VideoQuality>(VideoQuality.auto);
+  final ValueNotifier<VideoQuality> selectedQuality =
+      ValueNotifier<VideoQuality>(VideoQuality.auto);
   final ValueNotifier<int?> videoWidth = ValueNotifier<int?>(null);
   final ValueNotifier<int?> videoHeight = ValueNotifier<int?>(null);
-  final ValueNotifier<String> currentResolution = ValueNotifier<String>('Detecting...');
-  final ValueNotifier<Uint8List?> capturedFrame = ValueNotifier<Uint8List?>(null);
+  final ValueNotifier<String> currentResolution = ValueNotifier<String>(
+    'Detecting...',
+  );
+  final ValueNotifier<Uint8List?> capturedFrame = ValueNotifier<Uint8List?>(
+    null,
+  );
   final ValueNotifier<bool> isRetrying = ValueNotifier<bool>(false);
   final ValueNotifier<int> retryAttempt = ValueNotifier<int>(0);
   final ValueNotifier<String?> errorMessage = ValueNotifier<String?>(null);
+  final ValueNotifier<bool> isRewinding = ValueNotifier<bool>(false);
+  DateTime? _lastSeekTime;
+  Timer? _perfMonitorTimer;
+  int _lastDroppedFrames = 0;
+  Future<void>? _openStreamFuture;
+
+  bool _hasCodecError = false;
+  String? _codecErrorMessage;
 
   int? _lastLoggedWidth;
   int? _lastLoggedHeight;
+  final bool _isTestMode;
 
   // Getters
   Player get player => _player;
   VideoController get videoController => _videoController;
   bool get isDisposed => _isDisposed;
+  bool get hasCodecError => _hasCodecError;
+  String? get codecErrorMessage => _codecErrorMessage;
+  bool get isMetadataReady =>
+      duration.value > Duration.zero &&
+      videoWidth.value != null &&
+      videoHeight.value != null &&
+      videoWidth.value! > 0 &&
+      videoHeight.value! > 0;
+  bool get isCodecReady =>
+      !_hasCodecError && videoWidth.value != null && videoWidth.value! > 0;
+  bool get isFrameReady => capturedFrame.value != null;
+  bool get isBufferReady => buffer.value > Duration.zero;
+  bool get isPlaybackReady => isMetadataReady && isCodecReady && !_isDisposed;
 
   SmartVideoController({
     required this.originalUrl,
     this.config = const SmartVideoConfig(),
-  }) {
+  }) : _isTestMode = false {
     _initPlayer();
+  }
+
+  /// Constructor for testing or mocking in headless environments
+  @visibleForTesting
+  SmartVideoController.test({
+    required this.originalUrl,
+    this.config = const SmartVideoConfig(),
+  }) : _isTestMode = true {
+    _wasPlayingBeforeError = config.autoPlay;
+    volume.value = config.initialVolume;
+    isMuted.value = config.initialMuted;
+    lifecycleState.value = config.autoPlay
+        ? SmartVideoState.playing
+        : SmartVideoState.ready;
   }
 
   /// Initializes Player, VideoController, native mpv properties, and stream listeners.
   void _initPlayer() {
+    lifecycleState.value = config.autoPlay
+        ? SmartVideoState.uninitialized
+        : SmartVideoState.preloading;
+
     _player = Player(
       configuration: PlayerConfiguration(
         bufferSize: config.demuxerMaxBytes,
@@ -151,51 +241,129 @@ class SmartVideoController {
     volume.value = config.initialVolume;
     isMuted.value = config.initialMuted;
 
-    _player.setPlaylistMode(config.loop ? PlaylistMode.loop : PlaylistMode.none);
+    _player.setPlaylistMode(
+      config.loop ? PlaylistMode.loop : PlaylistMode.none,
+    );
     _player.setVolume(config.initialMuted ? 0.0 : config.initialVolume);
 
     _setupListeners();
-    _applyNativeMpvProperties();
-    _openStream(targetUrl: _resolveUrlForQuality(selectedQuality.value), startPosition: Duration.zero);
+    _openStreamFuture = _openStream(
+      targetUrl: _resolveUrlForQuality(selectedQuality.value),
+      startPosition: Duration.zero,
+    );
   }
 
   /// Sets underlying MPV / libmpv platform properties for adaptive bitrate & smooth streaming.
   Future<void> _applyNativeMpvProperties() async {
-    if (_isDisposed) return;
+    if (_isDisposed || _isTestMode) return;
 
-    // 1. Configure HLS Bitrate mode (auto = adaptive dynamic switching based on network)
-    final hlsMode = (selectedQuality.value == VideoQuality.auto) ? 'auto' : 'max';
+    // 1. Hardware Decoding mode (no = software decoding, 0 MediaCodec slots claimed)
+    final hwdecMode = config.enableHardwareAcceleration ? 'auto-safe' : 'no';
+    await _setMpvProperty('hwdec', hwdecMode);
+    debugPrint(
+      '⚙️ [SmartVideoController #${identityHashCode(this)}] Configured hwdec=$hwdecMode (enableHardwareAcceleration: ${config.enableHardwareAcceleration})',
+    );
+
+    // 2. Configure HLS Bitrate mode (auto = adaptive dynamic switching based on network)
+    final hlsMode = (selectedQuality.value == VideoQuality.auto)
+        ? 'auto'
+        : 'max';
     await _setMpvProperty('hls-bitrate', hlsMode);
 
-    // 2. Enable stream cache
+    // 3. Enable stream cache
     await _setMpvProperty('cache', 'yes');
 
-    // 3. Set cache duration in seconds
+    // 4. Set cache duration in seconds
     await _setMpvProperty('cache-secs', '${config.cacheSecs}');
 
-    // 4. Demuxer readahead & max cache buffer size for smooth network transitions (2G/3G/4G/WiFi)
-    await _setMpvProperty('demuxer-readahead-secs', '${config.demuxerReadaheadSecs}');
+    // 5. Demuxer readahead & max cache buffer size for smooth network transitions (2G/3G/4G/WiFi)
+    await _setMpvProperty(
+      'demuxer-readahead-secs',
+      '${config.demuxerReadaheadSecs}',
+    );
     await _setMpvProperty('demuxer-max-bytes', '${config.demuxerMaxBytes}');
-    await _setMpvProperty('demuxer-max-back-bytes', '${config.demuxerMaxBackBytes}');
+    await _setMpvProperty(
+      'demuxer-max-back-bytes',
+      '${config.demuxerMaxBackBytes}',
+    );
 
     // 5. Network read timeout
     await _setMpvProperty('network-timeout', '${config.networkTimeoutSecs}');
 
     // 6. User Agent header if required
     await _setMpvProperty('user-agent', 'CloudflareStream-Flutter-MediaKit');
+
+    // 7. Instant startup options (0ms probe delay for Cloudflare Stream & direct MP4)
+    await _setMpvProperty('demuxer-lavf-analyzeduration', '0');
+    await _setMpvProperty('demuxer-lavf-probesize', '32768');
+    await _setMpvProperty('force-seekable', 'yes');
   }
 
   /// Helper to safely set native MPV properties across platforms.
   Future<void> _setMpvProperty(String name, String value) async {
-    if (_isDisposed) return;
+    if (_isDisposed || _isTestMode) return;
     try {
       final platform = _player.platform;
       if (platform != null) {
         await (platform as dynamic).setProperty(name, value);
       }
     } catch (e) {
-      debugPrint('[SmartVideoController] Could not set MPV property "$name=$value": $e');
+      debugPrint(
+        '[SmartVideoController] Could not set MPV property "$name=$value": $e',
+      );
     }
+  }
+
+  /// Dynamically enables hardware-accelerated video decoding (MediaCodec) for the active foreground stream.
+  Future<void> enableHardwareDecoding() async {
+    if (_isDisposed || _isTestMode) return;
+    try {
+      await _setMpvProperty('hwdec', 'auto-safe');
+      debugPrint(
+        '🚀 [SmartVideoController #${identityHashCode(this)}] Hardware decoding upgraded (hwdec: auto-safe)',
+      );
+    } catch (_) {}
+  }
+
+  /// Releases the hardware video decode session (switches to software decoding / idle).
+  Future<void> disableHardwareDecoding() async {
+    if (_isDisposed || _isTestMode) return;
+    try {
+      await _setMpvProperty('hwdec', 'no');
+      debugPrint(
+        '⚙️ [SmartVideoController #${identityHashCode(this)}] Stepped down to software decoding (hwdec: no)',
+      );
+    } catch (_) {}
+  }
+
+  /// Starts background dropped-frame monitoring to diagnose CPU/decode pressure.
+  void _startPerfMonitor() {
+    _perfMonitorTimer?.cancel();
+    _perfMonitorTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (_isDisposed || !isPlaying.value || _isTestMode) return;
+      try {
+        final platform = _player.platform;
+        if (platform != null) {
+          final dropCount = await (platform as dynamic).getProperty(
+            'decoder-frame-drop-count',
+          );
+          final drops = int.tryParse(dropCount?.toString() ?? '0') ?? 0;
+          if (drops > _lastDroppedFrames) {
+            final diff = drops - _lastDroppedFrames;
+            _lastDroppedFrames = drops;
+            debugPrint(
+              '⚠️ [SmartVideoController #${identityHashCode(this)}] Dropped $diff frames (total: $drops) | CPU/Decode Pressure',
+            );
+          }
+        }
+      } catch (_) {}
+    });
+  }
+
+  /// Stops background dropped-frame monitoring.
+  void _stopPerfMonitor() {
+    _perfMonitorTimer?.cancel();
+    _perfMonitorTimer = null;
   }
 
   /// Attaches listeners to media_kit streams.
@@ -207,11 +375,24 @@ class SmartVideoController {
         isPlaying.value = playing;
         if (playing) {
           _wasPlayingBeforeError = true;
+          hasStartedPlaying.value = true;
+          isInitializing.value = false;
+          isBuffering.value = false;
+          lifecycleState.value = SmartVideoState.playing;
           errorMessage.value = null;
           isRetrying.value = false;
           _currentRetryAttempt = 0;
           retryAttempt.value = 0;
           _onResolutionUpdated();
+        } else {
+          if (!_wasPlayingBeforeError && !isRetrying.value) {
+            if (lifecycleState.value != SmartVideoState.disposed &&
+                !_hasCodecError) {
+              lifecycleState.value = SmartVideoState.ready;
+            }
+          } else if (_wasPlayingBeforeError && !isRetrying.value) {
+            lifecycleState.value = SmartVideoState.paused;
+          }
         }
       }),
     );
@@ -220,8 +401,26 @@ class SmartVideoController {
     _subscriptions.add(
       _player.stream.position.listen((pos) {
         if (_isDisposed) return;
+
+        // Ignore stale position events if we recently sought to Duration.zero / rewound
+        if (isRewinding.value) {
+          if (pos <= const Duration(milliseconds: 200)) {
+            isRewinding.value = false;
+          } else {
+            // Check for timeout if native seek already passed
+            if (_lastSeekTime != null &&
+                DateTime.now().difference(_lastSeekTime!) >
+                    const Duration(milliseconds: 400)) {
+              isRewinding.value = false;
+            } else {
+              // Suppress stale pre-seek event
+              return;
+            }
+          }
+        }
+
         position.value = pos;
-        if (pos > Duration.zero) {
+        if (pos > Duration.zero || isPlaying.value) {
           _lastPlaybackPosition = pos;
           if (!hasStartedPlaying.value) {
             hasStartedPlaying.value = true;
@@ -239,6 +438,13 @@ class SmartVideoController {
       _player.stream.duration.listen((dur) {
         if (_isDisposed) return;
         duration.value = dur;
+        if (dur > Duration.zero &&
+            !isPlaying.value &&
+            !_hasCodecError &&
+            lifecycleState.value == SmartVideoState.preloading) {
+          lifecycleState.value = SmartVideoState.ready;
+          _captureInitialFrame();
+        }
       }),
     );
 
@@ -246,11 +452,7 @@ class SmartVideoController {
     _subscriptions.add(
       _player.stream.buffering.listen((buffering) {
         if (_isDisposed) return;
-        if (hasStartedPlaying.value) {
-          isBuffering.value = buffering;
-        } else {
-          isBuffering.value = true;
-        }
+        isBuffering.value = buffering;
       }),
     );
 
@@ -259,6 +461,16 @@ class SmartVideoController {
       _player.stream.buffer.listen((buf) {
         if (_isDisposed) return;
         buffer.value = buf;
+        if (buf > Duration.zero) {
+          if (!isPlaying.value &&
+              !_hasCodecError &&
+              lifecycleState.value == SmartVideoState.preloading) {
+            lifecycleState.value = SmartVideoState.ready;
+          }
+          if (capturedFrame.value == null && !_hasCodecError) {
+            _captureInitialFrame();
+          }
+        }
       }),
     );
 
@@ -285,6 +497,7 @@ class SmartVideoController {
     _subscriptions.add(
       _player.stream.error.listen((error) {
         if (_isDisposed) return;
+        debugPrint('🚨 [SmartVideoController] stream.error: $error');
         _handlePlaybackError(error.toString());
       }),
     );
@@ -313,8 +526,12 @@ class SmartVideoController {
     final h = videoHeight.value ?? _player.state.height;
 
     if (w != null && h != null && w > 0 && h > 0) {
+      if (capturedFrame.value == null) {
+        _captureInitialFrame();
+      }
       if (_lastLoggedWidth != w || _lastLoggedHeight != h) {
-        final previousLabel = (_lastLoggedWidth != null && _lastLoggedHeight != null)
+        final previousLabel =
+            (_lastLoggedWidth != null && _lastLoggedHeight != null)
             ? '${_lastLoggedWidth}x$_lastLoggedHeight (${formatResolution(_lastLoggedWidth!, _lastLoggedHeight!)})'
             : 'Initial Stream Start';
 
@@ -381,47 +598,110 @@ class SmartVideoController {
     if (_isDisposed || targetUrl.trim().isEmpty) return;
 
     try {
-      await _player.open(
-        Media(targetUrl),
-        play: _wasPlayingBeforeError,
-      );
+      // Check local disk video cache for 0ms instant playback
+      final cachedPath = VideoCacheManager.instance.getCachedFilePath(targetUrl);
+      final playUrl = cachedPath ?? targetUrl;
+
+      // Apply native mpv properties synchronously BEFORE opening media!
+      await _applyNativeMpvProperties();
+
+      await _player.open(Media(playUrl), play: _wasPlayingBeforeError);
 
       if (startPosition > Duration.zero) {
         await _player.seek(startPosition);
       }
+
+      if (_wasPlayingBeforeError && !_player.state.playing) {
+        try {
+          await _player.play();
+        } catch (_) {}
+      } else if (!_wasPlayingBeforeError) {
+        if (lifecycleState.value != SmartVideoState.ready) {
+          lifecycleState.value = SmartVideoState.ready;
+        }
+      }
     } catch (e) {
+      debugPrint(
+        '🚨 [SmartVideoController #${identityHashCode(this)}] Playback open error: $e',
+      );
       _handlePlaybackError(e.toString());
     }
   }
 
   /// Handles playback errors and network drops with automatic retry logic.
   void _handlePlaybackError(String error) {
+    if (_isDisposed) return;
+
     final lower = error.toLowerCase();
     // Ignore harmless audio output or non-critical device notifications
     if (lower.contains('audio device') || lower.contains('no sound')) {
       return;
     }
 
-    debugPrint('[SmartVideoController] Playback error: $error (lastPos: $_lastPlaybackPosition)');
+    final bool isCodecFailure =
+        lower.contains('could not open codec') ||
+        lower.contains('codec') ||
+        lower.contains('decoder') ||
+        lower.contains('failed to open');
+
+    if (isCodecFailure) {
+      debugPrint(
+        '⚠️ [SmartVideoController #${identityHashCode(this)}] MediaCodec failure: $error ➔ Instantly falling back to software decoding (hwdec: no)',
+      );
+      _hasCodecError = false;
+      _codecErrorMessage = null;
+      errorMessage.value = null;
+      _setMpvProperty('hwdec', 'no');
+      _openStreamFuture = _openStream(
+        targetUrl: _resolveUrlForQuality(selectedQuality.value),
+        startPosition: _lastPlaybackPosition,
+      );
+      return;
+    }
+
+    // Do NOT trigger retry loop if controller is in background preload without active playback intent
+    if (!_wasPlayingBeforeError &&
+        (lifecycleState.value == SmartVideoState.preloading ||
+            lifecycleState.value == SmartVideoState.ready ||
+            lifecycleState.value == SmartVideoState.paused ||
+            lifecycleState.value == SmartVideoState.failed)) {
+      debugPrint(
+        'ℹ️ [SmartVideoController #${identityHashCode(this)}] Suppressed background/preload stream error while paused: $error',
+      );
+      return;
+    }
+
+    debugPrint(
+      '🚨 [SmartVideoController #${identityHashCode(this)}] Playback error: $error (lastPos: $_lastPlaybackPosition, state: ${lifecycleState.value})',
+    );
 
     if (_currentRetryAttempt < config.maxRetries) {
       _currentRetryAttempt++;
       retryAttempt.value = _currentRetryAttempt;
       isRetrying.value = true;
-      errorMessage.value = 'Connexion instable. Reconnexion ($_currentRetryAttempt/${config.maxRetries})...';
+      lifecycleState.value = SmartVideoState.failed;
+      errorMessage.value =
+          'Connexion instable. Reconnexion ($_currentRetryAttempt/${config.maxRetries})...';
 
       _retryTimer?.cancel();
-      _retryTimer = Timer(config.retryDelay * _currentRetryAttempt, () {
+      _retryTimer = Timer(config.retryDelay * _currentRetryAttempt, () async {
         if (_isDisposed) return;
-        debugPrint('[SmartVideoController] Retrying stream playback (attempt $_currentRetryAttempt)...');
-        _openStream(
+        debugPrint(
+          '[SmartVideoController #${identityHashCode(this)}] Retrying stream playback (attempt $_currentRetryAttempt)...',
+        );
+        if (isCodecFailure) {
+          await _setMpvProperty('hwdec', 'no');
+        }
+        _openStreamFuture = _openStream(
           targetUrl: _resolveUrlForQuality(selectedQuality.value),
           startPosition: _lastPlaybackPosition,
         );
       });
     } else {
       isRetrying.value = false;
-      errorMessage.value = 'Échec de lecture de la vidéo. Vérifiez votre connexion Internet.';
+      lifecycleState.value = SmartVideoState.failed;
+      errorMessage.value =
+          'Échec de lecture de la vidéo. Vérifiez votre connexion Internet.';
     }
   }
 
@@ -431,18 +711,69 @@ class SmartVideoController {
   Future<void> play() async {
     if (_isDisposed) return;
     _wasPlayingBeforeError = true;
-    if (isCompleted.value) {
+
+    // Await in-flight open operation before issuing play
+    if (_openStreamFuture != null) {
+      try {
+        await _openStreamFuture;
+      } catch (_) {}
+    }
+    if (_isDisposed) return;
+
+    if (_isTestMode) {
+      isPlaying.value = true;
+      lifecycleState.value = SmartVideoState.playing;
+    }
+    final bool reachedEnd =
+        isCompleted.value ||
+        (duration.value > Duration.zero &&
+            position.value.inMilliseconds >=
+                duration.value.inMilliseconds - 100);
+    if (reachedEnd) {
+      debugPrint(
+        '🔄 [SmartVideoController #${identityHashCode(this)}] Reached end of video (pos: ${position.value.inMilliseconds}ms / dur: ${duration.value.inMilliseconds}ms) — seeking to start',
+      );
       await seek(Duration.zero);
       isCompleted.value = false;
     }
-    await _player.play();
+    final beforeState = _player.state;
+    debugPrint(
+      '🎬 [SmartVideoController #${identityHashCode(this)}] Dispatching _player.play() '
+      '(before: playing=${beforeState.playing}, buffering=${beforeState.buffering}, '
+      'dur=${beforeState.duration.inMilliseconds}ms, buf=${beforeState.buffer.inMilliseconds}ms, '
+      'pos=${beforeState.position.inMilliseconds}ms, state=${lifecycleState.value.name})',
+    );
+
+    try {
+      await _player.play();
+      _startPerfMonitor();
+    } catch (e) {
+      debugPrint(
+        '🚨 [SmartVideoController #${identityHashCode(this)}] _player.play() threw: $e',
+      );
+    }
+
+    final afterState = _player.state;
+    debugPrint(
+      '🎬 [SmartVideoController #${identityHashCode(this)}] Completed _player.play() '
+      '(after: playing=${afterState.playing}, buffering=${afterState.buffering}, '
+      'dur=${afterState.duration.inMilliseconds}ms, buf=${afterState.buffer.inMilliseconds}ms, '
+      'pos=${afterState.position.inMilliseconds}ms)',
+    );
   }
 
   /// Pauses playback.
   Future<void> pause() async {
     if (_isDisposed) return;
     _wasPlayingBeforeError = false;
-    await _player.pause();
+    lifecycleState.value = SmartVideoState.paused;
+    _stopPerfMonitor();
+    if (_isTestMode) {
+      isPlaying.value = false;
+    }
+    try {
+      await _player.pause();
+    } catch (_) {}
   }
 
   /// Toggles between play and pause.
@@ -458,13 +789,23 @@ class SmartVideoController {
   Future<void> seek(Duration newPosition) async {
     if (_isDisposed) return;
     _lastPlaybackPosition = newPosition;
-    await _player.seek(newPosition);
+    _lastSeekTime = DateTime.now();
+    if (newPosition == Duration.zero) {
+      isRewinding.value = true;
+      isCompleted.value = false;
+    }
+    position.value = newPosition;
+    try {
+      await _player.seek(newPosition);
+    } catch (_) {}
   }
 
   /// Sets playback speed multiplier (e.g. 0.5x, 1.0x, 1.25x, 1.5x, 2.0x).
   Future<void> setRate(double rate) async {
     if (_isDisposed) return;
-    await _player.setRate(rate);
+    try {
+      await _player.setRate(rate);
+    } catch (_) {}
   }
 
   /// Sets playback volume (0.0 to 100.0).
@@ -473,7 +814,9 @@ class SmartVideoController {
     final clamped = newVolume.clamp(0.0, 100.0);
     volume.value = clamped;
     isMuted.value = clamped == 0.0;
-    await _player.setVolume(clamped);
+    try {
+      await _player.setVolume(clamped);
+    } catch (_) {}
   }
 
   /// Toggles mute state while preserving previous volume level.
@@ -482,10 +825,14 @@ class SmartVideoController {
     if (isMuted.value) {
       final targetVol = volume.value > 0 ? volume.value : 100.0;
       isMuted.value = false;
-      await _player.setVolume(targetVol);
+      try {
+        await _player.setVolume(targetVol);
+      } catch (_) {}
     } else {
       isMuted.value = true;
-      await _player.setVolume(0.0);
+      try {
+        await _player.setVolume(0.0);
+      } catch (_) {}
     }
   }
 
@@ -507,10 +854,16 @@ class SmartVideoController {
 
     // 2. Resolve URL and reopen at current position
     final targetUrl = _resolveUrlForQuality(quality);
-    await _openStream(targetUrl: targetUrl, startPosition: currentPos);
+    _openStreamFuture = _openStream(
+      targetUrl: targetUrl,
+      startPosition: currentPos,
+    );
+    await _openStreamFuture;
 
     if (currentPlaying) {
-      await _player.play();
+      try {
+        await _player.play();
+      } catch (_) {}
     }
   }
 
@@ -523,10 +876,11 @@ class SmartVideoController {
     isRetrying.value = true;
 
     await _applyNativeMpvProperties();
-    await _openStream(
+    _openStreamFuture = _openStream(
       targetUrl: _resolveUrlForQuality(selectedQuality.value),
       startPosition: _lastPlaybackPosition,
     );
+    await _openStreamFuture;
   }
 
   /// Captures the current video frame as raw image bytes (JPEG) directly from the stream using libmpv.
@@ -554,9 +908,17 @@ class SmartVideoController {
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
+    lifecycleState.value = SmartVideoState.disposed;
 
     _retryTimer?.cancel();
     _retryTimer = null;
+    _stopPerfMonitor();
+
+    if (_openStreamFuture != null) {
+      try {
+        await _openStreamFuture;
+      } catch (_) {}
+    }
 
     for (final sub in _subscriptions) {
       await sub.cancel();
@@ -566,7 +928,9 @@ class SmartVideoController {
     try {
       await _player.stop();
     } catch (_) {}
-    await _player.dispose();
+    try {
+      await _player.dispose();
+    } catch (_) {}
 
     isInitializing.dispose();
     isPlaying.dispose();
@@ -587,5 +951,7 @@ class SmartVideoController {
     isRetrying.dispose();
     retryAttempt.dispose();
     errorMessage.dispose();
+    isRewinding.dispose();
+    lifecycleState.dispose();
   }
 }

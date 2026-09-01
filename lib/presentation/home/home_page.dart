@@ -1,3 +1,5 @@
+import 'package:binetatour/core/story/story_preloader.dart';
+import 'package:binetatour/core/story/story_hls_preloader.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -47,6 +49,8 @@ class _AccueilScreenState extends State<AccueilScreen>
       await context.read<HomeProvider>().fetchHomeData().timeout(
         const Duration(seconds: 6),
       );
+      final renderTime = DateTime.now().difference(AppStartupTracker.appStartTime).inMilliseconds;
+      debugPrint('📊 [HomeFeedBenchmark] Home feed initial data loaded in ${renderTime}ms from app launch (Zero video contention)');
     } catch (e) {
       debugPrint("Home refresh error or timeout: $e");
     }
@@ -580,6 +584,27 @@ class _AccueilScreenState extends State<AccueilScreen>
         }
       }
     }
+
+    // INSTANT BACKGROUND PRE-WARMING: Immediately pre-warm the first story of the top categories
+    // in post-frame callback so by the time the user glances and taps, playback starts in 0ms!
+    if (categories.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final idleUptime = DateTime.now().difference(AppStartupTracker.appStartTime).inMilliseconds;
+        debugPrint('🔥 [StoryHlsPreloader] Background story prefetch started at ${idleUptime}ms from app launch');
+
+        // 1. Warm native media_kit engine
+        StoryHlsPreloader.instance.warmupEngine();
+
+        // 2. Prefetch stories of the top categories directly into local disk cache
+        for (int i = 0; i < categories.length && i < 3; i++) {
+          final catGroup = _mapCategoryToStoryGroup(categories[i]);
+          if (catGroup.stories.isNotEmpty) {
+            StoryPreloader.preloadStories(catGroup.stories, context);
+          }
+        }
+      });
+    }
   }
 
   void _precacheProductThumbnails(List<ProductSectionModel> sections) {
@@ -644,6 +669,9 @@ class _AccueilScreenState extends State<AccueilScreen>
               lowerUrl.endsWith('.gif');
           bool isAud =
               cType == 'audio' ||
+              isAudio ||
+              lowerUrl.endsWith('.opus') ||
+              lowerUrl.endsWith('.ogg') ||
               lowerUrl.endsWith('.mp3') ||
               lowerUrl.endsWith('.wav') ||
               lowerUrl.endsWith('.aac') ||
@@ -727,6 +755,9 @@ class _AccueilScreenState extends State<AccueilScreen>
           return InkWell(
             onTap: () async {
               if (mappedStories.isEmpty) return; // Prevent opening if empty
+
+              final timeFromLaunch = DateTime.now().difference(AppStartupTracker.appStartTime).inMilliseconds;
+              debugPrint('📊 [AppStartupTracker] Story tapped: ${timeFromLaunch}ms after app launch (isFirstPlay: ${AppStartupTracker.isFirstStoryPlay})');
 
               int initialGroupIndex = allGroups.indexWhere(
                 (g) => g.categoryId == cat.id,

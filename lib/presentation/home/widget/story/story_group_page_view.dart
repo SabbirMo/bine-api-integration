@@ -7,6 +7,7 @@ import 'package:binetatour/presentation/home/widget/story/story_detail_content.d
 
 class StoryGroupPageView extends StatefulWidget {
   final StoryGroup group;
+  final int categoryIndex;
   final bool isActive;
   final VoidCallback onNextCategory;
   final VoidCallback onPrevCategory;
@@ -15,6 +16,7 @@ class StoryGroupPageView extends StatefulWidget {
   const StoryGroupPageView({
     super.key,
     required this.group,
+    this.categoryIndex = 0,
     required this.isActive,
     required this.onNextCategory,
     required this.onPrevCategory,
@@ -26,18 +28,31 @@ class StoryGroupPageView extends StatefulWidget {
 }
 
 class _StoryGroupPageViewState extends State<StoryGroupPageView> {
-  late StoryDetailProvider _provider;
+  StoryDetailProvider? _provider;
 
   @override
   void initState() {
     super.initState();
+    if (widget.isActive) {
+      _activate();
+    }
+  }
+
+  void _activate() {
+    _provider?.dispose();
     _provider = StoryDetailProvider(
       stories: widget.group.stories,
+      categoryIndex: widget.categoryIndex,
       storyProvider: context.read<StoryProvider>(),
-      initiallyActive: widget.isActive,
       onFinished: widget.onNextCategory,
       onPreviousAtStart: widget.onPrevCategory,
     );
+    _provider!.loadCurrentStory(play: true);
+  }
+
+  void _deactivate() {
+    _provider?.dispose();
+    _provider = null;
   }
 
   @override
@@ -45,23 +60,46 @@ class _StoryGroupPageViewState extends State<StoryGroupPageView> {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive != oldWidget.isActive) {
       if (widget.isActive) {
-        _provider.startOrResumeStory();
+        _activate();
       } else {
-        _provider.pauseStory();
+        _deactivate();
       }
+      setState(() {});
     }
   }
 
   @override
   void dispose() {
-    _provider.dispose();
+    _deactivate();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // If not active, render clean poster thumbnail or category image without allocating any player
+    if (_provider == null || !widget.isActive) {
+      final thumb = (widget.group.stories.isNotEmpty &&
+              widget.group.stories.first.thumbnailUrl != null &&
+              widget.group.stories.first.thumbnailUrl!.trim().isNotEmpty)
+          ? widget.group.stories.first.thumbnailUrl!
+          : widget.group.categoryImage;
+
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: thumb.isNotEmpty && thumb.startsWith('http')
+            ? Image.network(
+                thumb,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (_, e, s) => Container(color: Colors.black),
+              )
+            : Container(color: Colors.black),
+      );
+    }
+
     return ChangeNotifierProvider<StoryDetailProvider>.value(
-      value: _provider,
+      value: _provider!,
       child: StoryDetailContent(
         userName: widget.group.categoryName,
         userProfile: widget.group.categoryImage,

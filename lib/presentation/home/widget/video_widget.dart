@@ -126,6 +126,18 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
   }
 
   String get _resolvedVideoUrl {
+    final fallback = widget.fallbackLink;
+    if (fallback != null && fallback.trim().isNotEmpty) {
+      String resolvedFallback = fallback;
+      if (!resolvedFallback.startsWith('http')) {
+        final base = BaseUrl.baseUrl;
+        resolvedFallback = resolvedFallback.startsWith('/')
+            ? '$base$resolvedFallback'
+            : '$base/$resolvedFallback';
+      }
+      return resolvedFallback;
+    }
+
     String url = widget.link;
     if (url.isNotEmpty && !url.startsWith('http')) {
       final base = BaseUrl.baseUrl;
@@ -138,17 +150,25 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
     return url;
   }
 
+  bool _isAutoLooping = false;
+
   void _initializePlayer() {
-    _player.setPlaylistMode(PlaylistMode.loop);
+    _player.setPlaylistMode(PlaylistMode.none);
     _player.setVolume(0.0); // Default muted
 
     try {
       final platform = _player.platform;
       if (platform != null) {
+        (platform as dynamic).setProperty('hwdec', 'no');
+        (platform as dynamic).setProperty('hr-seek', 'no');
+        (platform as dynamic).setProperty('demuxer-seekable-cache', 'yes');
+        (platform as dynamic).setProperty('demuxer-lavf-analyzeduration', '0');
+        (platform as dynamic).setProperty('demuxer-lavf-probesize', '32768');
+        (platform as dynamic).setProperty('force-seekable', 'yes');
         (platform as dynamic).setProperty('hls-bitrate', 'auto');
         (platform as dynamic).setProperty('cache', 'yes');
-        (platform as dynamic).setProperty('cache-secs', '15');
-        (platform as dynamic).setProperty('demuxer-readahead-secs', '5');
+        (platform as dynamic).setProperty('cache-secs', '30');
+        (platform as dynamic).setProperty('demuxer-readahead-secs', '10');
       }
     } catch (_) {}
 
@@ -170,19 +190,56 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
     });
 
     _player.stream.position.listen((pos) {
-      if (mounted && pos > const Duration(milliseconds: 150)) {
+      if (!mounted) return;
+      if (pos > const Duration(milliseconds: 150)) {
         _hasStartedPlaying.value = true;
         _isBuffering.value = false;
+      }
+
+      // Proactive instant loop: seek and play simultaneously for 0ms transition
+      final dur = _player.state.duration;
+      if (dur > const Duration(seconds: 1) &&
+          pos >= dur - const Duration(milliseconds: 150) &&
+          !_isSeeking &&
+          !_isAutoLooping &&
+          !_isManuallyPaused) {
+        _isAutoLooping = true;
+        _player.seek(Duration.zero).catchError((_) {});
+        if (!_isManuallyPaused) {
+          _player.play().catchError((_) {});
+        }
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) _isAutoLooping = false;
+        });
       }
     });
 
     _player.stream.buffering.listen((buffering) {
       if (mounted) {
         if (_hasStartedPlaying.value) {
-          _isBuffering.value = buffering;
+          final pos = _player.state.position;
+          final dur = _player.state.duration;
+          final bool isLooping =
+              dur > Duration.zero &&
+              (pos >= dur - const Duration(seconds: 1) ||
+                  pos <= const Duration(milliseconds: 300));
+          _isBuffering.value = buffering && !isLooping;
         } else {
           _isBuffering.value = true;
         }
+      }
+    });
+
+    _player.stream.completed.listen((completed) {
+      if (completed && mounted && !_isManuallyPaused && !_isAutoLooping) {
+        _isAutoLooping = true;
+        _player.seek(Duration.zero).catchError((_) {});
+        if (!_isManuallyPaused) {
+          _player.play().catchError((_) {});
+        }
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) _isAutoLooping = false;
+        });
       }
     });
 
@@ -493,7 +550,8 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                         ignoring: hasStartedPlaying,
                         child: Container(
                           color: const Color(0xFFFFF5EE),
-                          child: widget.thumbnailUrl != null &&
+                          child:
+                              widget.thumbnailUrl != null &&
                                   widget.thumbnailUrl!.trim().isNotEmpty
                               ? Image.network(
                                   widget.thumbnailUrl!,
@@ -539,7 +597,7 @@ class _VideoPlaceholderState extends State<VideoPlaceholder>
                   return ValueListenableBuilder<bool>(
                     valueListenable: _hasStartedPlaying,
                     builder: (context, hasStarted, _) {
-                      if (!isPlaying && hasStarted) {
+                      if (_isManuallyPaused && !isPlaying) {
                         return Center(
                           child: GestureDetector(
                             onTap: () {

@@ -34,16 +34,19 @@ class CategorySectionHeader extends StatelessWidget {
                       color: Color(0xFFFFF1E6),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: imagePath != null && imagePath!.isNotEmpty && imagePath!.startsWith('http')
+                    child:
+                        imagePath != null &&
+                            imagePath!.isNotEmpty &&
+                            imagePath!.startsWith('http')
                         ? Image.network(
                             imagePath!,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>
                                 const Icon(
-                              Icons.category_outlined,
-                              size: 24,
-                              color: Color(0xFFFF6900),
-                            ),
+                                  Icons.category_outlined,
+                                  size: 24,
+                                  color: Color(0xFFFF6900),
+                                ),
                           )
                         : const Icon(
                             Icons.category_outlined,

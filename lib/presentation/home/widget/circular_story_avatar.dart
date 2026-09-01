@@ -32,43 +32,31 @@ class CircularStoryAvatar extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(2.0),
                       child: ClipOval(
-                        child: item.imagePath.trim().isNotEmpty &&
+                        child:
+                            item.imagePath.trim().isNotEmpty &&
                                 item.imagePath.startsWith('http')
                             ? Image.network(
                                 item.imagePath,
                                 fit: BoxFit.cover,
                                 loadingBuilder:
                                     (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return Container(
-                                    color: const Color(0xFFFFF1E6),
-                                    child: const Center(
-                                      child: SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Color(0xFFFF6900),
+                                      if (loadingProgress == null) return child;
+                                      return Container(
+                                        color: const Color(0xFFFFF1E6),
+                                        child: const Center(
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Color(0xFFFF6900),
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  );
-                                },
+                                      );
+                                    },
                                 errorBuilder: (context, error, stackTrace) =>
                                     Container(
-                                  color: const Color(0xFFFFF1E6),
-                                  child: const Icon(
-                                    Icons.auto_stories_rounded,
-                                    color: Color(0xFFFF6900),
-                                    size: 22,
-                                  ),
-                                ),
-                              )
-                            : (item.imagePath.trim().isNotEmpty
-                                ? Image.asset(
-                                    item.imagePath,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => Container(
                                       color: const Color(0xFFFFF1E6),
                                       child: const Icon(
                                         Icons.auto_stories_rounded,
@@ -76,15 +64,28 @@ class CircularStoryAvatar extends StatelessWidget {
                                         size: 22,
                                       ),
                                     ),
-                                  )
-                                : Container(
-                                    color: const Color(0xFFFFF1E6),
-                                    child: const Icon(
-                                      Icons.auto_stories_rounded,
-                                      color: Color(0xFFFF6900),
-                                      size: 22,
-                                    ),
-                                  )),
+                              )
+                            : (item.imagePath.trim().isNotEmpty
+                                  ? Image.asset(
+                                      item.imagePath,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Container(
+                                        color: const Color(0xFFFFF1E6),
+                                        child: const Icon(
+                                          Icons.auto_stories_rounded,
+                                          color: Color(0xFFFF6900),
+                                          size: 22,
+                                        ),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: const Color(0xFFFFF1E6),
+                                      child: const Icon(
+                                        Icons.auto_stories_rounded,
+                                        color: Color(0xFFFF6900),
+                                        size: 22,
+                                      ),
+                                    )),
                       ),
                     ),
                   ),

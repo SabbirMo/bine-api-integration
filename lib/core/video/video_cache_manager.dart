@@ -18,7 +18,7 @@ class VideoCacheManager {
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 60),
+      receiveTimeout: const Duration(seconds: 15),
     ),
   );
 
@@ -69,7 +69,23 @@ class VideoCacheManager {
         ? cleanUrl.substring(cleanUrl.length - 20)
         : cleanUrl;
 
-    return 'vid_${safeHash}_$prefix.mp4';
+    String ext = '.mp4';
+    final lower = url.toLowerCase();
+    if (lower.contains('.opus')) {
+      ext = '.opus';
+    } else if (lower.contains('.ogg')) {
+      ext = '.ogg';
+    } else if (lower.contains('.mp3')) {
+      ext = '.mp3';
+    } else if (lower.contains('.m4a')) {
+      ext = '.m4a';
+    } else if (lower.contains('.wav')) {
+      ext = '.wav';
+    } else if (lower.contains('.aac')) {
+      ext = '.aac';
+    }
+
+    return 'media_${safeHash}_$prefix$ext';
   }
 
   Future<File?> _getLocalFile(String url) async {
@@ -81,13 +97,13 @@ class VideoCacheManager {
     return File('${_cacheDir!.path}/$filename');
   }
 
-  /// Check if the video is already downloaded and verified on disk
+  /// Check if the video/audio is already downloaded and verified on disk
   bool isCached(String url) {
     if (url.trim().isEmpty) return false;
     final path = _memoryPathCache[url] ?? _knownFilePaths[_getFileName(url)];
     if (path != null) {
       final f = File(path);
-      if (f.existsSync() && f.lengthSync() > 50 * 1024) {
+      if (f.existsSync() && f.lengthSync() > 1024) {
         _memoryPathCache[url] = path;
         return true;
       } else {
@@ -104,7 +120,7 @@ class VideoCacheManager {
     final path = _memoryPathCache[url] ?? _knownFilePaths[_getFileName(url)];
     if (path != null) {
       final f = File(path);
-      if (f.existsSync() && f.lengthSync() > 50 * 1024) {
+      if (f.existsSync() && f.lengthSync() > 1024) {
         _memoryPathCache[url] = path;
         return path;
       } else {
@@ -135,8 +151,12 @@ class VideoCacheManager {
   /// Pre-cache a video in the background without blocking the UI
   Future<void> preCacheVideo(String url) async {
     if (url.trim().isEmpty || !url.startsWith('http')) return;
-    if (isCached(url) || _downloadingUrls.contains(url) || _downloadQueue.contains(url)) return;
-    
+    if (isCached(url) ||
+        _downloadingUrls.contains(url) ||
+        _downloadQueue.contains(url)) {
+      return;
+    }
+
     // Don't download m3u8 manually
     if (url.toLowerCase().contains('.m3u8')) return;
 
@@ -169,19 +189,22 @@ class VideoCacheManager {
         tempFilePath,
         deleteOnError: true,
         options: Options(
-          validateStatus: (status) => status != null && status >= 200 && status < 300,
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 300,
         ),
       );
 
-      final contentType = response.headers.value('content-type')?.toLowerCase() ?? '';
-      final bool isHtmlOrJson = contentType.contains('text/html') ||
+      final contentType =
+          response.headers.value('content-type')?.toLowerCase() ?? '';
+      final bool isHtmlOrJson =
+          contentType.contains('text/html') ||
           contentType.contains('application/json') ||
           contentType.contains('text/plain');
 
-      // Valid video files must be at least 50 KB and not HTML error pages
+      // Valid media files must be at least 1 KB and not HTML error pages
       if (!isHtmlOrJson &&
           await tempFile.exists() &&
-          await tempFile.length() > 50 * 1024) {
+          await tempFile.length() > 1024) {
         await tempFile.rename(file.path);
         final fname = _getFileName(url);
         _knownFilePaths[fname] = file.path;
@@ -194,7 +217,9 @@ class VideoCacheManager {
         }
       }
     } catch (e) {
-      debugPrint('⚠️ [VideoCacheManager] Sequential pre-cache error for $url: $e');
+      debugPrint(
+        '⚠️ [VideoCacheManager] Sequential pre-cache error for $url: $e',
+      );
       try {
         final f = await _getLocalFile(url);
         if (f != null) {

@@ -21,16 +21,145 @@ class StoryDetailContent extends StatelessWidget {
     required this.onClose,
   });
 
-  Widget _buildNavigationLayer(
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<StoryDetailProvider>();
+
+    if (provider.stories.isEmpty ||
+        provider.currentIndex < 0 ||
+        provider.currentIndex >= provider.stories.length) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text("No stories", style: TextStyle(color: Colors.white70)),
+        ),
+      );
+    }
+
+    final currentStory = provider.stories[provider.currentIndex];
+
+    // Eagerly precache all images and thumbnails in active BuildContext for 0ms transitions
+    for (final s in provider.stories) {
+      if (s.isImage && s.url.isNotEmpty && s.url.startsWith('http')) {
+        precacheImage(NetworkImage(s.url), context).catchError((_) {});
+      }
+      if (s.thumbnailUrl != null &&
+          s.thumbnailUrl!.trim().isNotEmpty &&
+          s.thumbnailUrl!.startsWith('http')) {
+        precacheImage(
+          NetworkImage(s.thumbnailUrl!),
+          context,
+        ).catchError((_) {});
+      }
+    }
+    if (userProfile.isNotEmpty && userProfile.startsWith('http')) {
+      precacheImage(NetworkImage(userProfile), context).catchError((_) {});
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Media Layer
+          _buildMedia(context, provider, currentStory),
+
+          // 2. Gesture Navigation Overlay (Standard Left 30% Prev / Right 70% Next)
+          _buildGestureLayer(context, provider),
+
+          // 3. Dedicated Center Audio Control (Interactive touch ONLY on button/waves, sits above gesture layer)
+          if (currentStory.isAudio) _buildAudioCenterControl(provider),
+
+          // 4. Top Controls (Progress Bars & Header)
+          SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildProgressBars(provider),
+                const SizedBox(height: 6),
+                _buildHeader(context, provider, currentStory),
+              ],
+            ),
+          ),
+
+          // 5. Network Stall / Slow Connection Toast (Auto-dismisses when packets arrive)
+          if (provider.error != null)
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 18,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFFF6900).withValues(alpha: 0.4),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.signal_wifi_connected_no_internet_4_rounded,
+                      color: Color(0xFFFF6900),
+                      size: 40,
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Slow Connection',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Waiting for network to reconnect...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                    const SizedBox(height: 14),
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFF6900),
+                        strokeWidth: 2.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // --- Gesture Navigation ---
+
+  Widget _buildGestureLayer(
     BuildContext context,
     StoryDetailProvider provider,
-    StoryContent story,
   ) {
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTapUp: (details) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        if (details.globalPosition.dx < screenWidth / 3) {
+        final dx = details.globalPosition.dx;
+        if (dx < screenWidth * 0.3) {
           provider.previousStory();
         } else {
           provider.nextStory();
@@ -39,7 +168,7 @@ class StoryDetailContent extends StatelessWidget {
       onLongPressStart: (_) => provider.pauseStory(),
       onLongPressEnd: (_) => provider.resumeStory(),
       onVerticalDragEnd: (details) {
-        if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
+        if (details.primaryVelocity != null && details.primaryVelocity! > 250) {
           onClose();
         }
       },
@@ -47,252 +176,296 @@ class StoryDetailContent extends StatelessWidget {
     );
   }
 
+  // --- Media Rendering ---
+
   Widget _buildMedia(
     BuildContext context,
     StoryDetailProvider provider,
     StoryContent story,
   ) {
-    final isLoading = provider.isLoading;
     if (story.isImage) {
-      if (story.isNetwork) {
-        return Image.network(
+      return Container(
+        color: Colors.black,
+        child: Image.network(
           story.url,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
           width: double.infinity,
           height: double.infinity,
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded || frame != null) {
+              return child;
+            }
+            return const SizedBox.shrink();
+          },
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;
             return Center(
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
+                  color: Colors.black45,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: const Color(0xFFFF6900).withValues(alpha: 0.3),
                     width: 1.5,
                   ),
                 ),
-                child: const CircularProgressIndicator(
-                  color: Color(0xFFFF6900),
-                  strokeWidth: 3.5,
+                child: const SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFFF6900),
+                    strokeWidth: 2.8,
+                  ),
                 ),
               ),
             );
           },
-          errorBuilder: (context, error, stackTrace) {
-            return const Center(
-              child: Icon(Icons.broken_image, color: Colors.white, size: 50),
-            );
-          },
-        );
-      } else {
-        return Image.asset(
-          story.url,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          errorBuilder: (context, error, stackTrace) {
-            return const Center(
-              child: Icon(Icons.broken_image, color: Colors.white, size: 50),
-            );
-          },
-        );
-      }
+          errorBuilder: (_, e, s) => const Center(
+            child: Icon(Icons.broken_image, color: Colors.white54, size: 54),
+          ),
+        ),
+      );
     }
-    if (story.isAudio) return _buildAudioPlaceholder(provider);
-    if (story.isVideo && provider.videoController != null) {
-      final double videoWidth =
-          provider.player!.state.width?.toDouble() ?? 16.0;
-      final double videoHeight =
-          provider.player!.state.height?.toDouble() ?? 9.0;
 
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          // 1. Video Player
-          SizedBox.expand(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Positioned.fill(child: Container(color: Colors.black)),
-                Positioned.fill(
-                  child: Container(color: Colors.black.withValues(alpha: 0.25)),
-                ),
-                Center(
-                  child: FittedBox(
+    if (story.isAudio) {
+      return _buildAudioView(provider);
+    }
+
+    if (story.isVideo) {
+      final String thumb = _resolveStoryThumbnail(story);
+
+      return Container(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Live Video surface (smoothly faded in once first frame is ready)
+            if (provider.videoController != null)
+              AnimatedOpacity(
+                opacity: provider.hasFirstFrame ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 150),
+                child: SizedBox.expand(
+                  child: Video(
+                    controller: provider.videoController!,
+                    controls: NoVideoControls,
                     fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: videoWidth,
-                      height: videoHeight,
-                      child: RepaintBoundary(
-                        child: Video(
-                          key: ObjectKey(provider.videoController),
-                          controller: provider.videoController!,
-                          controls: NoVideoControls,
-                          fill: Colors.transparent,
-                        ),
-                      ),
+                    fill: Colors.black,
+                  ),
+                ),
+              ),
+
+            // 2. Story's OWN poster thumbnail displayed until first video frame arrives
+            AnimatedOpacity(
+              opacity: provider.hasFirstFrame ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              child: _buildVideoPlaceholder(story, thumb),
+            ),
+
+            // 3. Subtle loading spinner if still buffering before first frame
+            if (provider.isLoading && !provider.hasFirstFrame)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFFF6900).withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Color(0xFFFF6900),
+                      strokeWidth: 2.5,
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+          ],
+        ),
+      );
+    }
 
-          // Preload the next video natively (invisible, 1x1)
-          if (provider.nextVideoController != null)
+    // Default loading canvas
+    return const Center(
+      child: CircularProgressIndicator(
+        color: Color(0xFFFF6900),
+        strokeWidth: 3.0,
+      ),
+    );
+  }
+
+  String _resolveStoryThumbnail(StoryContent story) {
+    if (story.thumbnailUrl != null && story.thumbnailUrl!.trim().isNotEmpty) {
+      return story.thumbnailUrl!.trim();
+    }
+    // Auto-derive thumbnail from Cloudflare Stream URL
+    if (story.url.contains('cloudflarestream.com') &&
+        story.url.contains('/manifest/video.m3u8')) {
+      return story.url.replaceAll(
+        '/manifest/video.m3u8',
+        '/thumbnails/thumbnail.jpg?width=640',
+      );
+    }
+    if (story.fallbackUrl != null &&
+        story.fallbackUrl!.contains('cloudflarestream.com') &&
+        story.fallbackUrl!.contains('/downloads/default.mp4')) {
+      return story.fallbackUrl!.replaceAll(
+        '/downloads/default.mp4',
+        '/thumbnails/thumbnail.jpg?width=640',
+      );
+    }
+    return '';
+  }
+
+  Widget _buildVideoPlaceholder(StoryContent story, String thumb) {
+    if (thumb.isNotEmpty && thumb.startsWith('http')) {
+      return Image.network(
+        thumb,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, e, s) => Container(color: const Color(0xFF121212)),
+      );
+    }
+
+    return Container(
+      color: const Color(0xFF141414),
+      child: const Center(
+        child: Icon(
+          Icons.play_circle_outline_rounded,
+          size: 64,
+          color: Colors.white24,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAudioView(StoryDetailProvider provider) {
+    return Container(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Subtle background category image
+          if (userProfile.isNotEmpty && userProfile.startsWith('http'))
             Opacity(
-              opacity: 0,
-              child: SizedBox(
-                width: 1,
-                height: 1,
-                child: Video(
-                  controller: provider.nextVideoController!,
-                  controls: NoVideoControls,
-                ),
-              ),
-            ),
-
-          // 2. Thumbnail poster frame — fades out once video actually plays
-          if (story.thumbnailUrl != null &&
-              story.thumbnailUrl!.trim().isNotEmpty)
-            AnimatedOpacity(
-              opacity: (isLoading || !provider.hasFirstFrame) ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 400),
-              child: SizedBox.expand(
-                child: Image.network(
-                  story.thumbnailUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, e, s) => const SizedBox.shrink(),
-                ),
-              ),
-            ),
-
-          // 3. Loading Indicator (Shows on cold-start AND mid-stream stuttering)
-          if (isLoading)
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(
-                    alpha: story.thumbnailUrl != null ? 0.3 : 0.45,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    color: Color(0xFFFF6900),
-                    strokeWidth: 3.0,
-                  ),
-                ),
+              opacity: 0.12,
+              child: Image.network(
+                userProfile,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (_, e, s) => const SizedBox.shrink(),
               ),
             ),
         ],
-      );
-    }
-
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.black54,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFFFF6900).withValues(alpha: 0.3),
-            width: 1.5,
-          ),
-        ),
-        child: const CircularProgressIndicator(
-          color: Color(0xFFFF6900),
-          strokeWidth: 3.5,
-        ),
       ),
     );
   }
 
-  Widget _buildAudioPlaceholder(StoryDetailProvider provider) {
-    if (provider.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-      );
-    }
-    return Container(
-      color: Colors.black,
-      child: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            StoryAudioWave(isPlaying: provider.isPlaying, isReversed: true),
-            const SizedBox(width: 16),
-            GestureDetector(
-              onTap: provider.togglePlayPause,
-              child: Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFFF6900).withValues(alpha: 0.4),
-                    width: 2,
+  Widget _buildAudioCenterControl(StoryDetailProvider provider) {
+    return Center(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Left Audio Waves (IgnorePointer: purely visual, non-clickable)
+          IgnorePointer(
+            child: StoryAudioWave(
+              isPlaying: provider.isPlaying,
+              isReversed: true,
+            ),
+          ),
+          const SizedBox(width: 16),
+
+          // ONLY THIS CIRCULAR ORANGE BUTTON IS CLICKABLE FOR PLAY/PAUSE
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: provider.togglePlayPause,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6900).withValues(alpha: 0.95),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF6900).withValues(alpha: 0.45),
+                    blurRadius: 20,
+                    spreadRadius: 3,
                   ),
-                  color: Colors.transparent,
-                ),
-                child: Center(
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFFFF6900),
-                    ),
-                    child: Icon(
+                ],
+              ),
+              child: provider.isLoading && !provider.isPlaying
+                  ? const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.8,
+                      ),
+                    )
+                  : Icon(
                       provider.isPlaying
-                          ? Icons.volume_up_rounded
+                          ? Icons.pause_rounded
                           : Icons.play_arrow_rounded,
                       color: Colors.white,
-                      size: 32,
+                      size: 36,
                     ),
-                  ),
-                ),
-              ),
             ),
-            const SizedBox(width: 16),
-            StoryAudioWave(isPlaying: provider.isPlaying, isReversed: false),
-          ],
-        ),
+          ),
+          const SizedBox(width: 16),
+
+          // Right Audio Waves (IgnorePointer: purely visual, non-clickable)
+          IgnorePointer(
+            child: StoryAudioWave(
+              isPlaying: provider.isPlaying,
+              isReversed: false,
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  // --- Top Progress Bars ---
 
   Widget _buildProgressBars(StoryDetailProvider provider) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
         children: List.generate(provider.stories.length, (index) {
-          double val = 0.0;
+          double fill = 0.0;
           if (index < provider.currentIndex) {
-            val = 1.0;
+            fill = 1.0;
           } else if (index == provider.currentIndex) {
-            final story = provider.stories[index];
-            val = (story.isVideo || story.isAudio)
-                ? provider.currentMediaProgress
-                : provider.imageProgress;
+            fill = provider.progress.clamp(0.0, 1.0);
           }
+
           return Expanded(
             child: Container(
-              height: 2,
+              height: 2.5,
               margin: const EdgeInsets.symmetric(horizontal: 2),
               decoration: BoxDecoration(
-                color: Colors.white30,
+                color: Colors.white.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
-                widthFactor: val.clamp(0.0, 1.0),
-                child: Container(color: Colors.white),
+                widthFactor: fill,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
             ),
           );
@@ -301,108 +474,68 @@ class StoryDetailContent extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context, StoryDetailProvider provider) {
-    if (provider.stories.isEmpty ||
-        provider.currentIndex < 0 ||
-        provider.currentIndex >= provider.stories.length) {
-      return const SizedBox.shrink();
-    }
-    final story = provider.stories[provider.currentIndex];
+  // --- Top Header ---
+
+  Widget _buildHeader(
+    BuildContext context,
+    StoryDetailProvider provider,
+    StoryContent story,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: Colors.grey[800],
+            backgroundColor: Colors.grey[850],
             backgroundImage:
                 userProfile.isNotEmpty && userProfile.startsWith('http')
                 ? NetworkImage(userProfile)
-                : (userProfile.isNotEmpty
-                      ? AssetImage(userProfile) as ImageProvider
-                      : null),
+                : null,
             child: userProfile.isEmpty
                 ? const Icon(Icons.person, color: Colors.white70, size: 20)
                 : null,
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(
-                  child: Text(
-                    userName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
+                Text(
+                  userName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
                 ),
-                if ((story.createdAt ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(width: 6),
+                if (story.createdAt != null && story.createdAt!.isNotEmpty)
                   Text(
                     story.createdAt!,
-                    maxLines: 1,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
-                ],
               ],
             ),
           ),
-          const SizedBox(width: 8),
           IconButton(
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(),
+            onPressed: provider.toggleMute,
             icon: Icon(
-              provider.isMuted ? Icons.volume_off : Icons.volume_up,
+              provider.isMuted
+                  ? Icons.volume_off_rounded
+                  : Icons.volume_up_rounded,
               color: Colors.white,
               size: 22,
             ),
-            onPressed: provider.toggleMute,
           ),
-          const SizedBox(width: 8),
           IconButton(
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(),
-            icon: const Icon(Icons.close, color: Colors.white, size: 24),
             onPressed: onClose,
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final provider = context.watch<StoryDetailProvider>();
-    if (provider.stories.isEmpty ||
-        provider.currentIndex < 0 ||
-        provider.currentIndex >= provider.stories.length) {
-      return const SizedBox.shrink();
-    }
-    final story = provider.stories[provider.currentIndex];
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. Media Content
-          Center(child: _buildMedia(context, provider, story)),
-
-          // 2. Navigation Layer (Immediate 15px swipe triggers auto-scroll to next/prev category!)
-          _buildNavigationLayer(context, provider, story),
-
-          // 3. UI Overlay (Header + Progress)
-          SafeArea(
-            child: Column(
-              children: [
-                _buildProgressBars(provider),
-                _buildHeader(context, provider),
-              ],
+            icon: const Icon(
+              Icons.close_rounded,
+              color: Colors.white,
+              size: 26,
             ),
           ),
         ],

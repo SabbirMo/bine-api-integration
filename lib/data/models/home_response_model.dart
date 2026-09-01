@@ -156,6 +156,12 @@ class StoryModel {
   });
 
   String get effectiveMediaUrl {
+    final cType = (contentType ?? '').toLowerCase().trim();
+    if (cType == 'audio' || cType == 'image') {
+      if (mediaUrl != null && mediaUrl!.trim().isNotEmpty) {
+        return mediaUrl!;
+      }
+    }
     if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
       return hlsUrl!;
     }

@@ -21,10 +21,9 @@ import 'providers/story_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/store_settings_provider.dart';
 
+import 'package:binetatour/core/story/story_hls_preloader.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
-import 'package:binetatour/core/video/category_preload_manager.dart';
-import 'package:binetatour/core/video/story_player_pool.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 @pragma('vm:entry-point')
@@ -36,8 +35,13 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  VisibilityDetectorController.instance.updateInterval =
-      const Duration(milliseconds: 200);
+
+  // Pre-warm native media_kit engine in background for instant first-story playback
+  StoryHlsPreloader.instance.warmupEngine();
+
+  VisibilityDetectorController.instance.updateInterval = const Duration(
+    milliseconds: 200,
+  );
 
   // Pre-initialize and warm up disk video cache for 0ms cold-start playback
   VideoCacheManager.instance.init();
@@ -102,8 +106,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
       FeedVideoManager.instance.pauseAll();
-      CategoryPreloadManager.instance.disposeAll();
-      StoryPlayerPool.instance.disposeAll();
     } else if (state == AppLifecycleState.resumed) {
       FeedVideoManager.instance.resume();
     }
@@ -116,8 +118,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // to prevent native libmpv FFI callback race conditions.
     try {
       FeedVideoManager.instance.pauseAll();
-      CategoryPreloadManager.instance.disposeAll();
-      StoryPlayerPool.instance.disposeAll();
     } catch (_) {}
   }
 
