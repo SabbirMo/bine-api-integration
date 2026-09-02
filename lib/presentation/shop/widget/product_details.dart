@@ -6,6 +6,7 @@ import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/shop/widget/product_details/product_media_gallery.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
@@ -87,9 +88,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
 
   List<String> _getUpcomingVideoUrls(int index) {
     final List<String> urls = [];
-    for (int nextIdx = index + 1;
-        nextIdx < widget.allProducts.length && urls.length < 2;
-        nextIdx++) {
+    for (
+      int nextIdx = index + 1;
+      nextIdx < widget.allProducts.length && urls.length < 2;
+      nextIdx++
+    ) {
       final p = widget.allProducts[nextIdx];
       final v = p.effectiveVideoUrl;
       if (v.isNotEmpty) {
@@ -195,69 +198,77 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: PageView.builder(
-        controller: _verticalController,
-        scrollDirection: Axis.vertical,
-        physics: const SmoothReelsScrollPhysics(),
-        allowImplicitScrolling:
-            true, // Pre-build adjacent pages for 0ms swiping
-        padEnds: false,
-        itemCount: widget.allProducts.length,
-        onPageChanged: (index) {
-          _currentPageNotifier.value = index;
-          // Activate pre-warmed slot immediately (URL must match ProductVideoItem)
-          if (index >= 0 && index < widget.allProducts.length) {
-            final prod = widget.allProducts[index];
-            final vUrl = prod.effectiveVideoUrl;
-            if (vUrl.isNotEmpty) {
-              final clean = _resolveVideoUrl(vUrl);
-              ReelsVideoControllerPool.instance.activateVideo(
-                itemIndex: index,
-                url: clean,
-                nextUrls: _getUpcomingVideoUrls(index),
-                prevUrl: _getPreviousVideoUrl(index),
-                secondPrevUrl: _getSecondPreviousVideoUrl(index),
-              );
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: PageView.builder(
+          controller: _verticalController,
+          scrollDirection: Axis.vertical,
+          physics: const SmoothReelsScrollPhysics(),
+          allowImplicitScrolling:
+              true, // Pre-build adjacent pages for 0ms swiping
+          padEnds: false,
+          itemCount: widget.allProducts.length,
+          onPageChanged: (index) {
+            _currentPageNotifier.value = index;
+            // Activate pre-warmed slot immediately (URL must match ProductVideoItem)
+            if (index >= 0 && index < widget.allProducts.length) {
+              final prod = widget.allProducts[index];
+              final vUrl = prod.effectiveVideoUrl;
+              if (vUrl.isNotEmpty) {
+                final clean = _resolveVideoUrl(vUrl);
+                ReelsVideoControllerPool.instance.activateVideo(
+                  itemIndex: index,
+                  url: clean,
+                  nextUrls: _getUpcomingVideoUrls(index),
+                  prevUrl: _getPreviousVideoUrl(index),
+                  secondPrevUrl: _getSecondPreviousVideoUrl(index),
+                );
+              }
             }
-          }
-          _precacheAround(index);
-        },
-        itemBuilder: (context, index) {
-          final product = widget.allProducts[index];
-          return RepaintBoundary(
-            child: _KeepAliveWrapper(
-              child: ValueListenableBuilder<int>(
-                valueListenable: _currentPageNotifier,
-                builder: (context, currentPage, child) {
-                  final isActive = index == currentPage && !_isScreenPaused;
-                  return ProductMediaGallery(
-                    key: ValueKey('gallery_${product.id}'),
-                    product: product,
-                    itemIndex: index,
-                    isActive: isActive,
-                    isMuted: _isMuted,
-                    onMuteToggle: () {
-                      setState(() => _isMuted = !_isMuted);
-                      ReelsVideoControllerPool.instance.toggleMute();
-                    },
-                    isExpanded: isExpanded,
-                    upcomingUrls: _getUpcomingVideoUrls(index),
-                    onPause: () {
-                      if (mounted) setState(() => _isScreenPaused = true);
-                      ReelsVideoControllerPool.instance.pauseAll();
-                    },
-                    onResume: () {
-                      if (mounted) setState(() => _isScreenPaused = false);
-                      ReelsVideoControllerPool.instance.resume();
-                    },
-                  );
-                },
+            _precacheAround(index);
+          },
+          itemBuilder: (context, index) {
+            final product = widget.allProducts[index];
+            return RepaintBoundary(
+              child: _KeepAliveWrapper(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _currentPageNotifier,
+                  builder: (context, currentPage, child) {
+                    final isActive = index == currentPage && !_isScreenPaused;
+                    return ProductMediaGallery(
+                      key: ValueKey('gallery_${product.id}'),
+                      product: product,
+                      itemIndex: index,
+                      isActive: isActive,
+                      isMuted: _isMuted,
+                      onMuteToggle: () {
+                        setState(() => _isMuted = !_isMuted);
+                        ReelsVideoControllerPool.instance.toggleMute();
+                      },
+                      isExpanded: isExpanded,
+                      upcomingUrls: _getUpcomingVideoUrls(index),
+                      onPause: () {
+                        if (mounted) setState(() => _isScreenPaused = true);
+                        ReelsVideoControllerPool.instance.pauseAll();
+                      },
+                      onResume: () {
+                        if (mounted) setState(() => _isScreenPaused = false);
+                        ReelsVideoControllerPool.instance.resume();
+                      },
+                    );
+                  },
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

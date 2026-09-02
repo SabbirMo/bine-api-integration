@@ -19,11 +19,13 @@ class ReelsPlayerSlot {
   final ValueNotifier<bool> isBuffering = ValueNotifier<bool>(false);
   final ValueNotifier<bool> hasFirstFrame = ValueNotifier<bool>(false);
   final ValueNotifier<String?> error = ValueNotifier<String?>(null);
+  final ValueNotifier<bool> isLandscape = ValueNotifier<bool>(false);
 
   void setPlaying(bool val) => _safeUpdate(isPlaying, val);
   void setBuffering(bool val) => _safeUpdate(isBuffering, val);
   void setHasFirstFrame(bool val) => _safeUpdate(hasFirstFrame, val);
   void setError(String? val) => _safeUpdate(error, val);
+  void setIsLandscape(bool val) => _safeUpdate(isLandscape, val);
 
   void _safeUpdate<T>(ValueNotifier<T> notifier, T val) {
     if (notifier.value == val) return;
@@ -62,6 +64,7 @@ class ReelsPlayerSlot {
     }
     player = newPlayer;
     videoController = newController;
+    setIsLandscape(false);
     _setupSubscriptions();
   }
 
@@ -86,7 +89,9 @@ class ReelsPlayerSlot {
     _subscriptions.add(
       player.stream.buffering.listen((b) {
         // Suppress buffering spinner on instant seamless loops back to time 0
-        if (b && hasFirstFrame.value && player.state.position < const Duration(milliseconds: 400)) {
+        if (b &&
+            hasFirstFrame.value &&
+            player.state.position < const Duration(milliseconds: 400)) {
           return;
         }
         setBuffering(b);
@@ -95,10 +100,32 @@ class ReelsPlayerSlot {
         }
       }),
     );
+    void updateDimensions(int? w, int? h) {
+      if (w != null && h != null && w > 0 && h > 0) {
+        // Only consider genuine horizontal/landscape videos (width > height * 1.15).
+        // Standard portrait videos (9:16, 3:4, 4:5, etc.) stay full-screen cover like TikTok.
+        final isLand = (w / h) > 1.15;
+        setIsLandscape(isLand);
+      }
+    }
+
+    if (player.state.width != null && player.state.height != null) {
+      updateDimensions(player.state.width, player.state.height);
+    }
+
     _subscriptions.add(
       player.stream.videoParams.listen((params) {
         if (params.w != null && params.w! > 0) {
           checkFirstFrameReady();
+          updateDimensions(params.w, params.h);
+        }
+      }),
+    );
+    _subscriptions.add(
+      player.stream.width.listen((w) {
+        if (w != null && w > 0) {
+          checkFirstFrameReady();
+          updateDimensions(w, player.state.height);
         }
       }),
     );
@@ -109,12 +136,14 @@ class ReelsPlayerSlot {
         }
       }),
     );
-    videoController.waitUntilFirstFrameRendered.then((_) {
-      if (!player.state.buffering) {
-        setHasFirstFrame(true);
-        setBuffering(false);
-      }
-    }).catchError((_) {});
+    videoController.waitUntilFirstFrameRendered
+        .then((_) {
+          if (!player.state.buffering) {
+            setHasFirstFrame(true);
+            setBuffering(false);
+          }
+        })
+        .catchError((_) {});
 
     _subscriptions.add(
       player.stream.error.listen((err) {
@@ -144,6 +173,7 @@ class ReelsPlayerSlot {
     setBuffering(false);
     setHasFirstFrame(false);
     setError(null);
+    setIsLandscape(false);
   }
 
   void dispose() {
@@ -221,11 +251,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       } catch (_) {}
 
       _slots.add(
-        ReelsPlayerSlot(
-          index: i,
-          player: player,
-          videoController: controller,
-        ),
+        ReelsPlayerSlot(index: i, player: player, videoController: controller),
       );
     }
   }
@@ -400,7 +426,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         : null;
 
     final int prevIndex = currentItemIndex - 1;
-    final String? pUrl = (prevUrl != null && prevUrl.trim().isNotEmpty && currentItemIndex > 0)
+    final String? pUrl =
+        (prevUrl != null && prevUrl.trim().isNotEmpty && currentItemIndex > 0)
         ? prevUrl.trim()
         : null;
 
@@ -411,7 +438,10 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     if (pUrl != null && pUrl.isNotEmpty) {
       wantedTargets[prevIndex] = pUrl;
       // If at the end of the feed (no next video), pre-warm second previous video to keep all slots warm
-      if (nextUrl == null && secondPrevUrl != null && secondPrevUrl.trim().isNotEmpty && currentItemIndex > 1) {
+      if (nextUrl == null &&
+          secondPrevUrl != null &&
+          secondPrevUrl.trim().isNotEmpty &&
+          currentItemIndex > 1) {
         wantedTargets[currentItemIndex - 2] = secondPrevUrl.trim();
       }
     } else if (nextUrls != null && nextUrls.length > 1) {
@@ -531,8 +561,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       slot.player.setVolume(autoPlay ? (_isMuted ? 0.0 : 100.0) : 0.0);
       final startPos =
           (initialPosition != null && initialPosition > Duration.zero)
-              ? initialPosition
-              : null;
+          ? initialPosition
+          : null;
       slot.player.open(Media(playUrl, start: startPos), play: autoPlay);
       // Note: player.open(play: false) already pauses at frame 0 natively.
       // Do NOT call slot.player.pause() here — it races with the async loadfile

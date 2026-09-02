@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
@@ -35,6 +36,11 @@ class ProductVideoItem extends StatefulWidget {
 class _ProductVideoItemState extends State<ProductVideoItem> {
   ReelsPlayerSlot? _slot;
 
+  // Global memoized aspect ratios by URL (prevents layout jump on swiping)
+  static final Map<String, bool> _landscapeCache = {};
+
+  bool _isLandscape = false;
+
   // Memoized URL computations (avoid re-computing on every build)
   late String _cachedVideoUrl;
   late String _cachedThumbnail;
@@ -51,6 +57,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   void initState() {
     super.initState();
     _computeCachedUrls();
+    _checkInitialAspect();
     final itemIdx = widget.itemIndex ?? widget.productId;
     _slot = ReelsVideoControllerPool.instance.getSlotForIndex(
       itemIdx,
@@ -73,6 +80,43 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   void _computeCachedUrls() {
     _cachedVideoUrl = _resolveVideoUrl();
     _cachedThumbnail = _computeThumbnail();
+  }
+
+  void _checkInitialAspect() {
+    if (_cachedVideoUrl.isNotEmpty &&
+        _landscapeCache.containsKey(_cachedVideoUrl)) {
+      _isLandscape = _landscapeCache[_cachedVideoUrl]!;
+      return;
+    }
+    if (_cachedThumbnail.isNotEmpty &&
+        _landscapeCache.containsKey(_cachedThumbnail)) {
+      _isLandscape = _landscapeCache[_cachedThumbnail]!;
+      return;
+    }
+    if (_cachedThumbnail.isNotEmpty) {
+      try {
+        final img = NetworkImage(_cachedThumbnail);
+        img
+            .resolve(const ImageConfiguration())
+            .addListener(
+              ImageStreamListener((ImageInfo info, bool _) {
+                if (!mounted) return;
+                final w = info.image.width;
+                final h = info.image.height;
+                if (w > 0 && h > 0) {
+                  final isLand = (w / h) > 1.15;
+                  _landscapeCache[_cachedThumbnail] = isLand;
+                  if (_cachedVideoUrl.isNotEmpty) {
+                    _landscapeCache[_cachedVideoUrl] = isLand;
+                  }
+                  if (_isLandscape != isLand) {
+                    setState(() => _isLandscape = isLand);
+                  }
+                }
+              }),
+            );
+      } catch (_) {}
+    }
   }
 
   String _resolveVideoUrl() {
@@ -151,6 +195,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     // Only re-activate slot if VIDEO URL or ITEM INDEX actually changed.
     // Never restart video on thumbnail or other metadata updates to eliminate slight reload.
     if (isVideoChanged || isIndexChanged) {
+      _checkInitialAspect();
       if (widget.isActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && widget.isActive) {
@@ -194,120 +239,162 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   @override
   Widget build(BuildContext context) {
     final slot = _slot;
+    final isLandscapeListenable =
+        slot?.isLandscape ?? ValueNotifier<bool>(_isLandscape);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (slot != null) {
-          if (slot.player.state.playing) {
-            slot.player.pause();
-          } else {
-            slot.player.play();
-          }
-          // No setState needed — ValueListenableBuilder on slot.isPlaying handles UI
+    return ValueListenableBuilder<bool>(
+      valueListenable: isLandscapeListenable,
+      builder: (context, slotIsLandscape, _) {
+        final isLandscape = _isLandscape || slotIsLandscape;
+        if (slotIsLandscape && _cachedVideoUrl.isNotEmpty) {
+          _landscapeCache[_cachedVideoUrl] = true;
         }
-      },
-      child: ColoredBox(
-        color: Colors.black,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 1. Live Video Surface — width fits the screen perfectly
-            if (slot != null)
-              RepaintBoundary(
-                child: SizedBox.expand(
-                  child: Center(
-                    child: Video(
-                      controller: slot.videoController,
-                      controls: NoVideoControls,
-                      fit: BoxFit.fitWidth,
-                      fill: Colors.transparent,
-                      alignment: Alignment.center,
-                    ),
-                  ),
-                ),
-              ),
 
-            // 2. Poster Image — continuous AnimatedOpacity crossfade to video when first frame renders
-            if (slot != null)
-              ValueListenableBuilder<bool>(
-                valueListenable: slot.hasFirstFrame,
-                child: _buildPoster(),
-                builder: (context, hasFrame, child) {
-                  return StreamBuilder<Duration>(
-                    stream: slot.player.stream.position,
-                    builder: (context, snapshot) {
-                      final position = snapshot.data ?? Duration.zero;
-                      if (hasFrame && position.inMilliseconds > 300) {
-                        return const SizedBox.shrink();
-                      }
-                      return IgnorePointer(
-                        ignoring: hasFrame,
-                        child: RepaintBoundary(
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 250),
-                            curve: Curves.easeOut,
-                            opacity: hasFrame ? 0.0 : 1.0,
-                            child: child,
-                          ),
+        // Portrait (tall 9:16) videos fill full-screen like TikTok.
+        // Landscape & square videos fit width with ambient background so ZERO video content is cut off.
+        final bool shouldCover = !isLandscape;
+        final BoxFit currentFit = shouldCover ? BoxFit.cover : BoxFit.fitWidth;
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (slot != null) {
+              if (slot.player.state.playing) {
+                slot.player.pause();
+              } else {
+                slot.player.play();
+              }
+              // No setState needed — ValueListenableBuilder on slot.isPlaying handles UI
+            }
+          },
+          child: ColoredBox(
+            color: Colors.black,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 0. Ambient Blurred Background for Landscape/Horizontal Videos
+                if (isLandscape && !shouldCover && _cachedThumbnail.isNotEmpty)
+                  Positioned.fill(
+                    child: ClipRect(
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(
+                          sigmaX: 20.0,
+                          sigmaY: 20.0,
                         ),
-                      );
-                    },
-                  );
-                },
-              )
-            else
-              IgnorePointer(child: _buildPoster()),
-
-            // 3. Low internet / loading buffering Lottie animation
-            if (slot != null)
-              ValueListenableBuilder<bool>(
-                valueListenable: slot.isBuffering,
-                builder: (context, isBuffering, _) {
-                  if (!isBuffering) return const SizedBox.shrink();
-                  return const VideoLoadingIndicator();
-                },
-              ),
-
-            // 3. Play icon overlay — uses ValueListenableBuilder instead of setState
-            if (slot != null)
-              ValueListenableBuilder<bool>(
-                valueListenable: slot.isPlaying,
-                builder: (context, isPlaying, child) {
-                  if (isPlaying) return const SizedBox.shrink();
-                  return child!;
-                },
-                child: const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(12),
-                    child: DecoratedBox(
-                      decoration: _playIconDecoration,
-                      child: Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 50,
+                        child: Image.network(
+                          _cachedThumbnail,
+                          fit: BoxFit.cover,
+                          color: Colors.black.withValues(alpha: 0.55),
+                          colorBlendMode: BlendMode.darken,
+                          gaplessPlayback: true,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const ColoredBox(color: Colors.black),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-          ],
-        ),
-      ),
+
+                // 1. Live Video Surface — full screen cover for portrait, fitWidth for landscape
+                if (slot != null)
+                  RepaintBoundary(
+                    child: SizedBox.expand(
+                      child: Center(
+                        child: Video(
+                          controller: slot.videoController,
+                          controls: NoVideoControls,
+                          fit: currentFit,
+                          fill: Colors.transparent,
+                          alignment: Alignment.center,
+                          width: shouldCover ? double.infinity : null,
+                          height: shouldCover ? double.infinity : null,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // 2. Poster Image — continuous AnimatedOpacity crossfade to video when first frame renders
+                if (slot != null)
+                  ValueListenableBuilder<bool>(
+                    valueListenable: slot.hasFirstFrame,
+                    child: _buildPoster(currentFit, shouldCover),
+                    builder: (context, hasFrame, child) {
+                      return StreamBuilder<Duration>(
+                        stream: slot.player.stream.position,
+                        builder: (context, snapshot) {
+                          final position = snapshot.data ?? Duration.zero;
+                          if (hasFrame && position.inMilliseconds > 300) {
+                            return const SizedBox.shrink();
+                          }
+                          return IgnorePointer(
+                            ignoring: hasFrame,
+                            child: RepaintBoundary(
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeOut,
+                                opacity: hasFrame ? 0.0 : 1.0,
+                                child: child,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  )
+                else
+                  IgnorePointer(child: _buildPoster(currentFit, shouldCover)),
+
+                // 3. Low internet / loading buffering Lottie animation
+                if (slot != null)
+                  ValueListenableBuilder<bool>(
+                    valueListenable: slot.isBuffering,
+                    builder: (context, isBuffering, _) {
+                      if (!isBuffering) return const SizedBox.shrink();
+                      return const VideoLoadingIndicator();
+                    },
+                  ),
+
+                // 4. Play icon overlay — uses ValueListenableBuilder instead of setState
+                if (slot != null)
+                  ValueListenableBuilder<bool>(
+                    valueListenable: slot.isPlaying,
+                    builder: (context, isPlaying, child) {
+                      if (isPlaying) return const SizedBox.shrink();
+                      return child!;
+                    },
+                    child: const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: DecoratedBox(
+                          decoration: _playIconDecoration,
+                          child: Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 50,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildPoster() {
+  Widget _buildPoster(BoxFit fit, bool shouldCover) {
     if (_cachedThumbnail.isNotEmpty) {
       return SizedBox.expand(
         child: Center(
           child: Image.network(
             _cachedThumbnail,
-            fit: BoxFit.fitWidth,
-            width: double.infinity,
+            fit: fit,
+            width: shouldCover ? double.infinity : null,
+            height: shouldCover ? double.infinity : null,
             alignment: Alignment.center,
             gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => _blackContainer,
