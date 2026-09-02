@@ -835,6 +835,18 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
           _activeCardIndex = newIndex;
         });
         _notifySectionActiveCard();
+
+        // Priority pre-cache upcoming cards and the last card in this horizontal row
+        final pProvider = context.read<ProductProvider>();
+        final targetIndices = [newIndex + 1, newIndex + 2, totalCount - 1];
+        for (final idx in targetIndices) {
+          if (idx >= 0 && idx < totalCount) {
+            final v = _resolveProductVideo(widget.section.products[idx], pProvider);
+            if (v.isNotEmpty) {
+              VideoCacheManager.instance.preCachePriority(_resolveUrl(v));
+            }
+          }
+        }
       }
     }
   }
@@ -857,6 +869,9 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       key,
       vUrl,
     );
+    if (vUrl.isNotEmpty) {
+      VideoCacheManager.instance.preCachePriority(_resolveUrl(vUrl));
+    }
   }
 
   void _reportSectionVisibility(double fraction) {
@@ -879,10 +894,25 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
   void _precacheSectionVideos() {
     final productProvider = context.read<ProductProvider>();
-    for (final prod in widget.section.products) {
-      final vUrl = _resolveProductVideo(prod, productProvider);
+    final prods = widget.section.products;
+    if (prods.isEmpty) return;
+
+    // Immediately prioritize the very first cards AND the last card
+    final priorityIndices = <int>[0, 1, prods.length - 1];
+    for (final idx in priorityIndices) {
+      if (idx >= 0 && idx < prods.length) {
+        final vUrl = _resolveProductVideo(prods[idx], productProvider);
+        if (vUrl.isNotEmpty) {
+          VideoCacheManager.instance.preCachePriority(_resolveUrl(vUrl));
+        }
+      }
+    }
+
+    // Queue remaining cards in background
+    for (int i = 2; i < prods.length - 1; i++) {
+      final vUrl = _resolveProductVideo(prods[i], productProvider);
       if (vUrl.isNotEmpty) {
-        VideoCacheManager.instance.preCacheVideo(vUrl);
+        VideoCacheManager.instance.preCacheVideo(_resolveUrl(vUrl));
       }
     }
   }
@@ -929,7 +959,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
   ) {
     // 1. Direct thumbnail from home API
     String tUrl = product.effectiveThumbnailUrl;
-    if (tUrl.isNotEmpty) return _resolveUrl(tUrl);
+    if (tUrl.isNotEmpty && !_isVideoUrl(tUrl)) return _resolveUrl(tUrl);
 
     // 2. Direct mainImage if not a video
     if (product.mainImage != null && !_isVideoUrl(product.mainImage!)) {
@@ -951,10 +981,14 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     final cached = productProvider.getCachedProduct(product.id);
     if (cached != null) {
       final cThumb = cached.effectiveThumbnailUrl;
-      if (cThumb.isNotEmpty) return _resolveUrl(cThumb);
+      if (cThumb.isNotEmpty && !_isVideoUrl(cThumb)) return _resolveUrl(cThumb);
       for (final m in cached.media) {
         if (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty) {
           return _resolveUrl(m.thumbnailUrl!);
+        }
+        if (m.mediaType.toLowerCase() == 'image' &&
+            m.effectiveMediaUrl.isNotEmpty) {
+          return _resolveUrl(m.effectiveMediaUrl);
         }
       }
     }
@@ -967,7 +1001,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       return const SizedBox(); // Don't show empty categories
     }
 
-    final productProvider = context.watch<ProductProvider>();
+    final productProvider = context.read<ProductProvider>();
 
     return VisibilityDetector(
       key: Key('sec_${widget.section.categoryId}'),
@@ -1102,6 +1136,15 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                           mediaType: 'video',
                           mediaUrl: _resolveUrl(p.effectiveVideoUrl),
                           thumbnailUrl: pThumb,
+                        ),
+                      ];
+                    } else if (p.mainImage != null && p.mainImage!.trim().isNotEmpty) {
+                      mediaList = [
+                        shop_model.MediaModel(
+                          id: 0,
+                          mediaType: _isVideoUrl(p.mainImage!) ? 'video' : 'image',
+                          mediaUrl: _resolveUrl(p.mainImage!),
+                          thumbnailUrl: _resolveUrl(p.mainImage!),
                         ),
                       ];
                     }

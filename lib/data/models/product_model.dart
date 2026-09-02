@@ -75,7 +75,10 @@ class ProductModel {
       status == 'out_of_stock' ||
       (totalStock <= 0 && status != 'pre_order' && status != 'in_stock');
 
-  String get effectiveVideoUrl {
+  late final String effectiveVideoUrl = _computeEffectiveVideoUrl();
+  late final String effectiveThumbnailUrl = _computeEffectiveThumbnailUrl();
+
+  String _computeEffectiveVideoUrl() {
     final topLevel = MediaUrlResolver.resolveVideoUrl(
       mediaUrl: videoUrl,
       hlsUrl: hlsUrl,
@@ -109,19 +112,25 @@ class ProductModel {
         clean.contains('.m3u8');
   }
 
-  String get effectiveThumbnailUrl {
+  String _computeEffectiveThumbnailUrl() {
+    String thumbnail = '';
     for (final m in media) {
       if (m.thumbnailUrl != null && m.thumbnailUrl!.isNotEmpty) {
-        return m.thumbnailUrl!;
+        thumbnail = m.thumbnailUrl!;
+        break;
       }
       if (m.mediaType == 'image' && m.effectiveMediaUrl.isNotEmpty) {
-        return m.effectiveMediaUrl;
+        thumbnail = m.effectiveMediaUrl;
+        break;
       }
     }
-    if (mainImage != null && !_isLocalVideoUrl(mainImage!)) {
-      return mainImage!;
+    if (thumbnail.isEmpty && mainImage != null && !_isLocalVideoUrl(mainImage!)) {
+      thumbnail = mainImage!;
     }
-    return '';
+    if (thumbnail.isEmpty && effectiveVideoUrl.isNotEmpty) {
+      thumbnail = MediaUrlResolver.extractThumbnailFromVideoUrl(effectiveVideoUrl);
+    }
+    return thumbnail;
   }
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
@@ -306,12 +315,10 @@ class MediaModel {
     this.videoDuration,
   });
 
-  String get effectiveMediaUrl {
-    return MediaUrlResolver.resolveVideoUrl(
-      mediaUrl: mediaUrl,
-      hlsUrl: hlsUrl,
-    );
-  }
+  late final String effectiveMediaUrl = MediaUrlResolver.resolveVideoUrl(
+    mediaUrl: mediaUrl,
+    hlsUrl: hlsUrl,
+  );
 
   factory MediaModel.fromJson(Map<String, dynamic> json) {
     final rawUrl =

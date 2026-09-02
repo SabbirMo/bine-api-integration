@@ -268,11 +268,13 @@ class ProductModel {
   }
 
   String get effectiveThumbnailUrl {
-    if (mainImage != null && mainImage!.trim().isNotEmpty) {
-      return mainImage!;
-    }
     if (thumbnailUrl != null && thumbnailUrl!.trim().isNotEmpty) {
       return thumbnailUrl!;
+    }
+    if (mainImage != null &&
+        mainImage!.trim().isNotEmpty &&
+        !MediaUrlResolver.isVideoUrl(mainImage)) {
+      return mainImage!;
     }
     for (final m in safeMedia) {
       if (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty) {

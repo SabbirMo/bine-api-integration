@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/core/video/reels_video_controller_pool.dart';
+import 'package:binetatour/presentation/common/widgets/video_loading_indicator.dart';
 
 class ProductVideoItem extends StatefulWidget {
   final int productId;
@@ -58,12 +59,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     if (widget.isActive) {
       if (_slot == null ||
           ReelsVideoControllerPool.instance.activeProductIndex != itemIdx) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && widget.isActive) {
-            _activateSlot();
-            setState(() {});
-          }
-        });
+        _activateSlot();
       } else {
         if (!_slot!.player.state.playing) {
           try {
@@ -174,12 +170,11 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           _cachedVideoUrl,
         );
         if (_slot == null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && widget.isActive) {
-              _activateSlot();
-              setState(() {});
-            }
-          });
+          _activateSlot();
+        } else if (!_slot!.player.state.playing) {
+          try {
+            _slot!.player.play();
+          } catch (_) {}
         }
         setState(() {});
       } else {
@@ -239,38 +234,38 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                 valueListenable: slot.hasFirstFrame,
                 child: _buildPoster(),
                 builder: (context, hasFrame, child) {
-                  return IgnorePointer(
-                    ignoring: hasFrame,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOut,
-                      opacity: hasFrame ? 0.0 : 1.0,
-                      child: child,
-                    ),
+                  return StreamBuilder<Duration>(
+                    stream: slot.player.stream.position,
+                    builder: (context, snapshot) {
+                      final position = snapshot.data ?? Duration.zero;
+                      if (hasFrame && position.inMilliseconds > 300) {
+                        return const SizedBox.shrink();
+                      }
+                      return IgnorePointer(
+                        ignoring: hasFrame,
+                        child: RepaintBoundary(
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                            opacity: hasFrame ? 0.0 : 1.0,
+                            child: child,
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               )
             else
               IgnorePointer(child: _buildPoster()),
 
-            // 3. Low internet / loading buffering spinner
+            // 3. Low internet / loading buffering Lottie animation
             if (slot != null)
               ValueListenableBuilder<bool>(
                 valueListenable: slot.isBuffering,
                 builder: (context, isBuffering, _) {
                   if (!isBuffering) return const SizedBox.shrink();
-                  return const Center(
-                    child: SizedBox(
-                      width: 38,
-                      height: 38,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFFE8500A),
-                        ),
-                      ),
-                    ),
-                  );
+                  return const VideoLoadingIndicator();
                 },
               ),
 

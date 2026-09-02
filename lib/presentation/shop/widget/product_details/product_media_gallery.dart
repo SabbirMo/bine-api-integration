@@ -82,6 +82,28 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
         );
       }).toList();
 
+      // If product has a primary video not present in media list, include it
+      final primaryVid = _product.effectiveVideoUrl;
+      if (primaryVid.isNotEmpty) {
+        final resolvedPrimary = _resolveUrl(primaryVid);
+        final alreadyInList = list.any((c) => c.url == resolvedPrimary);
+        if (!alreadyInList) {
+          list.insert(
+            0,
+            ProductContent(
+              url: resolvedPrimary,
+              thumbnailUrl: _product.effectiveThumbnailUrl.isNotEmpty
+                  ? _resolveUrl(_product.effectiveThumbnailUrl)
+                  : null,
+              isVideo: true,
+              isImage: false,
+              isAudio: false,
+              isNetwork: true,
+            ),
+          );
+        }
+      }
+
       list.sort((a, b) {
         if (a.isVideo && !b.isVideo) return -1;
         if (!a.isVideo && b.isVideo) return 1;
@@ -182,12 +204,18 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
       _product = detailedProduct;
       _cachedMediaList = null;
       final newMediaList = _mediaContent;
-      // Preserve active playing first media if URLs match so PageView doesn't recreate widget
+      // Preserve active playing first media so PageView NEVER recreates the video widget when details arrive
       if (oldMediaList != null &&
           oldMediaList.isNotEmpty &&
-          newMediaList.isNotEmpty &&
-          oldMediaList.first.url == newMediaList.first.url) {
-        _cachedMediaList = [oldMediaList.first, ...newMediaList.skip(1)];
+          newMediaList.isNotEmpty) {
+        if (oldMediaList.first.isVideo) {
+          _cachedMediaList = [
+            oldMediaList.first,
+            ...newMediaList.skip(newMediaList.first.isVideo ? 1 : 0),
+          ];
+        } else if (oldMediaList.first.url == newMediaList.first.url) {
+          _cachedMediaList = [oldMediaList.first, ...newMediaList.skip(1)];
+        }
       }
       // Precache secondary images in gallery for instant horizontal swipes
       for (final m in newMediaList) {

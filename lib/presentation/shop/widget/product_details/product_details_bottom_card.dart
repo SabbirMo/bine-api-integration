@@ -256,11 +256,11 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                       child: Text(
                         "${widget.product.sellingPrice} FCFA",
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: Colors.red.withValues(alpha: 0.7),
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                           decoration: TextDecoration.lineThrough,
-                          decorationColor: Colors.white.withValues(alpha: 0.7),
+                          decorationColor: Colors.black.withValues(alpha: 0.7),
                           decorationThickness: 1.5,
                         ),
                         maxLines: 1,

@@ -34,14 +34,14 @@ class VideoCacheManager {
   final Map<String, Completer<String?>> _inFlightCompleters = {};
   final Queue<String> _downloadQueue = Queue<String>();
   int _activeDownloadsCount = 0;
-  static const int _maxConcurrentDownloads = 2;
+  static const int _maxConcurrentDownloads = 3;
 
   // In-memory cache maps: url -> verified local absolute file path
   final Map<String, String> _memoryPathCache = {};
   final Map<String, String> _knownFilePaths = {};
 
-  // Maximum cache size limit (150 MB)
-  static const int _maxCacheSizeBytes = 150 * 1024 * 1024;
+  // Maximum cache size limit (1 GB)
+  static const int _maxCacheSizeBytes = 1024 * 1024 * 1024;
   static const int _minVideoSizeBytes = 32 * 1024; // 32 KB minimum for video
   static const int _minAudioSizeBytes = 4 * 1024; // 4 KB minimum for audio
 
@@ -85,7 +85,9 @@ class VideoCacheManager {
             continue;
           }
 
-          if (name.startsWith('media_') || name.startsWith('vid_')) {
+          if (name.startsWith('media_') ||
+              name.startsWith('vid_') ||
+              name.startsWith('cf_')) {
             _knownFilePaths[name] = path;
           }
         } catch (e) {
@@ -99,8 +101,34 @@ class VideoCacheManager {
     }
   }
 
+  static final RegExp _cloudflareRegExp = RegExp(r'cloudflarestream\.com\/([a-zA-Z0-9]+)');
+
+  /// Extracts the Cloudflare Stream video ID from any Cloudflare URL
+  static String? extractCloudflareId(String url) {
+    if (!url.contains('cloudflarestream.com')) return null;
+    final match = _cloudflareRegExp.firstMatch(url);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1);
+    }
+    return null;
+  }
+
+  /// Converts any Cloudflare Stream URL (including .m3u8) to the direct MP4 download URL.
+  static String getDownloadableUrl(String url) {
+    final cfId = extractCloudflareId(url);
+    if (cfId != null && cfId.isNotEmpty) {
+      return 'https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/downloads/default.mp4';
+    }
+    return url;
+  }
+
   /// Platform-independent safe filename generation without external dependencies.
   String _getFileName(String url) {
+    final cfId = extractCloudflareId(url);
+    if (cfId != null && cfId.isNotEmpty) {
+      return 'cf_$cfId.mp4';
+    }
+
     final uri = Uri.tryParse(url);
     final cleanPath = uri != null
         ? '${uri.scheme}://${uri.host}${uri.path}'
@@ -157,7 +185,8 @@ class VideoCacheManager {
   /// Zero main-thread disk I/O.
   String? getCachedFilePath(String url) {
     if (url.trim().isEmpty) return null;
-    final path = _memoryPathCache[url] ?? _knownFilePaths[_getFileName(url)];
+    final filename = _getFileName(url);
+    final path = _memoryPathCache[url] ?? _knownFilePaths[filename];
     if (path != null) {
       _memoryPathCache[url] = path;
       return path;
@@ -165,7 +194,7 @@ class VideoCacheManager {
     return null;
   }
 
-  /// Returns local cached file path if ready, otherwise returns remote URL and starts caching.
+  /// Returns local cached file path if ready, otherwise returns remote URL.
   Future<String> getPlaybackUrl(String remoteUrl) async {
     if (remoteUrl.trim().isEmpty) return '';
     if (!remoteUrl.startsWith('http')) return remoteUrl;
@@ -173,34 +202,40 @@ class VideoCacheManager {
     final cached = getCachedFilePath(remoteUrl);
     if (cached != null) return cached;
 
-    // Trigger background cache download
-    preCacheVideo(remoteUrl);
+    // Return remote URL without triggering cache to prevent double-downloading.
+    // Explicit caching should be handled by preCacheVideo/preCachePriority.
     return remoteUrl;
   }
 
   /// Pre-cache video with normal queue priority.
   Future<void> preCacheVideo(String url) async {
     if (url.trim().isEmpty || !url.startsWith('http')) return;
-    if (isCached(url) ||
-        _downloadingUrls.contains(url) ||
-        _downloadQueue.contains(url)) {
+    final downloadUrl = getDownloadableUrl(url);
+    if (!url.contains('cloudflarestream.com') && url.toLowerCase().contains('.m3u8')) {
       return;
     }
-    if (url.toLowerCase().contains('.m3u8')) return; // HLS handled by player
+    if (isCached(url) || isCached(downloadUrl)) return;
+    if (_downloadingUrls.contains(downloadUrl) ||
+        _downloadQueue.contains(downloadUrl)) {
+      return;
+    }
 
-    _downloadQueue.add(url);
+    _downloadQueue.add(downloadUrl);
     _processQueue();
   }
 
   /// Prioritize caching of upcoming active/next video (jumps to front of queue).
   Future<void> preCachePriority(String url) async {
     if (url.trim().isEmpty || !url.startsWith('http')) return;
-    if (isCached(url)) return;
-    if (_downloadingUrls.contains(url)) return;
-    if (url.toLowerCase().contains('.m3u8')) return;
+    final downloadUrl = getDownloadableUrl(url);
+    if (!url.contains('cloudflarestream.com') && url.toLowerCase().contains('.m3u8')) {
+      return;
+    }
+    if (isCached(url) || isCached(downloadUrl)) return;
+    if (_downloadingUrls.contains(downloadUrl)) return;
 
-    _downloadQueue.remove(url);
-    _downloadQueue.addFirst(url);
+    _downloadQueue.remove(downloadUrl);
+    _downloadQueue.addFirst(downloadUrl);
     _processQueue();
   }
 
@@ -209,13 +244,16 @@ class VideoCacheManager {
   void preCachePriorityUrls(List<String> urls) {
     if (urls.isEmpty) return;
     for (int i = urls.length - 1; i >= 0; i--) {
-      final url = urls[i].trim();
-      if (url.isEmpty || !url.startsWith('http')) continue;
-      if (isCached(url) || _downloadingUrls.contains(url)) continue;
-      if (url.toLowerCase().contains('.m3u8')) continue;
+      final raw = urls[i].trim();
+      if (raw.isEmpty || !raw.startsWith('http')) continue;
+      final downloadUrl = getDownloadableUrl(raw);
+      if (!raw.contains('cloudflarestream.com') && raw.toLowerCase().contains('.m3u8')) {
+        continue;
+      }
+      if (isCached(raw) || isCached(downloadUrl)) continue;
 
-      _downloadQueue.remove(url);
-      _downloadQueue.addFirst(url);
+      _downloadQueue.remove(downloadUrl);
+      _downloadQueue.addFirst(downloadUrl);
     }
     _processQueue();
   }
@@ -245,6 +283,8 @@ class VideoCacheManager {
     final completer = Completer<String?>();
     _inFlightCompleters[url] = completer;
 
+    File? tempFile;
+
     try {
       final file = await _getLocalFile(url);
       if (file == null) {
@@ -254,7 +294,7 @@ class VideoCacheManager {
 
       final tempFilePath =
           '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp';
-      final tempFile = File(tempFilePath);
+      tempFile = File(tempFilePath);
 
       // Stream download to file to handle Content-Length and validate chunks
       final response = await _dio.get<ResponseBody>(
@@ -342,6 +382,11 @@ class VideoCacheManager {
       final fname = _getFileName(url);
       _knownFilePaths[fname] = file.path;
       _memoryPathCache[url] = file.path;
+      final cfId = extractCloudflareId(url);
+      if (cfId != null) {
+        _memoryPathCache['https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/downloads/default.mp4'] = file.path;
+        _memoryPathCache['https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/manifest/video.m3u8'] = file.path;
+      }
       completer.complete(file.path);
 
       // Async cache pruning without blocking playback
@@ -349,6 +394,9 @@ class VideoCacheManager {
     } catch (e) {
       if (e is! DioException || e.type != DioExceptionType.cancel) {
         debugPrint('⚠️ [VideoCacheManager] Pre-cache error for $url: $e');
+      }
+      if (tempFile != null) {
+        _safeDeleteFile(tempFile);
       }
       completer.complete(null);
     } finally {
@@ -474,7 +522,7 @@ class VideoCacheManager {
           fileStats.add(
             _FileStatEntry(
               file: entity,
-              modified: stat.modified,
+              accessed: stat.accessed,
               size: stat.size,
             ),
           );
@@ -482,7 +530,7 @@ class VideoCacheManager {
       }
 
       if (totalSize > _maxCacheSizeBytes) {
-        fileStats.sort((a, b) => a.modified.compareTo(b.modified));
+        fileStats.sort((a, b) => a.accessed.compareTo(b.accessed));
 
         final targetSize = (_maxCacheSizeBytes * 0.7).toInt();
         for (final entry in fileStats) {
@@ -527,16 +575,38 @@ class VideoCacheManager {
       debugPrint('⚠️ [VideoCacheManager] Error clearing cache: $e');
     }
   }
+
+  /// Cancels all active downloads and removes queued items NOT in [keepUrls].
+  void cancelDownloadsExcept(List<String> keepUrls) {
+    final keepDownloadUrls = keepUrls
+        .where((u) => u.trim().isNotEmpty && u.startsWith('http'))
+        .map((u) => getDownloadableUrl(u))
+        .toSet();
+
+    // 1. Remove from queue
+    _downloadQueue.removeWhere((url) => !keepDownloadUrls.contains(url));
+
+    // 2. Cancel in-flight
+    final urlsToCancel = _activeCancelTokens.keys
+        .where((url) => !keepDownloadUrls.contains(url))
+        .toList();
+
+    for (final url in urlsToCancel) {
+      final token = _activeCancelTokens[url];
+      token?.cancel('stale download cancelled');
+      // The catch block in _downloadFile will handle cleanup
+    }
+  }
 }
 
 class _FileStatEntry {
   final File file;
-  final DateTime modified;
+  final DateTime accessed;
   final int size;
 
   _FileStatEntry({
     required this.file,
-    required this.modified,
+    required this.accessed,
     required this.size,
   });
 }

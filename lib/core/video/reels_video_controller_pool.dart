@@ -70,12 +70,8 @@ class ReelsPlayerSlot {
       if (hasFirstFrame.value) return;
 
       final pos = player.state.position;
-      final isBufferingNow = player.state.buffering;
-      final isPlayingNow = player.state.playing;
-      final w = player.state.width ?? 0;
-
-      // Truly ready when position advanced OR (width known, playing, and NOT buffering initial data)
-      if (pos > Duration.zero || (w > 0 && isPlayingNow && !isBufferingNow)) {
+      // Truly ready when position advanced
+      if (pos > Duration.zero) {
         setHasFirstFrame(true);
         setBuffering(false);
       }
@@ -89,6 +85,10 @@ class ReelsPlayerSlot {
     );
     _subscriptions.add(
       player.stream.buffering.listen((b) {
+        // Suppress buffering spinner on instant seamless loops back to time 0
+        if (b && hasFirstFrame.value && player.state.position < const Duration(milliseconds: 400)) {
+          return;
+        }
         setBuffering(b);
         if (!b) {
           checkFirstFrameReady();
@@ -178,7 +178,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
 
   ReelsVideoControllerPool._internal();
 
-  static const int poolSize = 3;
+  static const int poolSize = 4;
   final List<ReelsPlayerSlot> _slots = [];
   bool _initialized = false;
 
@@ -216,7 +216,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       _applyMpvProperties(player);
 
       try {
-        player.setPlaylistMode(PlaylistMode.loop);
+        player.setPlaylistMode(PlaylistMode.none);
         player.setVolume(_isMuted ? 0.0 : 100.0);
       } catch (_) {}
 
@@ -235,19 +235,28 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       final platform = player.platform;
       if (platform == null) return;
       final p = platform as dynamic;
-      await p.setProperty('hwdec', 'auto-safe');
-      await p.setProperty('hls-bitrate', 'auto');
-      await p.setProperty('cache', 'yes');
-      await p.setProperty('cache-secs', '3');
-      await p.setProperty('demuxer-lavf-analyzeduration', '0');
-      await p.setProperty('demuxer-lavf-probesize', '32768');
-      await p.setProperty('cache-pause', 'no');
-      await p.setProperty('cache-pause-wait', '0');
-      await p.setProperty('cache-pause-initial', 'no');
-      await p.setProperty('demuxer-readahead-secs', '2');
-      await p.setProperty('demuxer-max-bytes', '4MiB');
-      await p.setProperty('network-timeout', '10');
-      await p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit');
+      await Future.wait(<Future<dynamic>>[
+        p.setProperty('hwdec', 'auto-safe'),
+        // Auto adaptive bitrate: dynamically adjusts quality based on network throughput
+        p.setProperty('hls-bitrate', 'auto'),
+        p.setProperty('cache', 'yes'),
+        p.setProperty('cache-secs', '10'),
+        p.setProperty('demuxer-lavf-analyzeduration', '0'),
+        p.setProperty('demuxer-lavf-probesize', '1048576'),
+        p.setProperty('cache-pause', 'no'),
+        p.setProperty('cache-pause-wait', '0'),
+        p.setProperty('cache-pause-initial', 'no'),
+        p.setProperty('demuxer-readahead-secs', '5'),
+        p.setProperty('demuxer-max-bytes', '25MiB'),
+        // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
+        p.setProperty('demuxer-max-back-bytes', '25MiB'),
+        // Native infinite file loop: avoids Dart playlist reload & network re-fetching on loop!
+        p.setProperty('loop-file', 'inf'),
+        p.setProperty('network-timeout', '10'),
+        p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
+        p.setProperty('vd-lavc-fast', 'yes'),
+        p.setProperty('vd-lavc-skiploopfilter', 'all'),
+      ]);
     } catch (_) {}
   }
 
@@ -315,6 +324,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     required String url,
     List<String>? nextUrls,
     String? prevUrl,
+    String? secondPrevUrl,
     Duration? initialPosition,
   }) {
     if (!_initialized) {
@@ -370,6 +380,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       currentItemIndex: itemIndex,
       nextUrls: nextUrls,
       prevUrl: prevUrl,
+      secondPrevUrl: secondPrevUrl,
     );
 
     return activeSlot;
@@ -381,6 +392,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     required int currentItemIndex,
     required List<String>? nextUrls,
     required String? prevUrl,
+    String? secondPrevUrl,
   }) {
     final int nextIndex = currentItemIndex + 1;
     final String? nextUrl = (nextUrls != null && nextUrls.isNotEmpty)
@@ -398,6 +410,10 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     }
     if (pUrl != null && pUrl.isNotEmpty) {
       wantedTargets[prevIndex] = pUrl;
+      // If at the end of the feed (no next video), pre-warm second previous video to keep all slots warm
+      if (nextUrl == null && secondPrevUrl != null && secondPrevUrl.trim().isNotEmpty && currentItemIndex > 1) {
+        wantedTargets[currentItemIndex - 2] = secondPrevUrl.trim();
+      }
     } else if (nextUrls != null && nextUrls.length > 1) {
       final secondNextUrl = nextUrls[1].trim();
       if (secondNextUrl.isNotEmpty) {
@@ -531,8 +547,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     }
   }
 
-  void toggleMute() {
-    _isMuted = !_isMuted;
+  void _applyVolumeToSlots() {
     for (final slot in _slots) {
       if (slot.currentItemIndex == _activeProductIndex) {
         try {
@@ -544,13 +559,19 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         } catch (_) {}
       }
     }
+  }
+
+  void toggleMute() {
+    _isMuted = !_isMuted;
+    _applyVolumeToSlots();
     notifyListeners();
   }
 
   void setMuted(bool muted) {
     if (_isMuted != muted) {
       _isMuted = muted;
-      toggleMute();
+      _applyVolumeToSlots();
+      notifyListeners();
     }
   }
 

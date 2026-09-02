@@ -27,7 +27,7 @@ class ProductDetailsScreen extends StatefulWidget {
 class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     with WidgetsBindingObserver {
   late PageController _verticalController;
-  late int _currentPageIndex;
+  late ValueNotifier<int> _currentPageNotifier;
   bool isExpanded = false;
   bool _isMuted = false;
   bool _isScreenPaused = false;
@@ -36,7 +36,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _currentPageIndex = widget.initialProductIndex;
+    _currentPageNotifier = ValueNotifier<int>(widget.initialProductIndex);
     _verticalController = PageController(
       initialPage: widget.initialProductIndex,
     );
@@ -55,6 +55,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           url: clean,
           nextUrls: _getUpcomingVideoUrls(widget.initialProductIndex),
           prevUrl: _getPreviousVideoUrl(widget.initialProductIndex),
+          secondPrevUrl: _getSecondPreviousVideoUrl(widget.initialProductIndex),
           initialPosition: widget.initialPosition,
         );
       }
@@ -113,14 +114,42 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     return null;
   }
 
+  String? _getSecondPreviousVideoUrl(int index) {
+    int count = 0;
+    for (int prevIdx = index - 1; prevIdx >= 0; prevIdx--) {
+      final p = widget.allProducts[prevIdx];
+      final v = p.effectiveVideoUrl;
+      if (v.isNotEmpty) {
+        count++;
+        if (count == 2) {
+          final resolved = _resolveVideoUrl(v);
+          if (resolved.isNotEmpty) return resolved;
+        }
+      }
+    }
+    return null;
+  }
+
   void _precacheAround(int index) {
     if (!mounted) return;
-    // Priority: Immediate Next, Immediate Previous, Second Next, Second Previous
-    final indices = [index + 1, index - 1, index + 2, index - 2];
+    final total = widget.allProducts.length;
+    final lastIdx = total - 1;
+    // Priority: Immediate Next, Immediate Previous, Second Next, Second Previous, Third Next
+    // Always include the last product video so reaching the end of the feed is guaranteed instantaneous!
+    final indices = <int>[
+      index + 1,
+      index - 1,
+      index + 2,
+      index - 2,
+      index + 3,
+    ];
+    if (lastIdx > 0 && !indices.contains(lastIdx)) {
+      indices.add(lastIdx);
+    }
     final List<String> priorityVideos = [];
 
     for (final targetIndex in indices) {
-      if (targetIndex >= 0 && targetIndex < widget.allProducts.length) {
+      if (targetIndex >= 0 && targetIndex < total) {
         final p = widget.allProducts[targetIndex];
 
         // 1. Pre-fetch detailed product JSON & variants in background
@@ -149,7 +178,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       }
     }
 
-    // 4. Batch-enqueue priority downloads (Immediate next at queue head)
+    // 4. Batch-enqueue priority downloads (Immediate next and last product at queue head)
     if (priorityVideos.isNotEmpty) {
       VideoCacheManager.instance.preCachePriorityUrls(priorityVideos);
     }
@@ -159,6 +188,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _verticalController.dispose();
+    _currentPageNotifier.dispose();
     ReelsVideoControllerPool.instance.releaseSession();
     super.dispose();
   }
@@ -176,7 +206,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         padEnds: false,
         itemCount: widget.allProducts.length,
         onPageChanged: (index) {
-          _currentPageIndex = index;
+          _currentPageNotifier.value = index;
           // Activate pre-warmed slot immediately (URL must match ProductVideoItem)
           if (index >= 0 && index < widget.allProducts.length) {
             final prod = widget.allProducts[index];
@@ -188,41 +218,67 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                 url: clean,
                 nextUrls: _getUpcomingVideoUrls(index),
                 prevUrl: _getPreviousVideoUrl(index),
+                secondPrevUrl: _getSecondPreviousVideoUrl(index),
               );
             }
           }
           _precacheAround(index);
-          // Minimal setState — only updates isActive on children
-          if (mounted) setState(() {});
         },
         itemBuilder: (context, index) {
           final product = widget.allProducts[index];
-          final isActive = index == _currentPageIndex && !_isScreenPaused;
           return RepaintBoundary(
-            child: ProductMediaGallery(
-              key: ValueKey('gallery_${product.id}'),
-              product: product,
-              itemIndex: index,
-              isActive: isActive,
-              isMuted: _isMuted,
-              onMuteToggle: () {
-                setState(() => _isMuted = !_isMuted);
-                ReelsVideoControllerPool.instance.toggleMute();
-              },
-              isExpanded: isExpanded,
-              upcomingUrls: _getUpcomingVideoUrls(index),
-              onPause: () {
-                if (mounted) setState(() => _isScreenPaused = true);
-                ReelsVideoControllerPool.instance.pauseAll();
-              },
-              onResume: () {
-                if (mounted) setState(() => _isScreenPaused = false);
-                ReelsVideoControllerPool.instance.resume();
-              },
+            child: _KeepAliveWrapper(
+              child: ValueListenableBuilder<int>(
+                valueListenable: _currentPageNotifier,
+                builder: (context, currentPage, child) {
+                  final isActive = index == currentPage && !_isScreenPaused;
+                  return ProductMediaGallery(
+                    key: ValueKey('gallery_${product.id}'),
+                    product: product,
+                    itemIndex: index,
+                    isActive: isActive,
+                    isMuted: _isMuted,
+                    onMuteToggle: () {
+                      setState(() => _isMuted = !_isMuted);
+                      ReelsVideoControllerPool.instance.toggleMute();
+                    },
+                    isExpanded: isExpanded,
+                    upcomingUrls: _getUpcomingVideoUrls(index),
+                    onPause: () {
+                      if (mounted) setState(() => _isScreenPaused = true);
+                      ReelsVideoControllerPool.instance.pauseAll();
+                    },
+                    onResume: () {
+                      if (mounted) setState(() => _isScreenPaused = false);
+                      ReelsVideoControllerPool.instance.resume();
+                    },
+                  );
+                },
+              ),
             ),
           );
         },
       ),
     );
+  }
+}
+
+class _KeepAliveWrapper extends StatefulWidget {
+  final Widget child;
+  const _KeepAliveWrapper({required this.child});
+
+  @override
+  State<_KeepAliveWrapper> createState() => _KeepAliveWrapperState();
+}
+
+class _KeepAliveWrapperState extends State<_KeepAliveWrapper>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }

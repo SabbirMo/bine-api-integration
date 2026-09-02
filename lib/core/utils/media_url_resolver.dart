@@ -8,8 +8,8 @@ import 'package:binetatour/core/base_url/base_url.dart';
 class MediaUrlResolver {
   const MediaUrlResolver._();
 
-  /// Resolves any relative URL to an absolute URL with BaseUrl
-  /// and normalizes Cloudflare Stream / HLS to direct MP4 for 0ms demuxing and disk caching.
+  /// Resolves any relative URL to an absolute URL with BaseUrl.
+  /// Preserves Cloudflare Stream HLS manifests (/manifest/video.m3u8) for dynamic adaptive bitrate streaming.
   static String resolveUrl(String? url) {
     if (url == null || url.trim().isEmpty) return '';
     String clean = url.trim();
@@ -19,33 +19,39 @@ class MediaUrlResolver {
       final base = BaseUrl.baseUrl;
       clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
     }
-    // Normalize Cloudflare Stream HLS to direct MP4 for instant demuxing, disk caching, and seamless matching
-    if (clean.contains('cloudflarestream.com') &&
-        clean.contains('/manifest/video.m3u8')) {
-      clean = clean.replaceAll('/manifest/video.m3u8', '/downloads/default.mp4');
-    }
     return clean;
   }
 
   /// Maps video URL from API fields: given media_url and hls_url,
-  /// resolves them in a standardized, connected way across both APIs.
+  /// resolves them in a standardized way.
+  /// Prioritizes Cloudflare Stream adaptive HLS (.m3u8) so the player can dynamically
+  /// adjust video resolution and bitrate based on real-time internet speed.
   static String resolveVideoUrl({
     String? mediaUrl,
     String? hlsUrl,
     String? videoUrl,
   }) {
-    // 1. Prefer direct mediaUrl / videoUrl if valid and non-empty
+    // 1. If adaptive HLS URL is provided (Cloudflare Stream ABR), prioritize it
+    // so the video player automatically adjusts resolution and bitrate to internet speed.
+    if (hlsUrl != null && hlsUrl.trim().isNotEmpty) {
+      return resolveUrl(hlsUrl.trim());
+    }
+
+    // 2. Otherwise check direct mediaUrl / videoUrl
     final rawMedia = (mediaUrl != null && mediaUrl.trim().isNotEmpty)
         ? mediaUrl.trim()
         : (videoUrl != null && videoUrl.trim().isNotEmpty ? videoUrl.trim() : null);
 
     if (rawMedia != null && rawMedia.isNotEmpty) {
+      // If direct media is from Cloudflare Stream with /downloads/default.mp4, convert to
+      // /manifest/video.m3u8 so that adaptive bitrate streaming is enabled.
+      if (rawMedia.contains('cloudflarestream.com') &&
+          rawMedia.contains('/downloads/default.mp4')) {
+        return resolveUrl(
+          rawMedia.replaceAll('/downloads/default.mp4', '/manifest/video.m3u8'),
+        );
+      }
       return resolveUrl(rawMedia);
-    }
-
-    // 2. Fall back to hlsUrl (normalized to MP4 if Cloudflare)
-    if (hlsUrl != null && hlsUrl.trim().isNotEmpty) {
-      return resolveUrl(hlsUrl.trim());
     }
 
     return '';
@@ -65,5 +71,21 @@ class MediaUrlResolver {
         clean.endsWith('.3gp') ||
         clean.contains('.mp4') ||
         clean.contains('.m3u8');
+  }
+
+  static final RegExp _cloudflareRegExp = RegExp(r'cloudflarestream\.com\/([a-zA-Z0-9]+)');
+
+  /// Extracts a Cloudflare thumbnail URL if the video is hosted on Cloudflare Stream
+  static String extractThumbnailFromVideoUrl(String? videoUrl) {
+    if (videoUrl == null || videoUrl.trim().isEmpty) return '';
+    final clean = videoUrl.trim();
+    if (clean.contains('cloudflarestream.com')) {
+      final match = _cloudflareRegExp.firstMatch(clean);
+      if (match != null && match.groupCount >= 1) {
+        final id = match.group(1);
+        return 'https://customer-xe2czubswwdkm567.cloudflarestream.com/$id/thumbnails/thumbnail.jpg?width=640';
+      }
+    }
+    return '';
   }
 }

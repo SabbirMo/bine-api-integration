@@ -102,15 +102,17 @@ class ProductMediaView extends StatelessWidget {
             // Blurred background image
             Positioned.fill(
               child: ClipRect(
-                child: ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
-                  child: Image.network(
-                    media.url,
-                    fit: BoxFit.cover,
-                    color: Colors.black.withValues(alpha: 0.35),
-                    colorBlendMode: BlendMode.darken,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const SizedBox(),
+                child: RepaintBoundary(
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
+                    child: Image.network(
+                      media.url,
+                      fit: BoxFit.cover,
+                      color: Colors.black.withValues(alpha: 0.35),
+                      colorBlendMode: BlendMode.darken,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const SizedBox(),
+                    ),
                   ),
                 ),
               ),

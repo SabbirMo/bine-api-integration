@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
 import 'package:binetatour/data/models/product_model.dart';
 
@@ -22,8 +22,9 @@ class ProductProvider extends ChangeNotifier {
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> get allProducts => _allProducts;
+  final Set<int> _productIds = {};
 
-  List<ProductModel> _parseProducts(dynamic data) {
+  static List<ProductModel> _parseProducts(dynamic data) {
     List<dynamic> list = [];
     if (data != null && data is Map<String, dynamic>) {
       if (data['results'] is List) {
@@ -42,7 +43,7 @@ class ProductProvider extends ChangeNotifier {
     return list
         .map(
           (e) => ProductModel.fromJson(
-            Map<String, dynamic>.from(e is Map ? e : {}),
+            (e as Map<String, dynamic>?) ?? {},
           ),
         )
         .toList();
@@ -68,7 +69,7 @@ class ProductProvider extends ChangeNotifier {
       );
 
       final dynamic data = response.data;
-      final parsed = _parseProducts(data);
+      final parsed = await compute(_parseProducts, data);
 
       if (data is Map) {
         if (data['next'] != null) {
@@ -84,10 +85,13 @@ class ProductProvider extends ChangeNotifier {
 
       if (refresh) {
         _allProducts = parsed;
+        _productIds.clear();
+        _productIds.addAll(parsed.map((e) => e.id));
       } else {
         for (final p in parsed) {
-          if (!_allProducts.any((existing) => existing.id == p.id)) {
+          if (!_productIds.contains(p.id)) {
             _allProducts.add(p);
+            _productIds.add(p.id);
           }
         }
       }
@@ -121,13 +125,14 @@ class ProductProvider extends ChangeNotifier {
       );
 
       final dynamic data = response.data;
-      final parsed = _parseProducts(data);
+      final parsed = await compute(_parseProducts, data);
 
       if (parsed.isNotEmpty) {
         _currentPage = nextPage;
         for (final p in parsed) {
-          if (!_allProducts.any((existing) => existing.id == p.id)) {
+          if (!_productIds.contains(p.id)) {
             _allProducts.add(p);
+            _productIds.add(p.id);
           }
           if (!_productDetailsCache.containsKey(p.id)) {
             _productDetailsCache[p.id] = p;

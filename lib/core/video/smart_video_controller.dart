@@ -428,7 +428,6 @@ class SmartVideoController {
             isBuffering.value = false;
             _captureInitialFrame();
           }
-          _onResolutionUpdated();
         }
       }),
     );

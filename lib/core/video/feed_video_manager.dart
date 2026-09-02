@@ -38,10 +38,9 @@ class FeedPlayerState extends ChangeNotifier {
       if (hasFirstFrame) return;
       final pos = player.state.position;
       final isBufferingNow = player.state.buffering;
-      final isPlayingNow = player.state.playing;
       final w = player.state.width ?? 0;
 
-      if (pos > Duration.zero || (w > 0 && isPlayingNow && !isBufferingNow)) {
+      if (pos > Duration.zero || (w > 0 && !isBufferingNow)) {
         hasFirstFrame = true;
         isBuffering = false;
         notifyListeners();
@@ -59,6 +58,10 @@ class FeedPlayerState extends ChangeNotifier {
     });
 
     _bufferingSub = player.stream.buffering.listen((buffering) {
+      // Suppress buffering spinner on instant seamless loops back to time 0
+      if (buffering && hasFirstFrame && player.state.position < const Duration(milliseconds: 400)) {
+        return;
+      }
       if (isBuffering != buffering) {
         isBuffering = buffering;
         if (!buffering) checkFirstFrame();
@@ -226,7 +229,7 @@ class FeedVideoManager extends ChangeNotifier {
     _applyMpvProperties(player);
 
     try {
-      player.setPlaylistMode(PlaylistMode.loop);
+      player.setPlaylistMode(PlaylistMode.none);
       player.setVolume(_isFeedMuted ? 0.0 : 100.0);
     } catch (_) {}
 
@@ -245,19 +248,26 @@ class FeedVideoManager extends ChangeNotifier {
       final platform = player.platform;
       if (platform == null) return;
       final p = platform as dynamic;
-      await p.setProperty('hwdec', 'auto-safe');
-      await p.setProperty('hls-bitrate', 'auto');
-      await p.setProperty('cache', 'yes');
-      await p.setProperty('cache-secs', '2');
-      await p.setProperty('demuxer-lavf-analyzeduration', '0');
-      await p.setProperty('demuxer-lavf-probesize', '32768');
-      await p.setProperty('cache-pause', 'no');
-      await p.setProperty('cache-pause-wait', '0');
-      await p.setProperty('cache-pause-initial', 'no');
-      await p.setProperty('demuxer-readahead-secs', '2');
-      await p.setProperty('demuxer-max-bytes', '4MiB');
-      await p.setProperty('network-timeout', '10');
-      await p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit');
+      await Future.wait(<Future<dynamic>>[
+        p.setProperty('hwdec', 'auto-safe'),
+        // Auto adaptive bitrate: dynamically adjusts quality based on network throughput
+        p.setProperty('hls-bitrate', 'auto'),
+        p.setProperty('cache', 'yes'),
+        p.setProperty('cache-secs', '10'),
+        p.setProperty('demuxer-lavf-analyzeduration', '0'),
+        p.setProperty('demuxer-lavf-probesize', '32768'),
+        p.setProperty('cache-pause', 'no'),
+        p.setProperty('cache-pause-wait', '0'),
+        p.setProperty('cache-pause-initial', 'no'),
+        p.setProperty('demuxer-readahead-secs', '5'),
+        p.setProperty('demuxer-max-bytes', '25MiB'),
+        // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
+        p.setProperty('demuxer-max-back-bytes', '25MiB'),
+        // Native infinite file loop: avoids Dart playlist reload & network re-fetching on loop!
+        p.setProperty('loop-file', 'inf'),
+        p.setProperty('network-timeout', '10'),
+        p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
+      ]);
     } catch (_) {}
   }
 
@@ -355,6 +365,9 @@ class FeedVideoManager extends ChangeNotifier {
       state.hasFirstFrame = false;
       state.isBuffering = true;
       try {
+        state.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
+      } catch (_) {}
+      try {
         state.player.open(Media(targetUrl), play: autoPlay);
       } catch (_) {}
     } else if (autoPlay && !state.isPlaying) {
@@ -379,6 +392,7 @@ class FeedVideoManager extends ChangeNotifier {
       _urlMap.remove(k);
       _cardVisibility.remove(k);
       _cardCenterY.remove(k);
+      _cardContexts.remove(k);
       if (_currentPlayingKey == k) {
         try {
           _keyToPlayer[k]?.player.pause();
@@ -424,7 +438,7 @@ class FeedVideoManager extends ChangeNotifier {
     _sectionActiveKey[sectionId] = cardKey;
     if (url.trim().isNotEmpty) {
       _urlMap[cardKey] = url;
-      VideoCacheManager.instance.preCacheVideo(url);
+      VideoCacheManager.instance.preCachePriority(url);
     }
 
     if (!_isGloballyPaused) {
@@ -525,6 +539,8 @@ class FeedVideoManager extends ChangeNotifier {
   void _evaluatePlayback() {
     if (_isGloballyPaused) return;
 
+    final oldPlayingKey = _currentPlayingKey;
+
     // Compte tab - pause all
     if (_activeTabIndex == 2) {
       if (_currentPlayingKey != null) {
@@ -532,12 +548,15 @@ class FeedVideoManager extends ChangeNotifier {
           _keyToPlayer[_currentPlayingKey]?.player.pause();
         } catch (_) {}
         _currentPlayingKey = null;
-        notifyListeners();
+        if (oldPlayingKey != _currentPlayingKey) {
+          notifyListeners();
+        }
       }
       return;
     }
 
     String? bestKey;
+    String? runnerUpKey;
     final double vHeight = _viewportHeight > 0 ? _viewportHeight : 800.0;
     // Smooth adaptive visual focus:
     // Starts at top row (0.32 * vHeight) and moves smoothly down to bottom row (0.75 * vHeight)
@@ -549,6 +568,9 @@ class FeedVideoManager extends ChangeNotifier {
     if (_activeTabIndex == 0 && _sectionVisibility.isNotEmpty) {
       String? bestSectionId;
       double bestScore = -999999.0;
+      
+      String? runnerUpSectionId;
+      double runnerUpScore = -999999.0;
 
       for (final entry in _sectionVisibility.entries) {
         final secId = entry.key;
@@ -572,14 +594,22 @@ class FeedVideoManager extends ChangeNotifier {
           final double distFromCenter = (centerY - targetCenterY).abs();
           final score = (fraction * 1000.0) - (distFromCenter * 2.0);
           if (score > bestScore) {
+            runnerUpScore = bestScore;
+            runnerUpSectionId = bestSectionId;
             bestScore = score;
             bestSectionId = secId;
+          } else if (score > runnerUpScore) {
+            runnerUpScore = score;
+            runnerUpSectionId = secId;
           }
         }
       }
 
       if (bestSectionId != null) {
         bestKey = _sectionActiveKey[bestSectionId];
+      }
+      if (runnerUpSectionId != null) {
+        runnerUpKey = _sectionActiveKey[runnerUpSectionId];
       }
 
       // Fallback for Home initial load or when returning from Story
@@ -603,6 +633,7 @@ class FeedVideoManager extends ChangeNotifier {
     // 2. If currently on Boutique page (tab 1)
     else if (_activeTabIndex == 1) {
       double bestCardScore = -999999.0;
+      double runnerUpCardScore = -999999.0;
 
       for (final entry in _cardVisibility.entries) {
         final key = entry.key;
@@ -632,8 +663,13 @@ class FeedVideoManager extends ChangeNotifier {
           // Score rewards high visibility and closeness to the target Y
           final score = (fraction * 1000.0) - (distFromCenter * 2.0);
           if (score > bestCardScore) {
+            runnerUpCardScore = bestCardScore;
+            runnerUpKey = bestKey;
             bestCardScore = score;
             bestKey = key;
+          } else if (score > runnerUpCardScore) {
+            runnerUpCardScore = score;
+            runnerUpKey = key;
           }
         }
       }
@@ -666,31 +702,25 @@ class FeedVideoManager extends ChangeNotifier {
         }
 
         // ── Pre-warm the next nearby video into an idle pool player ──────────
-        // Find a URL that's registered but NOT currently playing
         String? nextUrl;
-        for (final entry in _urlMap.entries) {
-          if (entry.key != bestKey && entry.value.isNotEmpty) {
-            // Only pre-warm if this URL isn't already loaded in any pool player
-            final alreadyLoaded = _playerPool.any(
-              (p) => p.currentUrl == entry.value,
-            );
-            if (!alreadyLoaded) {
-              nextUrl = entry.value;
-              break;
-            }
-          }
+        if (runnerUpKey != null) {
+          nextUrl = _urlMap[runnerUpKey];
         }
-        if (nextUrl != null && _playerPool.length < maxPoolSize) {
-          // Silently open nextUrl in a new idle player so it's buffered
-          final idleState = _getOrCreatePlayer(
-            '__prewarm__${nextUrl.hashCode}',
-            nextUrl,
-            autoPlay: false,
-          );
-          // Immediately pause — we just want it buffered
-          try {
-            idleState.player.pause();
-          } catch (_) {}
+        
+        if (nextUrl != null && nextUrl.isNotEmpty && _playerPool.length < maxPoolSize) {
+          final alreadyLoaded = _playerPool.any((p) => p.currentUrl == nextUrl);
+          if (!alreadyLoaded) {
+            // Silently open nextUrl in a new idle player so it's buffered
+            final idleState = _getOrCreatePlayer(
+              '__prewarm__${nextUrl.hashCode}',
+              nextUrl,
+              autoPlay: false,
+            );
+            // Immediately pause — we just want it buffered
+            try {
+              idleState.player.pause();
+            } catch (_) {}
+          }
         }
       }
     } else if (_currentPlayingKey != null) {
@@ -700,7 +730,9 @@ class FeedVideoManager extends ChangeNotifier {
       _currentPlayingKey = null;
     }
 
-    notifyListeners();
+    if (oldPlayingKey != _currentPlayingKey) {
+      notifyListeners();
+    }
   }
 
   FeedPlayerState? getPlayerState(String key) {
@@ -733,6 +765,7 @@ class FeedVideoManager extends ChangeNotifier {
     _urlMap.remove(key);
     _cardVisibility.remove(key);
     _cardCenterY.remove(key);
+    _cardContexts.remove(key);
 
     if (_currentPlayingKey == key) {
       try {
@@ -754,6 +787,7 @@ class FeedVideoManager extends ChangeNotifier {
     _sectionVisibility.remove(sectionId);
     _sectionCenterY.remove(sectionId);
     _sectionActiveKey.remove(sectionId);
+    _sectionContexts.remove(sectionId);
     _evaluatePlayback();
   }
 
