@@ -4,6 +4,7 @@ import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -300,80 +301,89 @@ class _ProductDetailsActionSidebarState
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return Positioned(
-      right: 0,
-      bottom: widget.isExpanded ? 170 : 135,
-      child: Column(
-        children: [
-          // 1. Add to Cart Button
-          InkWell(
-            onTap: _handleAddToCart,
-            child: _isAddingToCart
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: SizedBox(
+      right: 4,
+      bottom: (widget.isExpanded ? 210 : 160) + bottomInset,
+      child: RepaintBoundary(
+        child: Column(
+          children: [
+            // 1. Add to Cart Button
+            CupertinoButton(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              pressedOpacity: 0.65,
+              onPressed: _handleAddToCart,
+              child: _isAddingToCart
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: CupertinoActivityIndicator(
+                        color: CupertinoColors.white,
+                        radius: 11,
+                      ),
+                    )
+                  : _buildActionIcon(Icons.add, "Panier"),
+            ),
+            const SizedBox(height: 14),
+
+            // 2. WhatsApp Button
+            CupertinoButton(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              pressedOpacity: 0.65,
+              onPressed: _handleWhatsApp,
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.6),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white),
+                    ),
+                    child: SvgPicture.asset(
+                      "assets/icon/ic_baseline-whatsapp.svg",
                       height: 25,
                       width: 25,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
                     ),
-                  )
-                : _buildActionIcon(Icons.add, "Panier"),
-          ),
-          const SizedBox(height: 20),
-
-          // 2. WhatsApp Button
-          InkWell(
-            onTap: _handleWhatsApp,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.6),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white),
                   ),
-                  child: SvgPicture.asset(
-                    "assets/icon/ic_baseline-whatsapp.svg",
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Whatsapp",
+                    style: TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 3. Share Button
+            CupertinoButton(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              pressedOpacity: 0.65,
+              onPressed: _handleShare,
+              child: Column(
+                children: [
+                  SvgPicture.asset(
+                    "assets/icon/mdi_share.svg",
+                    // ignore: deprecated_member_use
+                    color: Colors.white,
                     height: 25,
                     width: 25,
                   ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  "Whatsapp",
-                  style: TextStyle(color: Colors.white, fontSize: 11),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Partager",
+                    style: TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-
-          // 3. Share Button
-          InkWell(
-            onTap: _handleShare,
-            child: Column(
-              children: [
-                SvgPicture.asset(
-                  "assets/icon/mdi_share.svg",
-                  // ignore: deprecated_member_use
-                  color: Colors.white,
-                  height: 25,
-                  width: 25,
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  "Partager",
-                  style: TextStyle(color: Colors.white, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/data/models/cart_model.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 
 class CartBottomSheet extends StatefulWidget {
@@ -35,8 +36,15 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
             ),
-            child: const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+            child: const Column(
+              children: [
+                SizedBox(height: 24),
+                CoolShimmerBone.pill(width: 40, height: 4),
+                SizedBox(height: 16),
+                Expanded(
+                  child: ShimmerList.cart(itemCount: 4),
+                ),
+              ],
             ),
           );
         }

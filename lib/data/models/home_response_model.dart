@@ -1,3 +1,4 @@
+import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/data/models/product_model.dart';
 
 List<dynamic>? _extractList(dynamic raw) {
@@ -159,16 +160,10 @@ class StoryModel {
     final cType = (contentType ?? '').toLowerCase().trim();
     if (cType == 'audio' || cType == 'image') {
       if (mediaUrl != null && mediaUrl!.trim().isNotEmpty) {
-        return mediaUrl!;
+        return MediaUrlResolver.resolveUrl(mediaUrl);
       }
     }
-    if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
-      return hlsUrl!;
-    }
-    if (mediaUrl != null && mediaUrl!.trim().isNotEmpty) {
-      return mediaUrl!;
-    }
-    return '';
+    return MediaUrlResolver.resolveVideoUrl(mediaUrl: mediaUrl, hlsUrl: hlsUrl);
   }
 
   factory StoryModel.fromJson(Map<String, dynamic> json) {
@@ -254,27 +249,20 @@ class ProductModel {
   List<MediaModel> get safeMedia => media ?? const <MediaModel>[];
 
   String get effectiveVideoUrl {
-    if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) {
-      return hlsUrl!;
-    }
-    if (videoUrl != null && videoUrl!.trim().isNotEmpty) {
-      return videoUrl!;
-    }
+    final topLevel = MediaUrlResolver.resolveVideoUrl(
+      mediaUrl: videoUrl,
+      hlsUrl: hlsUrl,
+    );
+    if (topLevel.isNotEmpty) return topLevel;
+
     for (final m in safeMedia) {
       if (m.mediaType.toLowerCase() == 'video' &&
           m.effectiveMediaUrl.isNotEmpty) {
         return m.effectiveMediaUrl;
       }
     }
-    if (mainImage != null) {
-      final imgLower = mainImage!.toLowerCase().trim();
-      if (imgLower.endsWith('.mp4') ||
-          imgLower.endsWith('.mov') ||
-          imgLower.endsWith('.m3u8') ||
-          imgLower.endsWith('.webm') ||
-          imgLower.contains('.mp4?')) {
-        return mainImage!;
-      }
+    if (mainImage != null && MediaUrlResolver.isVideoUrl(mainImage)) {
+      return MediaUrlResolver.resolveUrl(mainImage);
     }
     return '';
   }
@@ -313,10 +301,17 @@ class ProductModel {
       }
     }
 
-    String? vUrl = json['video_url']?.toString() ?? json['video']?.toString();
+    String? vUrl =
+        json['video_url']?.toString() ??
+        json['video']?.toString() ??
+        json['video_file']?.toString() ??
+        json['media_url']?.toString() ??
+        json['file']?.toString();
     String? hUrl = json['hls_url']?.toString();
     String? tUrl =
-        json['thumbnail_url']?.toString() ?? json['thumbnail']?.toString();
+        json['thumbnail_url']?.toString() ??
+        json['thumbnail']?.toString() ??
+        json['thumb_url']?.toString();
 
     return ProductModel(
       id: json['id'] is num

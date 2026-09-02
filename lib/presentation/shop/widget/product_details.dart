@@ -1,20 +1,23 @@
-// ignore_for_file: must_be_immutable
-
-import 'package:binetatour/core/base_url/base_url.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/core/widgets/smooth_reels_scroll_physics.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/reels_video_controller_pool.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/shop/widget/product_details/product_media_gallery.dart';
+import 'package:binetatour/providers/product_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final int initialProductIndex;
   final List<ProductModel> allProducts;
+  final Duration? initialPosition;
 
   const ProductDetailsScreen({
     super.key,
     required this.initialProductIndex,
     required this.allProducts,
+    this.initialPosition,
   });
 
   @override
@@ -34,9 +37,34 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentPageIndex = widget.initialProductIndex;
-    _verticalController =
-        PageController(initialPage: widget.initialProductIndex);
-    _precacheAround(widget.initialProductIndex);
+    _verticalController = PageController(
+      initialPage: widget.initialProductIndex,
+    );
+    ReelsVideoControllerPool.instance.init();
+
+    // Immediately activate first video and pre-warm surrounding videos for 0ms startup
+    if (widget.allProducts.isNotEmpty &&
+        widget.initialProductIndex >= 0 &&
+        widget.initialProductIndex < widget.allProducts.length) {
+      final initialProd = widget.allProducts[widget.initialProductIndex];
+      final vUrl = initialProd.effectiveVideoUrl;
+      if (vUrl.isNotEmpty) {
+        final clean = _resolveVideoUrl(vUrl);
+        ReelsVideoControllerPool.instance.activateVideo(
+          itemIndex: widget.initialProductIndex,
+          url: clean,
+          nextUrls: _getUpcomingVideoUrls(widget.initialProductIndex),
+          prevUrl: _getPreviousVideoUrl(widget.initialProductIndex),
+          initialPosition: widget.initialPosition,
+        );
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _precacheAround(widget.initialProductIndex);
+      }
+    });
   }
 
   @override
@@ -44,37 +72,86 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       if (mounted) setState(() => _isScreenPaused = true);
+      ReelsVideoControllerPool.instance.pauseAll();
     } else if (state == AppLifecycleState.resumed) {
       if (mounted) setState(() => _isScreenPaused = false);
+      ReelsVideoControllerPool.instance.resume();
     }
   }
 
-  String _resolveUrl(String? url) {
-    if (url == null || url.trim().isEmpty) return '';
-    String clean = url.trim();
-    if (!clean.startsWith('http') &&
-        !clean.startsWith('file://') &&
-        !clean.startsWith('/data')) {
-      final base = BaseUrl.baseUrl;
-      clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
+  /// Resolves and normalizes a video URL using the central MediaUrlResolver.
+  String _resolveVideoUrl(String? url) => MediaUrlResolver.resolveUrl(url);
+
+  String _resolveUrl(String? url) => MediaUrlResolver.resolveUrl(url);
+
+  List<String> _getUpcomingVideoUrls(int index) {
+    final List<String> urls = [];
+    for (int nextIdx = index + 1;
+        nextIdx < widget.allProducts.length && urls.length < 2;
+        nextIdx++) {
+      final p = widget.allProducts[nextIdx];
+      final v = p.effectiveVideoUrl;
+      if (v.isNotEmpty) {
+        final resolved = _resolveVideoUrl(v);
+        if (resolved.isNotEmpty && !urls.contains(resolved)) {
+          urls.add(resolved);
+        }
+      }
     }
-    return clean;
+    return urls;
+  }
+
+  String? _getPreviousVideoUrl(int index) {
+    for (int prevIdx = index - 1; prevIdx >= 0; prevIdx--) {
+      final p = widget.allProducts[prevIdx];
+      final v = p.effectiveVideoUrl;
+      if (v.isNotEmpty) {
+        final resolved = _resolveVideoUrl(v);
+        if (resolved.isNotEmpty) return resolved;
+      }
+    }
+    return null;
   }
 
   void _precacheAround(int index) {
     if (!mounted) return;
-    final indices = [index + 1, index + 2, index - 1];
-    for (final nextIndex in indices) {
-      if (nextIndex >= 0 && nextIndex < widget.allProducts.length) {
-        final p = widget.allProducts[nextIndex];
+    // Priority: Immediate Next, Immediate Previous, Second Next, Second Previous
+    final indices = [index + 1, index - 1, index + 2, index - 2];
+    final List<String> priorityVideos = [];
+
+    for (final targetIndex in indices) {
+      if (targetIndex >= 0 && targetIndex < widget.allProducts.length) {
+        final p = widget.allProducts[targetIndex];
+
+        // 1. Pre-fetch detailed product JSON & variants in background
+        context.read<ProductProvider>().prefetchProductDetails(p.id);
+
+        // 2. Collect video URLs in priority order
         final vUrl = p.effectiveVideoUrl;
         if (vUrl.isNotEmpty) {
           final clean = _resolveUrl(vUrl);
-          if (clean.isNotEmpty) {
-            VideoCacheManager.instance.preCacheVideo(clean);
+          if (clean.isNotEmpty && !priorityVideos.contains(clean)) {
+            priorityVideos.add(clean);
+          }
+        }
+
+        // 3. Precache thumbnail image into Flutter memory cache
+        final tUrl = p.effectiveThumbnailUrl;
+        if (tUrl.isNotEmpty) {
+          final resolvedThumb = _resolveUrl(tUrl);
+          if (resolvedThumb.isNotEmpty && resolvedThumb.startsWith('http')) {
+            precacheImage(
+              NetworkImage(resolvedThumb),
+              context,
+            ).catchError((_) {});
           }
         }
       }
+    }
+
+    // 4. Batch-enqueue priority downloads (Immediate next at queue head)
+    if (priorityVideos.isNotEmpty) {
+      VideoCacheManager.instance.preCachePriorityUrls(priorityVideos);
     }
   }
 
@@ -82,45 +159,69 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _verticalController.dispose();
+    ReelsVideoControllerPool.instance.releaseSession();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: PageView.builder(
-          controller: _verticalController,
-          scrollDirection: Axis.vertical, // Swipe up for next product
-          physics: const SmoothReelsScrollPhysics(),
-          itemCount: widget.allProducts.length,
-          onPageChanged: (index) {
-            setState(() {
-              _currentPageIndex = index;
-            });
-            _precacheAround(index);
-          },
-          itemBuilder: (context, index) {
-            final product = widget.allProducts[index];
-            final isActive = index == _currentPageIndex && !_isScreenPaused;
-            return RepaintBoundary(
-              child: ProductMediaGallery(
-                product: product,
-                isActive: isActive,
-                isMuted: _isMuted,
-                onMuteToggle: () => setState(() => _isMuted = !_isMuted),
-                isExpanded: isExpanded,
-                onPause: () {
-                  if (mounted) setState(() => _isScreenPaused = true);
-                },
-                onResume: () {
-                  if (mounted) setState(() => _isScreenPaused = false);
-                },
-              ),
-            );
-          },
-        ),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: PageView.builder(
+        controller: _verticalController,
+        scrollDirection: Axis.vertical,
+        physics: const SmoothReelsScrollPhysics(),
+        allowImplicitScrolling:
+            true, // Pre-build adjacent pages for 0ms swiping
+        padEnds: false,
+        itemCount: widget.allProducts.length,
+        onPageChanged: (index) {
+          _currentPageIndex = index;
+          // Activate pre-warmed slot immediately (URL must match ProductVideoItem)
+          if (index >= 0 && index < widget.allProducts.length) {
+            final prod = widget.allProducts[index];
+            final vUrl = prod.effectiveVideoUrl;
+            if (vUrl.isNotEmpty) {
+              final clean = _resolveVideoUrl(vUrl);
+              ReelsVideoControllerPool.instance.activateVideo(
+                itemIndex: index,
+                url: clean,
+                nextUrls: _getUpcomingVideoUrls(index),
+                prevUrl: _getPreviousVideoUrl(index),
+              );
+            }
+          }
+          _precacheAround(index);
+          // Minimal setState — only updates isActive on children
+          if (mounted) setState(() {});
+        },
+        itemBuilder: (context, index) {
+          final product = widget.allProducts[index];
+          final isActive = index == _currentPageIndex && !_isScreenPaused;
+          return RepaintBoundary(
+            child: ProductMediaGallery(
+              key: ValueKey('gallery_${product.id}'),
+              product: product,
+              itemIndex: index,
+              isActive: isActive,
+              isMuted: _isMuted,
+              onMuteToggle: () {
+                setState(() => _isMuted = !_isMuted);
+                ReelsVideoControllerPool.instance.toggleMute();
+              },
+              isExpanded: isExpanded,
+              upcomingUrls: _getUpcomingVideoUrls(index),
+              onPause: () {
+                if (mounted) setState(() => _isScreenPaused = true);
+                ReelsVideoControllerPool.instance.pauseAll();
+              },
+              onResume: () {
+                if (mounted) setState(() => _isScreenPaused = false);
+                ReelsVideoControllerPool.instance.resume();
+              },
+            ),
+          );
+        },
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 import 'dart:math';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class ProductAudioItem extends StatefulWidget {
   final String audioUrl;
@@ -119,7 +120,9 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
       color: Colors.black,
       child: Center(
         child: !_isInitialized
-            ? const CircularProgressIndicator(color: Color(0xFFFF6900))
+            ? const CoolShimmer(
+                child: CoolShimmerBone.circle(size: 76),
+              )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

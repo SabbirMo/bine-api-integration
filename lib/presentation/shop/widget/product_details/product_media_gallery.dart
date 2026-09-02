@@ -1,6 +1,7 @@
 // ignore_for_file: must_be_immutable
 
-import 'package:binetatour/core/base_url/base_url.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
+import 'package:binetatour/core/utils/price_utils.dart';
 import 'package:binetatour/core/widgets/smooth_reels_scroll_physics.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/shop/widget/product_details/product_details_action_sidebar.dart';
@@ -13,22 +14,26 @@ import 'package:provider/provider.dart';
 
 class ProductMediaGallery extends StatefulWidget {
   final ProductModel product;
+  final int? itemIndex;
   final bool isMuted;
   final bool isActive;
   bool isExpanded;
   final VoidCallback onMuteToggle;
   final VoidCallback? onPause;
   final VoidCallback? onResume;
+  final List<String>? upcomingUrls;
 
   ProductMediaGallery({
     super.key,
     required this.product,
+    this.itemIndex,
     this.isActive = true,
     required this.isExpanded,
     required this.isMuted,
     required this.onMuteToggle,
     this.onPause,
     this.onResume,
+    this.upcomingUrls,
   });
 
   @override
@@ -41,34 +46,15 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
   late ProductModel _product;
   bool _isLoadingDetails = true;
 
-  String _resolveUrl(String? url) {
-    if (url == null || url.trim().isEmpty) return '';
-    String clean = url.trim();
-    if (!clean.startsWith('http') &&
-        !clean.startsWith('file://') &&
-        !clean.startsWith('/data')) {
-      final base = BaseUrl.baseUrl;
-      clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
-    }
-    return clean;
-  }
+  String _resolveUrl(String? url) => MediaUrlResolver.resolveUrl(url);
 
-  bool _isVideoUrl(String url) {
-    if (url.trim().isEmpty) return false;
-    final clean = url.trim().toLowerCase().split('?').first.split('#').first;
-    return clean.endsWith('.mp4') ||
-        clean.endsWith('.mov') ||
-        clean.endsWith('.m3u8') ||
-        clean.endsWith('.webm') ||
-        clean.endsWith('.avi') ||
-        clean.endsWith('.mkv') ||
-        clean.endsWith('.flv') ||
-        clean.endsWith('.3gp') ||
-        clean.contains('.mp4') ||
-        clean.contains('.m3u8');
-  }
+  bool _isVideoUrl(String url) => MediaUrlResolver.isVideoUrl(url);
+
+  List<ProductContent>? _cachedMediaList;
 
   List<ProductContent> get _mediaContent {
+    if (_cachedMediaList != null) return _cachedMediaList!;
+
     if (_product.media.isNotEmpty) {
       final list = _product.media.map((m) {
         final rawUrl = m.effectiveMediaUrl.isNotEmpty
@@ -80,7 +66,8 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
         final isAud = m.mediaType.toLowerCase() == 'audio';
         final isImg = m.mediaType.toLowerCase() == 'image' && !isVid && !isAud;
 
-        final rawThumb = (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty)
+        final rawThumb =
+            (m.thumbnailUrl != null && m.thumbnailUrl!.trim().isNotEmpty)
             ? m.thumbnailUrl!
             : _product.effectiveThumbnailUrl;
         final resolvedThumb = _resolveUrl(rawThumb);
@@ -101,6 +88,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
         return 0;
       });
 
+      _cachedMediaList = list;
       return list;
     }
 
@@ -137,6 +125,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
       }
     }
 
+    _cachedMediaList = fallbackList;
     return fallbackList;
   }
 
@@ -152,17 +141,21 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
         _product.description != null && _product.description!.isNotEmpty;
     _isLoadingDetails = !hasFullDetails;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _fetchDetails();
-      }
-    });
+    if (!hasFullDetails) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _fetchDetails();
+        }
+      });
+    }
   }
 
   @override
   void didUpdateWidget(ProductMediaGallery oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.product != widget.product) {
+    if (oldWidget.product.id != widget.product.id) {
+      _cachedMediaList = null;
+      _currentMediaIndex = 0;
       final cachedProduct = context.read<ProductProvider>().getCachedProduct(
         widget.product.id,
       );
@@ -170,8 +163,12 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
       final hasFullDetails =
           _product.description != null && _product.description!.isNotEmpty;
       _isLoadingDetails = !hasFullDetails;
-      if (mounted) {
+      if (!hasFullDetails && mounted) {
         _fetchDetails();
+      }
+      // Reset horizontal page position
+      if (_horizontalController.hasClients) {
+        _horizontalController.jumpTo(0);
       }
     }
   }
@@ -181,8 +178,24 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
         .read<ProductProvider>()
         .fetchProductDetails(widget.product.id);
     if (mounted && detailedProduct != null) {
+      final oldMediaList = _cachedMediaList;
+      _product = detailedProduct;
+      _cachedMediaList = null;
+      final newMediaList = _mediaContent;
+      // Preserve active playing first media if URLs match so PageView doesn't recreate widget
+      if (oldMediaList != null &&
+          oldMediaList.isNotEmpty &&
+          newMediaList.isNotEmpty &&
+          oldMediaList.first.url == newMediaList.first.url) {
+        _cachedMediaList = [oldMediaList.first, ...newMediaList.skip(1)];
+      }
+      // Precache secondary images in gallery for instant horizontal swipes
+      for (final m in newMediaList) {
+        if (m.isImage && m.url.startsWith('http')) {
+          precacheImage(NetworkImage(m.url), context).catchError((_) {});
+        }
+      }
       setState(() {
-        _product = detailedProduct;
         _isLoadingDetails = false;
       });
     } else if (mounted) {
@@ -193,17 +206,19 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
   }
 
   @override
+  void dispose() {
+    _horizontalController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final mediaList = _mediaContent;
-    final String currentUrl = mediaList.isNotEmpty
-        ? mediaList[_currentMediaIndex.clamp(0, mediaList.length - 1)].url
-        : (_product.mainImage ?? '');
-
+    final clampedIndex = _currentMediaIndex.clamp(0, mediaList.length - 1);
+    final currentMedia = mediaList.isNotEmpty ? mediaList[clampedIndex] : null;
+    final String currentUrl = currentMedia?.url ?? (_product.mainImage ?? '');
     final bool isVideoOrAudio =
-        mediaList.isNotEmpty &&
-        (mediaList[_currentMediaIndex.clamp(0, mediaList.length - 1)].isVideo ||
-            mediaList[_currentMediaIndex.clamp(0, mediaList.length - 1)]
-                .isAudio);
+        currentMedia != null && (currentMedia.isVideo || currentMedia.isAudio);
 
     return Stack(
       children: [
@@ -220,18 +235,37 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
                 controller: _horizontalController,
                 scrollDirection: Axis.horizontal,
                 physics: const SmoothReelsScrollPhysics(),
+                allowImplicitScrolling: true,
                 itemCount: mediaList.length,
                 onPageChanged: (i) => setState(() => _currentMediaIndex = i),
                 itemBuilder: (context, index) {
                   final media = mediaList[index];
                   final isMediaActive =
                       widget.isActive && index == _currentMediaIndex;
+                  final discPerc =
+                      double.tryParse(_product.discountPercentage) ?? 0;
+
                   return ProductMediaView(
+                    key: ValueKey('media_${_product.id}_${media.url}'),
                     media: media,
                     productId: _product.id,
+                    itemIndex: widget.itemIndex,
                     mainImage: _product.mainImage,
                     isMuted: widget.isMuted,
                     isActive: isMediaActive,
+                    upcomingUrls: widget.upcomingUrls,
+                    title: _product.productName,
+                    price: AppPriceUtils.formatPrice(
+                      _product.priceAfterDiscount.isNotEmpty
+                          ? _product.priceAfterDiscount
+                          : _product.sellingPrice,
+                    ),
+                    oldPrice: discPerc > 0
+                        ? AppPriceUtils.formatPrice(_product.sellingPrice)
+                        : null,
+                    discount: discPerc > 0 ? "-${discPerc.toInt()}%" : null,
+                    thumbnailUrl:
+                        media.thumbnailUrl ?? _product.effectiveThumbnailUrl,
                   );
                 },
               ),
@@ -246,7 +280,7 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
           onClose: () => Navigator.pop(context),
         ),
 
-        // 3. Right Floating Action Sidebar
+        // 3. Right Floating Action Sidebar (Positioned at bottom-right)
         ProductDetailsActionSidebar(
           product: _product,
           currentMediaUrl: currentUrl,
@@ -255,18 +289,20 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
           onResume: widget.onResume,
         ),
 
-        // 4. Bottom Gradient Info & Purchase Card
-        ProductDetailsBottomCard(
-          product: _product,
-          isExpanded: widget.isExpanded,
-          isLoadingDetails: _isLoadingDetails,
-          onToggleExpand: () {
-            setState(() {
-              widget.isExpanded = !widget.isExpanded;
-            });
-          },
-          onPause: widget.onPause,
-          onResume: widget.onResume,
+        // 4. Bottom Gradient Info & Purchase Card — isolated to prevent gradient repaints
+        RepaintBoundary(
+          child: ProductDetailsBottomCard(
+            product: _product,
+            isExpanded: widget.isExpanded,
+            isLoadingDetails: _isLoadingDetails,
+            onToggleExpand: () {
+              setState(() {
+                widget.isExpanded = !widget.isExpanded;
+              });
+            },
+            onPause: widget.onPause,
+            onResume: widget.onResume,
+          ),
         ),
       ],
     );

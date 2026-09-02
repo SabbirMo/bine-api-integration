@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -70,14 +71,16 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       ),
       body: Consumer<OrderProvider>(
         builder: (context, orderProvider, child) {
-          if (orderProvider.isLoading) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-            );
+          if (orderProvider.isHistoryLoading &&
+              orderProvider.orderHistory.isEmpty) {
+            return const ShimmerList.invoices(itemCount: 4);
           }
 
-          if (orderProvider.errorMessage != null) {
-            return Center(child: Text("Erreur: ${orderProvider.errorMessage}"));
+          if (orderProvider.historyErrorMessage != null &&
+              orderProvider.orderHistory.isEmpty) {
+            return Center(
+              child: Text("Erreur: ${orderProvider.historyErrorMessage}"),
+            );
           }
 
           final allOrders = orderProvider.orderHistory;
@@ -277,13 +280,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       }
                     },
               icon: isDownloading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
+                  ? const CoolShimmer(
+                      child: CoolShimmerBone.circle(size: 18),
                     )
                   : const Icon(Icons.download, size: 20),
               label: Text(

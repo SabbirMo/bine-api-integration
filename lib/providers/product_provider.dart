@@ -201,6 +201,14 @@ class ProductProvider extends ChangeNotifier {
     return fallback;
   }
 
+  /// Silently pre-fetches and caches product details in background for 0ms transitions.
+  void prefetchProductDetails(int id) {
+    if (id <= 0 || isProductDetailsCached(id) || _inFlightFetches.containsKey(id)) {
+      return;
+    }
+    fetchProductDetails(id).catchError((_) => null);
+  }
+
   Future<ProductModel?> fetchProductDetails(
     int id, {
     bool forceRefresh = false,

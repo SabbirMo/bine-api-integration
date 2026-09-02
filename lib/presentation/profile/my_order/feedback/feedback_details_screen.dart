@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/feedback_provider.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class FeedbackDetailsScreen extends StatefulWidget {
   final String orderId;
@@ -338,7 +339,9 @@ class _FeedbackDetailsScreenState extends State<FeedbackDetailsScreen> {
                 elevation: 0,
               ),
               child: provider.isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
+                  ? const CoolShimmer(
+                      child: CoolShimmerBone.pill(width: 80, height: 20),
+                    )
                   : const Text(
                       "Envoyer l'avis",
                       style: TextStyle(

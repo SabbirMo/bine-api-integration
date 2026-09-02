@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/story_provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class VideoStoryScreen extends StatefulWidget {
   final List<StoryContent> stories;
@@ -269,12 +270,16 @@ class _VideoStoryScreenState extends State<VideoStoryScreen> {
             if (story.isAudio)
               const Icon(Icons.music_note, size: 100, color: Colors.white54),
             if (_isLoading)
-              const CircularProgressIndicator(color: Color(0xFFFF6900)),
+              const CoolShimmer(
+                child: CoolShimmerBone.circle(size: 40),
+              ),
           ],
         );
       }
     }
-    return const CircularProgressIndicator(color: Color(0xFFFF6900));
+    return const CoolShimmer(
+      child: CoolShimmerBone.circle(size: 40),
+    );
   }
 
   Widget _buildNavigationControls() {

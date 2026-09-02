@@ -1,28 +1,30 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
-import 'package:binetatour/core/base_url/base_url.dart';
-import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
+import 'package:binetatour/core/video/reels_video_controller_pool.dart';
 
 class ProductVideoItem extends StatefulWidget {
   final int productId;
+  final int? itemIndex;
   final String videoUrl;
   final String? fallbackUrl;
   final String? thumbnailUrl;
   final bool isMuted;
   final bool isActive;
+  final List<String>? upcomingUrls;
 
   const ProductVideoItem({
     super.key,
     required this.productId,
+    this.itemIndex,
     required this.videoUrl,
     this.fallbackUrl,
     this.thumbnailUrl,
     required this.isMuted,
     this.isActive = true,
+    this.upcomingUrls,
   });
 
   @override
@@ -30,297 +32,270 @@ class ProductVideoItem extends StatefulWidget {
 }
 
 class _ProductVideoItemState extends State<ProductVideoItem> {
-  Player? _player;
-  VideoController? _controller;
+  ReelsPlayerSlot? _slot;
 
-  bool _hasError = false;
-  bool _isInitializing = false;
-  bool _isPlaying = false;
-  bool _hasStartedPlaying = false;
+  // Memoized URL computations (avoid re-computing on every build)
+  late String _cachedVideoUrl;
+  late String _cachedThumbnail;
+  bool _hasTrackedView = false;
 
-  String get _resolvedVideoUrl {
-    String url = widget.videoUrl.trim();
-    if (url.isEmpty && widget.fallbackUrl != null) {
-      url = widget.fallbackUrl!.trim();
-    }
-    return _resolveUrl(url);
-  }
-
-  String _resolveUrl(String rawUrl) {
-    String url = rawUrl.trim();
-    if (url.isNotEmpty &&
-        !url.startsWith('http') &&
-        !url.startsWith('file://') &&
-        !url.startsWith('/data')) {
-      final base = BaseUrl.baseUrl;
-      if (url.startsWith('/')) {
-        url = '$base$url';
-      } else {
-        url = '$base/$url';
-      }
-    }
-    return url;
-  }
+  // Static decorations (avoid allocating on every build)
+  static const _playIconDecoration = BoxDecoration(
+    color: Color(0x80000000), // Colors.black with 50% alpha
+    shape: BoxShape.circle,
+  );
+  static const _blackContainer = ColoredBox(color: Colors.black);
 
   @override
   void initState() {
     super.initState();
+    _computeCachedUrls();
+    final itemIdx = widget.itemIndex ?? widget.productId;
+    _slot = ReelsVideoControllerPool.instance.getSlotForIndex(
+      itemIdx,
+      _cachedVideoUrl,
+    );
     if (widget.isActive) {
-      _initPlayer();
-    }
-  }
-
-  Future<void> _initPlayer() async {
-    if (_isInitializing || _player != null) return;
-
-    setState(() {
-      _isInitializing = true;
-      _hasError = false;
-      _hasStartedPlaying = false;
-    });
-
-    try {
-      final cleanUrl = _resolvedVideoUrl;
-      if (cleanUrl.isEmpty) {
-        throw Exception('Empty video URL');
-      }
-
-      _player = Player(
-        configuration: const PlayerConfiguration(
-          bufferSize: 1024 * 1024,
-          logLevel: MPVLogLevel.warn,
-        ),
-      );
-
-      _controller = VideoController(
-        _player!,
-        configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true,
-        ),
-      );
-
-      _player!.setPlaylistMode(PlaylistMode.loop);
-      _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
-
-      try {
-        final platform = _player!.platform;
-        if (platform != null) {
-          (platform as dynamic).setProperty('hls-bitrate', 'auto');
-          (platform as dynamic).setProperty('cache', 'yes');
-        }
-      } catch (_) {}
-
-      _player!.stream.width.listen((_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
-      _player!.stream.height.listen((_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
-
-      _player!.stream.playing.listen((playing) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = playing;
-            if (playing && _hasStartedPlaying) {
-              _isInitializing = false;
-            }
-          });
-        }
-      });
-
-      _player!.stream.position.listen((pos) {
-        if (mounted && pos > Duration.zero && !_hasStartedPlaying) {
-          setState(() {
-            _hasStartedPlaying = true;
-            _isInitializing = false;
-          });
-        }
-      });
-
-      // 1. Get cached local file if already downloaded for instant 0ms playback
-      final cachedPath = VideoCacheManager.instance.getCachedFilePath(cleanUrl);
-      final playPath = cachedPath ?? cleanUrl;
-
-      // 2. Open media with autoPlay if active
-      await _player!.open(Media(playPath), play: widget.isActive);
-
-      // If not cached yet, trigger background caching
-      if (cachedPath == null) {
-        VideoCacheManager.instance.preCacheVideo(cleanUrl);
-      }
-
-      if (mounted) {
-        context.read<ProductProvider>().trackVideoView(widget.productId);
-      }
-    } catch (error) {
-      debugPrint('Video Player Error: $error');
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _isInitializing = false;
-          _hasStartedPlaying = false;
+      if (_slot == null ||
+          ReelsVideoControllerPool.instance.activeProductIndex != itemIdx) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && widget.isActive) {
+            _activateSlot();
+            setState(() {});
+          }
         });
-        _player?.dispose();
-        _player = null;
-        _controller = null;
+      } else {
+        if (!_slot!.player.state.playing) {
+          try {
+            _slot!.player.play();
+          } catch (_) {}
+        }
       }
     }
   }
 
-  bool get _isVideoReady => _player != null && _controller != null;
+  void _computeCachedUrls() {
+    _cachedVideoUrl = _resolveVideoUrl();
+    _cachedThumbnail = _computeThumbnail();
+  }
+
+  String _resolveVideoUrl() {
+    String url = widget.videoUrl.trim();
+    if (url.isEmpty && widget.fallbackUrl != null) {
+      url = widget.fallbackUrl!.trim();
+    }
+    return MediaUrlResolver.resolveUrl(url);
+  }
+
+  String _computeThumbnail() {
+    if (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty) {
+      return widget.thumbnailUrl!.trim();
+    }
+    final vUrl = _cachedVideoUrl;
+    if (vUrl.contains('cloudflarestream.com')) {
+      if (vUrl.contains('/downloads/default.mp4')) {
+        return vUrl.replaceAll(
+          '/downloads/default.mp4',
+          '/thumbnails/thumbnail.jpg?width=640',
+        );
+      }
+      if (vUrl.contains('/manifest/video.m3u8')) {
+        return vUrl.replaceAll(
+          '/manifest/video.m3u8',
+          '/thumbnails/thumbnail.jpg?width=640',
+        );
+      }
+    }
+    return '';
+  }
+
+  void _activateSlot() {
+    if (_cachedVideoUrl.isEmpty) return;
+
+    final itemIdx = widget.itemIndex ?? widget.productId;
+    final existing = ReelsVideoControllerPool.instance.getSlotForIndex(
+      itemIdx,
+      _cachedVideoUrl,
+    );
+    if (existing != null &&
+        ReelsVideoControllerPool.instance.activeProductIndex == itemIdx) {
+      _slot = existing;
+      if (!existing.player.state.playing) {
+        try {
+          existing.player.play();
+        } catch (_) {}
+      }
+    } else {
+      _slot = ReelsVideoControllerPool.instance.activateVideo(
+        itemIndex: itemIdx,
+        url: _cachedVideoUrl,
+        nextUrls: widget.upcomingUrls,
+      );
+    }
+
+    if (!_hasTrackedView) {
+      _hasTrackedView = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<ProductProvider>().trackVideoView(widget.productId);
+        }
+      });
+    }
+  }
 
   @override
   void didUpdateWidget(ProductVideoItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoUrl != widget.videoUrl) {
-      _player?.dispose();
-      _player = null;
-      _controller = null;
+
+    final oldResolvedVideo = _cachedVideoUrl;
+    _computeCachedUrls();
+    final isVideoChanged = oldResolvedVideo != _cachedVideoUrl;
+    final isIndexChanged = oldWidget.itemIndex != widget.itemIndex;
+
+    // Only re-activate slot if VIDEO URL or ITEM INDEX actually changed.
+    // Never restart video on thumbnail or other metadata updates to eliminate slight reload.
+    if (isVideoChanged || isIndexChanged) {
       if (widget.isActive) {
-        _initPlayer();
-      }
-    } else {
-      if (oldWidget.isMuted != widget.isMuted && _player != null) {
-        _player!.setVolume(widget.isMuted ? 0.0 : 100.0);
-      }
-      if (oldWidget.isActive != widget.isActive) {
-        if (widget.isActive) {
-          if (_player == null) {
-            _initPlayer();
-          } else {
-            _player!.play();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && widget.isActive) {
+            _activateSlot();
+            setState(() {});
           }
-        } else {
-          _player?.pause();
+        });
+      } else {
+        _slot = null;
+        setState(() {});
+      }
+    } else if (oldWidget.isActive != widget.isActive) {
+      if (widget.isActive) {
+        final itemIdx = widget.itemIndex ?? widget.productId;
+        _slot = ReelsVideoControllerPool.instance.getSlotForIndex(
+          itemIdx,
+          _cachedVideoUrl,
+        );
+        if (_slot == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && widget.isActive) {
+              _activateSlot();
+              setState(() {});
+            }
+          });
         }
+        setState(() {});
+      } else {
+        try {
+          _slot?.player.pause();
+        } catch (_) {}
+        setState(() {});
       }
     }
   }
 
   @override
   void dispose() {
-    try {
-      _player?.stop();
-      _player?.dispose();
-    } catch (_) {}
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_hasError) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 50),
-            const SizedBox(height: 10),
-            ElevatedButton(onPressed: _initPlayer, child: const Text('Retry')),
-          ],
-        ),
-      );
-    }
-
-    final double? rawW = _player?.state.width?.toDouble();
-    final double? rawH = _player?.state.height?.toDouble();
-    final bool hasValidDimensions =
-        rawW != null && rawW > 0 && rawH != null && rawH > 0;
-    final double videoWidth = hasValidDimensions ? rawW : 16.0;
-    final double videoHeight = hasValidDimensions ? rawH : 9.0;
+    final slot = _slot;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
-        if (_isVideoReady) {
-          setState(() {
-            _isPlaying ? _player!.pause() : _player!.play();
-          });
+        if (slot != null) {
+          if (slot.player.state.playing) {
+            slot.player.pause();
+          } else {
+            slot.player.play();
+          }
+          // No setState needed — ValueListenableBuilder on slot.isPlaying handles UI
         }
       },
-      child: Center(
+      child: ColoredBox(
+        color: Colors.black,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Blurred Background Layer using CDN thumbnail
-            if (widget.thumbnailUrl != null &&
-                widget.thumbnailUrl!.trim().isNotEmpty)
-              Positioned.fill(
-                child: ClipRect(
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
-                    child: Image.network(
-                      widget.thumbnailUrl!,
-                      fit: BoxFit.cover,
-                      color: Colors.black.withValues(alpha: 0.35),
-                      colorBlendMode: BlendMode.darken,
-                      errorBuilder: (context, error, stackTrace) =>
-                          Container(color: Colors.black),
+            // 1. Live Video Surface — width fits the screen perfectly
+            if (slot != null)
+              RepaintBoundary(
+                child: SizedBox.expand(
+                  child: Center(
+                    child: Video(
+                      controller: slot.videoController,
+                      controls: NoVideoControls,
+                      fit: BoxFit.fitWidth,
+                      fill: Colors.transparent,
+                      alignment: Alignment.center,
                     ),
                   ),
                 ),
+              ),
+
+            // 2. Poster Image — continuous AnimatedOpacity crossfade to video when first frame renders
+            if (slot != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: slot.hasFirstFrame,
+                child: _buildPoster(),
+                builder: (context, hasFrame, child) {
+                  return IgnorePointer(
+                    ignoring: hasFrame,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOut,
+                      opacity: hasFrame ? 0.0 : 1.0,
+                      child: child,
+                    ),
+                  );
+                },
               )
             else
-              Container(color: Colors.black),
+              IgnorePointer(child: _buildPoster()),
 
-            Positioned.fill(
-              child: Container(color: Colors.black.withValues(alpha: 0.25)),
-            ),
-
-            // 2. Video Player Layer (Always attached to surface when ready)
-            if (_isVideoReady)
-              Center(
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  child: SizedBox(
-                    width: videoWidth,
-                    height: videoHeight,
-                    child: RepaintBoundary(
-                      child: Video(
-                        controller: _controller!,
-                        controls: NoVideoControls,
-                        fill: Colors.transparent,
+            // 3. Low internet / loading buffering spinner
+            if (slot != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: slot.isBuffering,
+                builder: (context, isBuffering, _) {
+                  if (!isBuffering) return const SizedBox.shrink();
+                  return const Center(
+                    child: SizedBox(
+                      width: 38,
+                      height: 38,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFFE8500A),
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
 
-            // 3. Instant Thumbnail / Poster Layer with Smooth Fade
-            AnimatedOpacity(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              opacity: _hasStartedPlaying ? 0.0 : 1.0,
-              child: IgnorePointer(
-                child:
-                    widget.thumbnailUrl != null &&
-                        widget.thumbnailUrl!.trim().isNotEmpty
-                    ? Image.network(
-                        widget.thumbnailUrl!,
-                        fit: BoxFit.cover,
-                        gaplessPlayback: true,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Container(color: Colors.black),
-                      )
-                    : Container(color: Colors.black),
-              ),
-            ),
-
-            // Play icon overlay when paused
-            if (!_isPlaying && _isVideoReady && !_isInitializing)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 50,
+            // 3. Play icon overlay — uses ValueListenableBuilder instead of setState
+            if (slot != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: slot.isPlaying,
+                builder: (context, isPlaying, child) {
+                  if (isPlaying) return const SizedBox.shrink();
+                  return child!;
+                },
+                child: const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: DecoratedBox(
+                      decoration: _playIconDecoration,
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 50,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -328,5 +303,23 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         ),
       ),
     );
+  }
+
+  Widget _buildPoster() {
+    if (_cachedThumbnail.isNotEmpty) {
+      return SizedBox.expand(
+        child: Center(
+          child: Image.network(
+            _cachedThumbnail,
+            fit: BoxFit.fitWidth,
+            width: double.infinity,
+            alignment: Alignment.center,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stackTrace) => _blackContainer,
+          ),
+        ),
+      );
+    }
+    return _blackContainer;
   }
 }

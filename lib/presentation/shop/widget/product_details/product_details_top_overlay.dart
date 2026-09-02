@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 class ProductDetailsTopOverlay extends StatelessWidget {
   final int currentMediaIndex;
@@ -22,15 +22,18 @@ class ProductDetailsTopOverlay extends StatelessWidget {
     required IconData icon,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size.square(36),
+      pressedOpacity: 0.65,
+      onPressed: onTap,
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: const BoxDecoration(
-          color: Colors.white10,
+          color: Color(0x33FFFFFF), // Translucent Cupertino glass feel
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: Colors.white, size: 22),
+        child: Icon(icon, color: CupertinoColors.white, size: 20),
       ),
     );
   }
@@ -40,7 +43,7 @@ class ProductDetailsTopOverlay extends StatelessWidget {
     return RepaintBoundary(
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Row(
             children: [
               // Media Counter Badge (e.g. 1 / 6)
@@ -48,17 +51,19 @@ class ProductDetailsTopOverlay extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 6,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(20),
+                    color: const Color(0x66000000), // Cupertino blur background
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
                     "${currentMediaIndex + 1} / $mediaCount",
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                      color: CupertinoColors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ),
@@ -66,13 +71,15 @@ class ProductDetailsTopOverlay extends StatelessWidget {
               // Mute Button (only for Videos & Audios)
               if (isVideoOrAudio)
                 _buildCircleIcon(
-                  icon: isMuted ? Icons.volume_off : Icons.volume_up,
+                  icon: isMuted
+                      ? CupertinoIcons.speaker_slash_fill
+                      : CupertinoIcons.speaker_2_fill,
                   onTap: onMuteToggle,
                 ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               // Close Button
               _buildCircleIcon(
-                icon: Icons.close,
+                icon: CupertinoIcons.xmark,
                 onTap: onClose,
               ),
             ],

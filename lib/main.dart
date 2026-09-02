@@ -20,46 +20,82 @@ import 'providers/feedback_provider.dart';
 import 'providers/story_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/store_settings_provider.dart';
-
 import 'package:binetatour/core/story/story_hls_preloader.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
+import 'package:binetatour/core/video/reels_video_controller_pool.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('⚠️ [FirebaseMessaging] Background handler error: $e');
+  }
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
 
-  // Pre-warm native media_kit engine in background for instant first-story playback
-  StoryHlsPreloader.instance.warmupEngine();
+  // Global crash protection: prevent unhandled exceptions from terminating isolate
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint(' [FlutterError] ${details.exceptionAsString()}');
+  };
+
+  WidgetsBinding.instance.platformDispatcher.onError =
+      (Object error, StackTrace stack) {
+        debugPrint('[PlatformDispatcherError] $error\n$stack');
+        return true; // Handles error and prevents app crash
+      };
+
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e) {
+    debugPrint(' [MediaKit] Initialization warning: $e');
+  }
+
+  // Pre-warm native media_kit engines in background for instant playback
+  try {
+    StoryHlsPreloader.instance.warmupEngine();
+    ReelsVideoControllerPool.instance.init();
+  } catch (e) {
+    debugPrint(' [VideoWarmup] Preload warning: $e');
+  }
 
   VisibilityDetectorController.instance.updateInterval = const Duration(
     milliseconds: 200,
   );
 
   // Pre-initialize and warm up disk video cache for 0ms cold-start playback
-  VideoCacheManager.instance.init();
+  try {
+    VideoCacheManager.instance.init();
+  } catch (e) {
+    debugPrint(' [VideoCacheManager] Cache init warning: $e');
+  }
 
-  await dotenv.load(fileName: ".env");
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint(' [DotEnv] Could not load .env file: $e');
+  }
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    NotificationService.instance.init();
+    FirebaseService.instance.init();
+  } catch (e) {
+    debugPrint('[Firebase] Initialization error: $e');
+  }
 
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-  NotificationService.instance.init();
-
-  FirebaseService.instance.init();
-
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(
     MultiProvider(
@@ -106,8 +142,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
       FeedVideoManager.instance.pauseAll();
+      ReelsVideoControllerPool.instance.pauseAll();
     } else if (state == AppLifecycleState.resumed) {
-      FeedVideoManager.instance.resume();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Only resume if app is still mounted and on front frame
+        FeedVideoManager.instance.resume();
+        ReelsVideoControllerPool.instance.resume();
+      });
     }
   }
 
@@ -118,6 +159,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // to prevent native libmpv FFI callback race conditions.
     try {
       FeedVideoManager.instance.pauseAll();
+      ReelsVideoControllerPool.instance.pauseAll();
     } catch (_) {}
   }
 

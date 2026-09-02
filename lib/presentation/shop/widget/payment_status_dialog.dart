@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:binetatour/data/models/payment_status_model.dart';
 import 'package:binetatour/providers/order_provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class PaymentStatusDialog extends StatefulWidget {
   final int transactionId;
@@ -449,13 +450,8 @@ class _PaymentStatusDialogState extends State<PaymentStatusDialog> {
           ),
           child: Row(
             children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: themeColor,
-                ),
+              const CoolShimmer(
+                child: CoolShimmerBone.circle(size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -495,10 +491,8 @@ class _PaymentStatusDialogState extends State<PaymentStatusDialog> {
                 ? null
                 : () => _checkStatus(manual: true),
             icon: _isManualChecking
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                ? const CoolShimmer(
+                    child: CoolShimmerBone.circle(size: 16),
                   )
                 : const Icon(Icons.refresh, size: 18),
             label: const Text(

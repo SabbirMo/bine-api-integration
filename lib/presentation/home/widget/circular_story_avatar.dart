@@ -1,5 +1,6 @@
 import 'package:binetatour/presentation/home/home_page.dart';
 import 'package:binetatour/presentation/home/widget/dashboard_border_pointer.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 import 'package:flutter/material.dart';
 
 class CircularStoryAvatar extends StatelessWidget {
@@ -22,11 +23,12 @@ class CircularStoryAvatar extends StatelessWidget {
               Container(
                 width: 80,
                 height: 80,
-                padding: const EdgeInsets.all(
-                  4,
-                ), // Space between border and image
+                padding: const EdgeInsets.all(4),
                 child: CustomPaint(
-                  painter: DashedBorderPainter(itemCount: item.storyCount),
+                  painter: DashedBorderPainter(
+                    itemCount: item.storyCount,
+                    color: const Color(0xFFFF6900),
+                  ),
                   child: Container(
                     decoration: const BoxDecoration(shape: BoxShape.circle),
                     child: Padding(
@@ -41,18 +43,8 @@ class CircularStoryAvatar extends StatelessWidget {
                                 loadingBuilder:
                                     (context, child, loadingProgress) {
                                       if (loadingProgress == null) return child;
-                                      return Container(
-                                        color: const Color(0xFFFFF1E6),
-                                        child: const Center(
-                                          child: SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Color(0xFFFF6900),
-                                            ),
-                                          ),
-                                        ),
+                                      return const CoolShimmer(
+                                        child: CoolShimmerBone.circle(size: 72),
                                       );
                                     },
                                 errorBuilder: (context, error, stackTrace) =>

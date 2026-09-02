@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/story_detail_provider.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/presentation/home/widget/story/story_audio_wave.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class StoryDetailContent extends StatelessWidget {
   final String userName;
@@ -130,13 +131,8 @@ class StoryDetailContent extends StatelessWidget {
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                     const SizedBox(height: 14),
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFFF6900),
-                        strokeWidth: 2.2,
-                      ),
+                    const CoolShimmer(
+                      child: CoolShimmerBone.circle(size: 20),
                     ),
                   ],
                 ),
@@ -211,13 +207,8 @@ class StoryDetailContent extends StatelessWidget {
                     width: 1.5,
                   ),
                 ),
-                child: const SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: CircularProgressIndicator(
-                    color: Color(0xFFFF6900),
-                    strokeWidth: 2.8,
-                  ),
+                child: const CoolShimmer(
+                  child: CoolShimmerBone.circle(size: 26),
                 ),
               ),
             );
@@ -276,13 +267,8 @@ class StoryDetailContent extends StatelessWidget {
                       width: 1.5,
                     ),
                   ),
-                  child: const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Color(0xFFFF6900),
-                      strokeWidth: 2.5,
-                    ),
+                  child: const CoolShimmer(
+                    child: CoolShimmerBone.circle(size: 24),
                   ),
                 ),
               ),
@@ -293,9 +279,8 @@ class StoryDetailContent extends StatelessWidget {
 
     // Default loading canvas
     return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFFFF6900),
-        strokeWidth: 3.0,
+      child: CoolShimmer(
+        child: CoolShimmerBone.circle(size: 48),
       ),
     );
   }
@@ -404,13 +389,8 @@ class StoryDetailContent extends StatelessWidget {
                 ],
               ),
               child: provider.isLoading && !provider.isPlaying
-                  ? const SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.8,
-                      ),
+                  ? const CoolShimmer(
+                      child: CoolShimmerBone.circle(size: 36),
                     )
                   : Icon(
                       provider.isPlaying

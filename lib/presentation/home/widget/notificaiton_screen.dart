@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/data/models/notification_model.dart';
 import 'package:binetatour/providers/notification_provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -81,52 +82,48 @@ class _NotificationScreenState extends State<NotificationScreen> {
           body: RefreshIndicator(
             color: const Color(0xFFFF6900),
             onRefresh: refreshAction,
-            child: ListView(
-              controller: _scrollController,
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              children: [
-                if (provider.isLoading && provider.notifications.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 220),
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFFF6900),
-                      ),
-                    ),
-                  )
-                else if (provider.errorMessage != null &&
-                    provider.notifications.isEmpty)
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.7,
-                    child: _buildErrorState(provider.errorMessage!),
-                  )
-                else if (provider.notifications.isEmpty)
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.7,
-                    child: _buildEmptyState(),
-                  )
-                else ...[
-                  ...List.generate(provider.notifications.length, (index) {
-                    final item = provider.notifications[index];
-                    final widgets = <Widget>[_buildNotificationItem(item)];
-                    if (index < provider.notifications.length - 1) {
-                      widgets.add(const Divider(height: 1, indent: 70));
-                    }
-                    return Column(children: widgets);
-                  }),
-                  if (provider.isLoadingMore)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFF6900),
-                        ),
-                      ),
-                    ),
-                ],
-              ],
-            ),
+            child: provider.isLoading && provider.notifications.isEmpty
+                ? const ShimmerList.notifications(itemCount: 8)
+                : ListView(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    children: [
+                      if (provider.errorMessage != null &&
+                          provider.notifications.isEmpty)
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.7,
+                          child: _buildErrorState(provider.errorMessage!),
+                        )
+                      else if (provider.notifications.isEmpty)
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.7,
+                          child: _buildEmptyState(),
+                        )
+                      else ...[
+                        ...List.generate(provider.notifications.length, (index) {
+                          final item = provider.notifications[index];
+                          final widgets = <Widget>[_buildNotificationItem(item)];
+                          if (index < provider.notifications.length - 1) {
+                            widgets.add(const Divider(height: 1, indent: 70));
+                          }
+                          return Column(children: widgets);
+                        }),
+                        if (provider.isLoadingMore)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Center(
+                              child: CoolShimmer(
+                                child: CoolShimmerBone.pill(
+                                  width: 80,
+                                  height: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
           ),
         );
       },
@@ -153,20 +150,26 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      item.title,
-                      style: TextStyle(
-                        fontWeight: item.isRead
-                            ? FontWeight.w500
-                            : FontWeight.bold,
-                        fontSize: 15,
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: item.isRead
+                              ? FontWeight.w500
+                              : FontWeight.bold,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
-                    if (!item.isRead)
+                    if (!item.isRead) ...[
+                      const SizedBox(width: 8),
                       const CircleAvatar(
                         radius: 4,
                         backgroundColor: Color(0xFFFF6900),
                       ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 5),
@@ -265,22 +268,21 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   String _formatNotificationTime(NotificationModel item) {
-    final date = item.readAt ?? item.createdAt;
+    final date = item.createdAt ?? item.readAt;
     if (date == null) {
       return '';
     }
 
     final difference = DateTime.now().difference(date);
+    if (difference.isNegative || difference.inMinutes < 1) {
+      return "À l'instant";
+    }
     if (difference.inDays > 0) {
       return 'Il y a ${difference.inDays} j';
     }
     if (difference.inHours > 0) {
       return 'Il y a ${difference.inHours} h';
     }
-    if (difference.inMinutes > 0) {
-      return 'Il y a ${difference.inMinutes} min';
-    }
-
-    return 'A l\'instant';
+    return 'Il y a ${difference.inMinutes} min';
   }
 }

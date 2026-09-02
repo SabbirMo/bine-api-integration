@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:binetatour/core/video/smart_video_controller.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 /// Reusable video player widget supporting Cloudflare Stream HLS with adaptive bitrate,
 /// automatic buffering indicators, thumbnail placeholders, and interactive touch controls.
@@ -253,13 +254,8 @@ class _SmartVideoPlayerWidgetState extends State<SmartVideoPlayerWidget>
                         Container(
                           color: Colors.black38,
                           child: const Center(
-                            child: SizedBox(
-                              width: 38,
-                              height: 38,
-                              child: CircularProgressIndicator(
-                                color: Color(0xFFFF8A00),
-                                strokeWidth: 3.5,
-                              ),
+                            child: CoolShimmer(
+                              child: CoolShimmerBone.circle(size: 38),
                             ),
                           ),
                         ),
@@ -330,13 +326,8 @@ class _SmartVideoPlayerWidgetState extends State<SmartVideoPlayerWidget>
                         color: Colors.black.withValues(alpha: 0.45),
                         shape: BoxShape.circle,
                       ),
-                      child: const SizedBox(
-                        width: 36,
-                        height: 36,
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFF8A00),
-                          strokeWidth: 3.5,
-                        ),
+                      child: const CoolShimmer(
+                        child: CoolShimmerBone.circle(size: 36),
                       ),
                     );
                   }

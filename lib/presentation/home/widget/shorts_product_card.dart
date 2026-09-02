@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -14,6 +15,7 @@ class ShortsProductCard extends StatefulWidget {
   final double width;
   final double height;
   final VoidCallback onTap;
+  final String? heroTag;
 
   const ShortsProductCard({
     super.key,
@@ -27,6 +29,7 @@ class ShortsProductCard extends StatefulWidget {
     required this.width,
     required this.height,
     required this.onTap,
+    this.heroTag,
   });
 
   @override
@@ -110,6 +113,8 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
       return Image.network(
         widget.thumbnailUrl!,
         fit: BoxFit.cover,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) => Container(
           color: const Color(0xFFF5F5F5),
           child: const Center(
@@ -146,27 +151,29 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
         }
       },
       child: RepaintBoundary(
-        child: GestureDetector(
-          onTap: () {
-            if (hasVideo) {
-              FeedVideoManager.instance.playSingle(
-                widget.keyString,
-                widget.videoUrl,
-              );
-            }
-            widget.onTap();
-          },
-          child: Container(
-            width: widget.width,
-            height: widget.height,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: const Color(0xFFF5F5F5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
+        child: CupertinoButton(
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          pressedOpacity: 0.92,
+          onPressed: widget.onTap,
+          child: _buildCardContent(hasVideo),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardContent(bool hasVideo) {
+    return Container(
+      width: widget.width,
+      height: widget.height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: const Color(0xFFF5F5F5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
                 // 1. Video Player Layer (Bottom layer - decodes in background)
                 if (hasVideo)
                   ListenableBuilder(
@@ -184,11 +191,15 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                             controller: playerState.videoController,
                             fit: BoxFit.cover,
                             controls: NoVideoControls,
+                            fill: Colors.transparent,
+                            width: double.infinity,
+                            height: double.infinity,
+                            alignment: Alignment.center,
                           ),
                         );
                       }
 
-                      return const SizedBox();
+                      return const SizedBox.shrink();
                     },
                   ),
 
@@ -207,8 +218,8 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                         playerState.hasFirstFrame;
 
                     return AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeInOut,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
                       opacity: isPlayingAndRendering ? 0.0 : 1.0,
                       child: IgnorePointer(
                         child: hasVideo
@@ -322,9 +333,6 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+          );
+        }
+      }

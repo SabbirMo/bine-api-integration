@@ -1,6 +1,8 @@
 import 'package:binetatour/core/story/story_preloader.dart';
 import 'package:binetatour/core/story/story_hls_preloader.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
+import 'package:binetatour/core/video/reels_video_controller_pool.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:binetatour/presentation/home/widget/category_section_header.dart';
@@ -13,6 +15,7 @@ import 'package:binetatour/presentation/home/widget/home_skeleton_loader.dart';
 import 'package:binetatour/presentation/shop/shop_screen.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
+import 'package:binetatour/core/widgets/cupertino_reels_route.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
@@ -23,7 +26,8 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/home_provider.dart';
 import 'package:binetatour/data/models/home_response_model.dart';
 import 'package:binetatour/data/models/product_model.dart' as shop_model;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:binetatour/core/utils/external_intent_launcher.dart';
+import 'package:binetatour/core/utils/price_utils.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/fcm_notification/firebase_service.dart';
 import 'package:binetatour/core/login/login_provider.dart';
@@ -49,8 +53,12 @@ class _AccueilScreenState extends State<AccueilScreen>
       await context.read<HomeProvider>().fetchHomeData().timeout(
         const Duration(seconds: 6),
       );
-      final renderTime = DateTime.now().difference(AppStartupTracker.appStartTime).inMilliseconds;
-      debugPrint('📊 [HomeFeedBenchmark] Home feed initial data loaded in ${renderTime}ms from app launch (Zero video contention)');
+      final renderTime = DateTime.now()
+          .difference(AppStartupTracker.appStartTime)
+          .inMilliseconds;
+      debugPrint(
+        '📊 [HomeFeedBenchmark] Home feed initial data loaded in ${renderTime}ms from app launch (Zero video contention)',
+      );
     } catch (e) {
       debugPrint("Home refresh error or timeout: $e");
     }
@@ -59,6 +67,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   @override
   void initState() {
     super.initState();
+    FeedVideoManager.instance.init();
     VideoCacheManager.instance.init();
     WidgetsBinding.instance.addObserver(this);
 
@@ -141,68 +150,14 @@ class _AccueilScreenState extends State<AccueilScreen>
         ),
         actions: [
           GestureDetector(
-            onTap: () async {
+            onTap: () {
               final String phoneNumber = dotenv.env["WHATSAPP_PHONE"] ?? "";
-
-              final String cleanPhone = phoneNumber.replaceAll(
-                RegExp(r'[^\d]'),
-                ' ',
+              ExternalIntentLauncher.openWhatsApp(
+                phone: phoneNumber,
+                message:
+                    "Bonjour, je visite votre site web et j'aimerais avoir des informations.",
+                context: context,
               );
-
-              const String defaultMessage =
-                  "Bonjour, je visite votre site web et j'aimerais avoir des informations.";
-              final String encodedMsg = Uri.encodeComponent(defaultMessage);
-
-              final Uri whatsappAppUrl = cleanPhone.isNotEmpty
-                  ? Uri.parse(
-                      "whatsapp://send?phone=$cleanPhone&text=$encodedMsg",
-                    )
-                  : Uri.parse("whatsapp://send?text=$encodedMsg");
-
-              final Uri whatsappWebUrl = cleanPhone.isNotEmpty
-                  ? Uri.parse("https://wa.me/$cleanPhone?text=$encodedMsg")
-                  : Uri.parse("https://wa.me?text=$encodedMsg");
-
-              bool launched = false;
-
-              // 1. Try launching the WhatsApp app directly
-              try {
-                launched = await launchUrl(
-                  whatsappAppUrl,
-                  mode: LaunchMode.externalNonBrowserApplication,
-                );
-              } catch (e) {
-                launched = false;
-              }
-
-              if (!launched) {
-                try {
-                  launched = await launchUrl(
-                    whatsappAppUrl,
-                    mode: LaunchMode.externalApplication,
-                  );
-                } catch (e) {
-                  launched = false;
-                }
-              }
-
-              // 2. Fallback to web if WhatsApp app is not installed
-              if (!launched) {
-                try {
-                  launched = await launchUrl(
-                    whatsappWebUrl,
-                    mode: LaunchMode.externalApplication,
-                  );
-                } catch (e) {
-                  launched = false;
-                }
-              }
-
-              if (!launched && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Could not launch WhatsApp')),
-                );
-              }
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -590,8 +545,12 @@ class _AccueilScreenState extends State<AccueilScreen>
     if (categories.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final idleUptime = DateTime.now().difference(AppStartupTracker.appStartTime).inMilliseconds;
-        debugPrint('🔥 [StoryHlsPreloader] Background story prefetch started at ${idleUptime}ms from app launch');
+        final idleUptime = DateTime.now()
+            .difference(AppStartupTracker.appStartTime)
+            .inMilliseconds;
+        debugPrint(
+          '🔥 [StoryHlsPreloader] Background story prefetch started at ${idleUptime}ms from app launch',
+        );
 
         // 1. Warm native media_kit engine
         StoryHlsPreloader.instance.warmupEngine();
@@ -754,10 +713,14 @@ class _AccueilScreenState extends State<AccueilScreen>
 
           return InkWell(
             onTap: () async {
-              if (mappedStories.isEmpty) return; // Prevent opening if empty
+              if (mappedStories.isEmpty || allGroups.isEmpty) return;
 
-              final timeFromLaunch = DateTime.now().difference(AppStartupTracker.appStartTime).inMilliseconds;
-              debugPrint('📊 [AppStartupTracker] Story tapped: ${timeFromLaunch}ms after app launch (isFirstPlay: ${AppStartupTracker.isFirstStoryPlay})');
+              final timeFromLaunch = DateTime.now()
+                  .difference(AppStartupTracker.appStartTime)
+                  .inMilliseconds;
+              debugPrint(
+                '📊 [AppStartupTracker] Story tapped: ${timeFromLaunch}ms after app launch (isFirstPlay: ${AppStartupTracker.isFirstStoryPlay})',
+              );
 
               int initialGroupIndex = allGroups.indexWhere(
                 (g) => g.categoryId == cat.id,
@@ -878,8 +841,15 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
   void _notifySectionActiveCard() {
     if (widget.section.products.isEmpty) return;
+    final safeIndex = _activeCardIndex.clamp(
+      0,
+      widget.section.products.length - 1,
+    );
+    if (safeIndex != _activeCardIndex) {
+      _activeCardIndex = safeIndex;
+    }
     final productProvider = context.read<ProductProvider>();
-    final activeProd = widget.section.products[_activeCardIndex];
+    final activeProd = widget.section.products[safeIndex];
     final vUrl = _resolveProductVideo(activeProd, productProvider);
     final key = 'feed_prod_${widget.section.categoryId}_${activeProd.id}';
     FeedVideoManager.instance.setActiveSectionCard(
@@ -894,7 +864,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     double centerY = 0.0;
     try {
       final renderBox = context.findRenderObject() as RenderBox?;
-      if (renderBox != null && renderBox.hasSize) {
+      if (renderBox != null && renderBox.attached && renderBox.hasSize) {
         final globalOffset = renderBox.localToGlobal(Offset.zero);
         centerY = globalOffset.dy + (renderBox.size.height / 2);
       }
@@ -917,30 +887,9 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
     }
   }
 
-  String _resolveUrl(String? url) {
-    if (url == null || url.trim().isEmpty) return '';
-    String clean = url.trim();
-    if (!clean.startsWith('http')) {
-      final base = BaseUrl.baseUrl;
-      clean = clean.startsWith('/') ? '$base$clean' : '$base/$clean';
-    }
-    return clean;
-  }
+  String _resolveUrl(String? url) => MediaUrlResolver.resolveUrl(url);
 
-  bool _isVideoUrl(String url) {
-    if (url.trim().isEmpty) return false;
-    final clean = url.trim().toLowerCase().split('?').first.split('#').first;
-    return clean.endsWith('.mp4') ||
-        clean.endsWith('.mov') ||
-        clean.endsWith('.m3u8') ||
-        clean.endsWith('.webm') ||
-        clean.endsWith('.avi') ||
-        clean.endsWith('.mkv') ||
-        clean.endsWith('.flv') ||
-        clean.endsWith('.3gp') ||
-        clean.contains('.mp4') ||
-        clean.contains('.m3u8');
-  }
+  bool _isVideoUrl(String url) => MediaUrlResolver.isVideoUrl(url);
 
   String _resolveProductVideo(
     ProductModel product,
@@ -1069,6 +1018,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       child: ListView.builder(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
+        addRepaintBoundaries: true,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: allProducts.length,
         itemBuilder: (context, index) {
@@ -1093,9 +1043,15 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
               videoUrl: resolvedVideo,
               thumbnailUrl: resolvedThumbnail,
               title: product.productName ?? "No Title",
-              price:
-                  "${(product.priceAfterDiscount != null && product.priceAfterDiscount!.isNotEmpty) ? product.priceAfterDiscount : product.sellingPrice} FCFA",
-              oldPrice: discPerc > 0 ? "${product.sellingPrice} FCFA" : null,
+              price: AppPriceUtils.formatPrice(
+                (product.priceAfterDiscount != null &&
+                        product.priceAfterDiscount!.isNotEmpty)
+                    ? product.priceAfterDiscount
+                    : product.sellingPrice,
+              ),
+              oldPrice: discPerc > 0
+                  ? AppPriceUtils.formatPrice(product.sellingPrice)
+                  : null,
               discount: discPerc > 0 ? "-${discPerc.toInt()}%" : null,
               width: cardWidth,
               height: cardHeight,
@@ -1104,8 +1060,6 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                   _activeCardIndex = index;
                 });
                 _notifySectionActiveCard();
-
-                FeedVideoManager.instance.pauseAll();
 
                 final sectionsToUse =
                     (widget.allSections != null &&
@@ -1137,12 +1091,17 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                     if (p.safeMedia.isNotEmpty) {
                       mediaList = p.safeMedia;
                     } else if (p.effectiveVideoUrl.isNotEmpty) {
+                      final pThumb = p.effectiveThumbnailUrl.isNotEmpty
+                          ? _resolveUrl(p.effectiveThumbnailUrl)
+                          : (p.mainImage != null
+                                ? _resolveUrl(p.mainImage!)
+                                : resolvedThumbnail);
                       mediaList = [
                         shop_model.MediaModel(
                           id: 0,
                           mediaType: 'video',
                           mediaUrl: _resolveUrl(p.effectiveVideoUrl),
-                          thumbnailUrl: p.mainImage,
+                          thumbnailUrl: pThumb,
                         ),
                       ];
                     }
@@ -1168,7 +1127,7 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                   }
                 }
 
-                // Precache clicked video and adjacent videos immediately for instant smooth playback
+                // Precache clicked video and adjacent videos with top priority
                 if (convertedProducts.isNotEmpty &&
                     targetInitialIndex >= 0 &&
                     targetInitialIndex < convertedProducts.length) {
@@ -1183,21 +1142,44 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                       final p = convertedProducts[idx];
                       final vUrl = p.effectiveVideoUrl;
                       if (vUrl.isNotEmpty) {
-                        VideoCacheManager.instance.preCacheVideo(vUrl);
+                        VideoCacheManager.instance.preCachePriority(
+                          _resolveUrl(vUrl),
+                        );
                       }
                     }
                   }
                 }
 
-                await Navigator.push(
+                // 1. Hand off active playing feed player directly to Reels pool
+                // This ensures the video keeps playing without ANY interruption or loading spinner!
+                final cardKey =
+                    'feed_prod_${widget.section.categoryId}_${product.id}';
+                final resolvedVideoUrl = _resolveUrl(product.effectiveVideoUrl);
+                final feedPlayer = FeedVideoManager.instance
+                    .handoffActivePlayer(cardKey);
+
+                if (feedPlayer != null && resolvedVideoUrl.isNotEmpty) {
+                  ReelsVideoControllerPool.instance.adoptFeedPlayer(
+                    feedPlayer: feedPlayer,
+                    itemIndex: targetInitialIndex,
+                    url: resolvedVideoUrl,
+                  );
+                } else {
+                  FeedVideoManager.instance.pauseAllExcept(cardKey);
+                }
+
+                // 2. Launch route transition — Hero flight smoothly expands the playing video!
+                final pushFuture = Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => ProductDetailsScreen(
+                  CupertinoReelsRoute(
+                    page: ProductDetailsScreen(
                       allProducts: convertedProducts,
                       initialProductIndex: targetInitialIndex,
                     ),
                   ),
                 );
+
+                await pushFuture;
 
                 FeedVideoManager.instance.resume();
               },

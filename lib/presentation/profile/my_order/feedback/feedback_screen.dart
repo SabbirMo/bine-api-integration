@@ -5,6 +5,7 @@ import 'package:binetatour/presentation/profile/my_order/feedback/order_items_sc
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/data/models/order_history_model.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class GiveReviewScreen extends StatefulWidget {
   const GiveReviewScreen({super.key});
@@ -45,10 +46,8 @@ class _GiveReviewScreenState extends State<GiveReviewScreen> {
       ),
       body: Consumer<OrderProvider>(
         builder: (context, provider, child) {
-          if (provider.isLoading) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-            );
+          if (provider.isHistoryLoading && provider.orderHistory.isEmpty) {
+            return const ShimmerList.orders(itemCount: 4);
           }
 
           if (provider.errorMessage != null) {
@@ -200,16 +199,31 @@ class _OrderReviewCardState extends State<OrderReviewCard> {
               ),
               const SizedBox(height: 16),
               if (isLoading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFFE65100),
-                      ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: CoolShimmer(
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            CoolShimmerBone(
+                                width: 50, height: 50, borderRadius: 8),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  CoolShimmerBone(
+                                      width: 120, height: 12, borderRadius: 3),
+                                  SizedBox(height: 6),
+                                  CoolShimmerBone(
+                                      width: 80, height: 10, borderRadius: 3),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 )

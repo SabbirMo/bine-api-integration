@@ -5,7 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 
-class FeedPlayerState {
+class FeedPlayerState extends ChangeNotifier {
   final Player player;
   final VideoController videoController;
   String? currentUrl;
@@ -19,6 +19,8 @@ class FeedPlayerState {
   StreamSubscription? _bufferingSub;
   StreamSubscription? _errorSub;
   StreamSubscription? _positionSub;
+  StreamSubscription? _videoParamsSub;
+  StreamSubscription? _widthSub;
 
   FeedPlayerState({
     required this.player,
@@ -32,21 +34,63 @@ class FeedPlayerState {
   });
 
   void listen(VoidCallback onUpdate) {
+    void checkFirstFrame() {
+      if (hasFirstFrame) return;
+      final pos = player.state.position;
+      final isBufferingNow = player.state.buffering;
+      final isPlayingNow = player.state.playing;
+      final w = player.state.width ?? 0;
+
+      if (pos > Duration.zero || (w > 0 && isPlayingNow && !isBufferingNow)) {
+        hasFirstFrame = true;
+        isBuffering = false;
+        notifyListeners();
+        onUpdate();
+      }
+    }
+
     _playingSub = player.stream.playing.listen((playing) {
-      isPlaying = playing;
-      onUpdate();
+      if (isPlaying != playing) {
+        isPlaying = playing;
+        if (playing) checkFirstFrame();
+        notifyListeners();
+        onUpdate();
+      }
     });
 
     _bufferingSub = player.stream.buffering.listen((buffering) {
-      isBuffering = buffering;
-      onUpdate();
+      if (isBuffering != buffering) {
+        isBuffering = buffering;
+        if (!buffering) checkFirstFrame();
+        notifyListeners();
+        onUpdate();
+      }
     });
 
-    _positionSub = player.stream.position.listen((pos) {
-      if (pos > Duration.zero && !hasFirstFrame) {
+    _videoParamsSub = player.stream.videoParams.listen((params) {
+      if (params.w != null && params.w! > 0) {
+        checkFirstFrame();
+      }
+    });
+
+    _widthSub = player.stream.width.listen((width) {
+      if (width != null && width > 0) {
+        checkFirstFrame();
+      }
+    });
+
+    videoController.waitUntilFirstFrameRendered.then((_) {
+      if (!player.state.buffering) {
         hasFirstFrame = true;
         isBuffering = false;
+        notifyListeners();
         onUpdate();
+      }
+    }).catchError((_) {});
+
+    _positionSub = player.stream.position.listen((pos) {
+      if (pos > Duration.zero) {
+        checkFirstFrame();
       }
     });
 
@@ -57,6 +101,7 @@ class FeedPlayerState {
       }
       debugPrint("⚠️ [FeedVideoManager] Player error for $currentKey: $error");
       isBuffering = false;
+      notifyListeners();
       onUpdate();
     });
   }
@@ -70,17 +115,22 @@ class FeedPlayerState {
     isPlaying = false;
     isBuffering = false;
     hasFirstFrame = false;
+    notifyListeners();
   }
 
+  @override
   void dispose() {
     _playingSub?.cancel();
     _bufferingSub?.cancel();
     _positionSub?.cancel();
+    _videoParamsSub?.cancel();
+    _widthSub?.cancel();
     _errorSub?.cancel();
     try {
       player.stop();
       player.dispose();
     } catch (_) {}
+    super.dispose();
   }
 }
 
@@ -96,6 +146,14 @@ class FeedVideoManager extends ChangeNotifier {
 
   /// Strictly keep pool size <= 2 to ensure stability and free hardware codecs for Story/Shorts
   static const int maxPoolSize = 2;
+
+  /// Pre-warm native player pool so properties and decoders are ready before cards render
+  void init() {
+    if (_playerPool.isNotEmpty) return;
+    for (int i = 0; i < maxPoolSize; i++) {
+      _playerPool.add(_createPlayerState());
+    }
+  }
 
   final Map<String, String> _urlMap = {};
 
@@ -152,7 +210,7 @@ class FeedVideoManager extends ChangeNotifier {
   FeedPlayerState _createPlayerState() {
     final player = Player(
       configuration: const PlayerConfiguration(
-        bufferSize: 32 * 1024 * 1024, // 32 MB — enough for HLS segments
+        bufferSize: 2 * 1024 * 1024, // 2 MB — lightweight & ultra-fast playback start
         logLevel: MPVLogLevel.warn,
       ),
     );
@@ -164,7 +222,7 @@ class FeedVideoManager extends ChangeNotifier {
       ),
     );
 
-    // Apply HLS-optimized MPV properties asynchronously
+    // Apply HLS & MP4 zero-delay optimized MPV properties asynchronously
     _applyMpvProperties(player);
 
     try {
@@ -181,18 +239,23 @@ class FeedVideoManager extends ChangeNotifier {
     return state;
   }
 
-  /// Applies Cloudflare Stream-optimized MPV properties to a [Player].
+  /// Applies Cloudflare Stream & zero-delay demuxer properties to a [Player].
   Future<void> _applyMpvProperties(Player player) async {
     try {
       final platform = player.platform;
       if (platform == null) return;
       final p = platform as dynamic;
+      await p.setProperty('hwdec', 'auto-safe');
       await p.setProperty('hls-bitrate', 'auto');
       await p.setProperty('cache', 'yes');
-      await p.setProperty('cache-secs', '5');
-      await p.setProperty('demuxer-readahead-secs', '5');
-      await p.setProperty('demuxer-max-bytes', '32MiB');
-      await p.setProperty('demuxer-max-back-bytes', '8MiB');
+      await p.setProperty('cache-secs', '2');
+      await p.setProperty('demuxer-lavf-analyzeduration', '0');
+      await p.setProperty('demuxer-lavf-probesize', '32768');
+      await p.setProperty('cache-pause', 'no');
+      await p.setProperty('cache-pause-wait', '0');
+      await p.setProperty('cache-pause-initial', 'no');
+      await p.setProperty('demuxer-readahead-secs', '2');
+      await p.setProperty('demuxer-max-bytes', '4MiB');
       await p.setProperty('network-timeout', '10');
       await p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit');
     } catch (_) {}
@@ -291,12 +354,9 @@ class FeedVideoManager extends ChangeNotifier {
       state.currentUrl = url;
       state.hasFirstFrame = false;
       state.isBuffering = true;
-      final playerToOpen = state.player;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        try {
-          playerToOpen.open(Media(targetUrl), play: autoPlay);
-        } catch (_) {}
-      });
+      try {
+        state.player.open(Media(targetUrl), play: autoPlay);
+      } catch (_) {}
     } else if (autoPlay && !state.isPlaying) {
       try {
         state.player.play();
@@ -521,6 +581,24 @@ class FeedVideoManager extends ChangeNotifier {
       if (bestSectionId != null) {
         bestKey = _sectionActiveKey[bestSectionId];
       }
+
+      // Fallback for Home initial load or when returning from Story
+      if (bestKey == null && _sectionActiveKey.isNotEmpty) {
+        for (final entry in _sectionActiveKey.entries) {
+          if (entry.value.isNotEmpty) {
+            bestKey = entry.value;
+            break;
+          }
+        }
+      }
+      if (bestKey == null && _urlMap.isNotEmpty) {
+        for (final entry in _urlMap.entries) {
+          if (entry.key.startsWith('feed_prod_') && entry.value.isNotEmpty) {
+            bestKey = entry.key;
+            break;
+          }
+        }
+      }
     }
     // 2. If currently on Boutique page (tab 1)
     else if (_activeTabIndex == 1) {
@@ -679,8 +757,51 @@ class FeedVideoManager extends ChangeNotifier {
     _evaluatePlayback();
   }
 
-  /// Pause and release all active video players (e.g. route transitions, app in background)
+  /// Handoff active player to full-screen Reels player with 0ms interruption
+  FeedPlayerState? handoffActivePlayer(String cardKey) {
+    final playerState = _keyToPlayer.remove(cardKey);
+    if (playerState != null) {
+      _playerPool.remove(playerState);
+      if (_currentPlayingKey == cardKey) {
+        _currentPlayingKey = null;
+      }
+      // Top up pool so feed always has players ready
+      if (_playerPool.length < maxPoolSize) {
+        _playerPool.add(_createPlayerState());
+      }
+      notifyListeners();
+      return playerState;
+    }
+    return null;
+  }
+
+  /// Pause all active video players except the given card key (which is expanding into full screen)
+  void pauseAllExcept(String? exceptKey) {
+    _isGloballyPaused = true;
+    for (final entry in _keyToPlayer.entries) {
+      if (entry.key != exceptKey) {
+        try {
+          entry.value.player.pause();
+        } catch (_) {}
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Pause all active video players (e.g. route transitions, opening Story or Details)
   void pauseAll() {
+    _isGloballyPaused = true;
+    for (final p in _playerPool) {
+      try {
+        p.player.pause();
+      } catch (_) {}
+    }
+    _currentPlayingKey = null;
+    notifyListeners();
+  }
+
+  /// Completely release all player resources
+  void releaseAll() {
     _isGloballyPaused = true;
     for (final p in _playerPool) {
       try {

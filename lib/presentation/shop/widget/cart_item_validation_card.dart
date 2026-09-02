@@ -5,6 +5,8 @@ import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:binetatour/data/models/cart_model.dart';
 import 'package:binetatour/data/models/product_model.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
+import 'package:binetatour/core/utils/color_utils.dart';
 
 class CartItemValidationCard extends StatefulWidget {
   final CartItemModel item;
@@ -148,15 +150,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     }
   }
 
-  Color _hexToColor(String code) {
-    var hexString = code;
-    if (hexString.startsWith('#')) {
-      hexString = hexString.substring(1);
-    }
-    if (hexString.length == 6) {
-      hexString = 'FF$hexString';
-    }
-    return Color(int.tryParse(hexString, radix: 16) ?? 0xFF000000);
+  Color _hexToColor(String? code) {
+    return AppColorUtils.fromHex(code, fallback: const Color(0xFF000000));
   }
 
   bool _hasVariantsOrOptions(ProductModel product) {
@@ -259,17 +254,13 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           Padding(
             padding: const EdgeInsets.only(top: 12.0),
             child: _cardWrapper(
-              child: const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8.0),
-                  child: SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFFFF6900),
-                    ),
-                  ),
+              child: const CoolShimmer(
+                child: Row(
+                  children: [
+                    CoolShimmerBone.circle(size: 24),
+                    SizedBox(width: 12),
+                    CoolShimmerBone(width: 120, height: 14, borderRadius: 4),
+                  ],
                 ),
               ),
             ),
@@ -446,13 +437,19 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
             spacing: 10,
             runSpacing: 10,
             children: uniqueSizes.map((size) {
-              final variantForSize = filteredVariants.firstWhere(
-                (v) => v.size == size,
-                orElse: () => filteredVariants.first,
-              );
+              ProductVariantModel? variantForSize;
+              try {
+                variantForSize = filteredVariants.firstWhere(
+                  (v) => v.size == size,
+                );
+              } catch (_) {
+                variantForSize = filteredVariants.isNotEmpty
+                    ? filteredVariants.first
+                    : null;
+              }
               return _choiceChip(
                 size,
-                stockQuantity: variantForSize.stockQuantity,
+                stockQuantity: variantForSize?.stockQuantity ?? 0,
               );
             }).toList(),
           ),

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Ultra-responsive, smooth Reels/TikTok vertical scrolling physics:
-/// - Low drag threshold (starts moving on just 3.5px drag)
-/// - Ultra-sensitive flick velocity (50.0 px/s instead of 500 px/s)
-/// - Low 15% swipe threshold to glide to next video effortlessly
-/// - Snappy, buttery smooth spring simulation
+/// Buttery-smooth, weighted Reels/Shorts scrolling physics.
+/// Tuned for 60Hz and 120Hz ProMotion displays.
+///
+/// Compared to YouTube Shorts / TikTok:
+/// - Critically damped spring (zero overshoot, zero tail-crawl)
+/// - Symmetric forward/backward drag thresholds
+/// - Realistic flick velocity (prevents micro-jitter accidental page turns)
+/// - Comfortable touch slop (prevents hijacking taps and nested horizontal swipes)
 class SmoothReelsScrollPhysics extends PageScrollPhysics {
   const SmoothReelsScrollPhysics({super.parent});
 
@@ -13,15 +16,21 @@ class SmoothReelsScrollPhysics extends PageScrollPhysics {
     return SmoothReelsScrollPhysics(parent: buildParent(ancestor));
   }
 
+  // Realistic flick threshold (prevents micro-jitter accidental page turns)
   @override
-  double get minFlingVelocity => 50.0;
+  double get minFlingVelocity => 350.0;
 
+  // Touch slop (prevents hijacking taps/double-taps and nested horizontal swipes)
   @override
-  double get dragStartDistanceMotionThreshold => 3.5;
+  double get dragStartDistanceMotionThreshold => 14.0;
 
+  // Critically damped (zeta = 1.0) with organic mass inertia
   @override
-  SpringDescription get spring =>
-      const SpringDescription(mass: 0.45, stiffness: 280.0, damping: 24.0);
+  SpringDescription get spring => SpringDescription.withDampingRatio(
+    mass: 0.85,
+    stiffness: 180.0,
+    ratio: 1.0, // Critical damping: zero overshoot, zero tail-crawl
+  );
 
   @override
   Simulation? createBallisticSimulation(
@@ -33,34 +42,37 @@ class SmoothReelsScrollPhysics extends PageScrollPhysics {
       return super.createBallisticSimulation(position, velocity);
     }
 
+    // Type guard: avoid crash if attached to non-PageScrollPosition
+    if (position is! PageMetrics) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+
     final Tolerance tolerance = toleranceFor(position);
-    final PageMetrics metrics = position as PageMetrics;
+    final PageMetrics metrics = position;
     final double page =
         metrics.page ?? (metrics.pixels / metrics.viewportDimension);
 
     final double basePage = page.floorToDouble();
     final double fraction = page - basePage;
 
-    double targetPage = page.roundToDouble();
+    double targetPage;
 
-    // Reels swipe thresholds (only 15% drag or 50px/s flick needed!)
-    const double velocityThreshold = 50.0;
-    const double dragThreshold = 0.15;
-
-    if (velocity > velocityThreshold) {
-      targetPage = basePage + 1.0;
-    } else if (velocity < -velocityThreshold) {
-      targetPage = basePage;
+    // 1. High velocity flick takes priority (symmetric for both directions)
+    if (velocity.abs() >= minFlingVelocity) {
+      targetPage = velocity > 0 ? basePage + 1.0 : basePage;
     } else {
-      if (fraction >= dragThreshold) {
+      // 2. Slow drag: Symmetric 50% threshold from current page boundary
+      //    This fixes the critical asymmetry bug where swiping backward
+      //    previously required 85% drag distance vs 15% for forward.
+      if (fraction >= 0.5) {
         targetPage = basePage + 1.0;
       } else {
         targetPage = basePage;
       }
     }
 
-    final double maxPage = (metrics.maxScrollExtent / metrics.viewportDimension)
-        .roundToDouble();
+    final double maxPage =
+        (metrics.maxScrollExtent / metrics.viewportDimension).roundToDouble();
     targetPage = targetPage.clamp(0.0, maxPage);
 
     final double targetPixels = targetPage * metrics.viewportDimension;

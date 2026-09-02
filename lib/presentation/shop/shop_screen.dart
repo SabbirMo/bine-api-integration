@@ -4,6 +4,7 @@ import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
+import 'package:binetatour/core/widgets/cupertino_reels_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,7 @@ import 'package:binetatour/providers/category_provider.dart';
 import 'package:binetatour/data/models/category_model.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 class BoutiqueScreen extends StatefulWidget {
@@ -347,11 +349,7 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                       SizedBox(
                         height: 100,
                         child: isLoading
-                            ? const Center(
-                                child: CircularProgressIndicator(
-                                  color: Color(0xFFFF6900),
-                                ),
-                              )
+                            ? const ShimmerStoryRow(count: 6, itemSize: 52)
                             : ListView.builder(
                                 controller: _categoryScrollController,
                                 scrollDirection: Axis.horizontal,
@@ -430,10 +428,22 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
 
                 // 2-Column Product Grid with native video playback
                 if (isProductsLoading)
-                  const SliverFillRemaining(
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFFF6900),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 0.58,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => const ShimmerCard.product(),
+                        childCount: 6,
                       ),
                     ),
                   )
@@ -469,6 +479,7 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
 
                         return ShortsProductCard(
                           key: ValueKey('boutique_prod_${product.id}'),
+                          heroTag: 'product_hero_${product.id}',
                           keyString: 'boutique_prod_${product.id}',
                           videoUrl: videoUrl,
                           thumbnailUrl: thumbnailUrl,
@@ -532,10 +543,21 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                               return p;
                             }).toList();
 
+                            // Pre-cache clicked video and adjacent videos with top priority
+                            final indices = [index, index + 1, index + 2, index - 1];
+                            for (final idx in indices) {
+                              if (idx >= 0 && idx < convertedProducts.length) {
+                                final vUrl = convertedProducts[idx].effectiveVideoUrl;
+                                if (vUrl.isNotEmpty) {
+                                  VideoCacheManager.instance.preCachePriority(_resolveUrl(vUrl));
+                                }
+                              }
+                            }
+
                             await Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (context) => ProductDetailsScreen(
+                              CupertinoReelsRoute(
+                                page: ProductDetailsScreen(
                                   allProducts: convertedProducts,
                                   initialProductIndex: index,
                                 ),
@@ -544,16 +566,19 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                             FeedVideoManager.instance.resume();
                           },
                         );
-                      }, childCount: filteredProducts.length),
+                      },
+                      childCount: filteredProducts.length,
+                      addRepaintBoundaries: true,
                     ),
+                  ),
                   ),
                 if (productProvider.isLoadingMore)
                   const SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
                       child: Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFF6900),
+                        child: CoolShimmer(
+                          child: CoolShimmerBone.pill(width: 80, height: 18),
                         ),
                       ),
                     ),

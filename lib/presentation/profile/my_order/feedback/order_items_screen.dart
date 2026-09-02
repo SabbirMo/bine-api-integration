@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/feedback_details_screen.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class OrderItemsScreen extends StatefulWidget {
   final String orderNumber;
@@ -86,11 +87,7 @@ class _OrderItemsScreenState extends State<OrderItemsScreen> {
                       ],
                     ),
                     child: isLoading
-                        ? const Center(
-                            child: CircularProgressIndicator(
-                              color: Color(0xFFFF6900),
-                            ),
-                          )
+                        ? const ShimmerList.cart(itemCount: 3)
                         : (items != null && items.isNotEmpty)
                         ? ListView.builder(
                             shrinkWrap: true,

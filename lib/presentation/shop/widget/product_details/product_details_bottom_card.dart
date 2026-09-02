@@ -3,6 +3,7 @@ import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
@@ -168,15 +169,17 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return Align(
       alignment: Alignment.bottomCenter,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 40, 20, 0),
+        padding: EdgeInsets.fromLTRB(20, 40, 20, 12 + bottomInset),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.9)],
+            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.95)],
           ),
         ),
         child: Column(
@@ -204,9 +207,9 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                       ? const SizedBox(
                           height: 22,
                           width: 22,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2.5,
+                          child: CupertinoActivityIndicator(
+                            color: CupertinoColors.white,
+                            radius: 10,
                           ),
                         )
                       : const Text(
@@ -272,9 +275,9 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                     child: SizedBox(
                       width: 15,
                       height: 15,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.orange,
+                      child: CupertinoActivityIndicator(
+                        radius: 8,
+                        color: CupertinoColors.systemOrange,
                       ),
                     ),
                   ),

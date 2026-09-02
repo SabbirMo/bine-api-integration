@@ -1,3 +1,5 @@
+import 'package:binetatour/core/utils/media_url_resolver.dart';
+
 class ProductModel {
   final int id;
   final String productName;
@@ -11,6 +13,9 @@ class ProductModel {
   final String status;
   final String? mainImage;
   final List<MediaModel> media;
+  final String? videoUrl;
+  final String? hlsUrl;
+  final String? thumbnailUrl;
 
   final String? actualPrice;
   final String? deliveryPrice;
@@ -40,6 +45,9 @@ class ProductModel {
     required this.status,
     this.mainImage,
     required this.media,
+    this.videoUrl,
+    this.hlsUrl,
+    this.thumbnailUrl,
     this.actualPrice,
     this.deliveryPrice,
     this.description,
@@ -68,15 +76,22 @@ class ProductModel {
       (totalStock <= 0 && status != 'pre_order' && status != 'in_stock');
 
   String get effectiveVideoUrl {
+    final topLevel = MediaUrlResolver.resolveVideoUrl(
+      mediaUrl: videoUrl,
+      hlsUrl: hlsUrl,
+    );
+    if (topLevel.isNotEmpty) return topLevel;
+
     for (final m in media) {
       final mType = m.mediaType.toLowerCase().trim();
       final mUrl = m.effectiveMediaUrl;
-      if ((mType == 'video' || _isLocalVideoUrl(mUrl)) && mUrl.isNotEmpty) {
+      if ((mType == 'video' || MediaUrlResolver.isVideoUrl(mUrl)) &&
+          mUrl.isNotEmpty) {
         return mUrl;
       }
     }
-    if (mainImage != null && _isLocalVideoUrl(mainImage!)) {
-      return mainImage!;
+    if (mainImage != null && MediaUrlResolver.isVideoUrl(mainImage!)) {
+      return MediaUrlResolver.resolveUrl(mainImage!);
     }
     return '';
   }
@@ -251,6 +266,11 @@ class ProductModel {
       status: json['status']?.toString() ?? '',
       mainImage: mainImg,
       media: parsedMedia,
+      videoUrl: rawVideoUrl,
+      hlsUrl: rawHlsUrl,
+      thumbnailUrl: json['thumbnail_url']?.toString() ??
+          json['thumbnail']?.toString() ??
+          json['thumb_url']?.toString(),
       actualPrice: json['actual_price']?.toString(),
       deliveryPrice: json['delivery_price']?.toString(),
       description: json['description']?.toString(),
@@ -287,9 +307,10 @@ class MediaModel {
   });
 
   String get effectiveMediaUrl {
-    if (mediaUrl.trim().isNotEmpty) return mediaUrl;
-    if (hlsUrl != null && hlsUrl!.trim().isNotEmpty) return hlsUrl!;
-    return '';
+    return MediaUrlResolver.resolveVideoUrl(
+      mediaUrl: mediaUrl,
+      hlsUrl: hlsUrl,
+    );
   }
 
   factory MediaModel.fromJson(Map<String, dynamic> json) {

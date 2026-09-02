@@ -6,6 +6,9 @@ import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/data/models/order_history_model.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
+import 'package:binetatour/core/utils/date_utils.dart';
+import 'package:binetatour/core/utils/price_utils.dart';
 
 enum OrderStatus { enCours, livrees, annulees }
 
@@ -186,10 +189,9 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
   Widget _buildOrderList() {
     return Consumer<OrderProvider>(
       builder: (context, orderProvider, child) {
-        if (orderProvider.isHistoryLoading && orderProvider.orderHistory.isEmpty) {
-          return const Center(
-            child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-          );
+        if (orderProvider.isHistoryLoading &&
+            orderProvider.orderHistory.isEmpty) {
+          return const ShimmerList.orders(itemCount: 5);
         }
 
         if (orderProvider.historyErrorMessage != null &&
@@ -262,36 +264,37 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           onRefresh: () async {
             await context.read<OrderProvider>().fetchOrderHistory();
           },
-            child: ListView.builder(
-              controller: _scrollController,
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: filteredOrders.length + (orderProvider.isHistoryLoadingMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == filteredOrders.length) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFFFF6900),
-                      ),
+          child: ListView.builder(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: filteredOrders.length +
+                (orderProvider.isHistoryLoadingMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == filteredOrders.length) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: CoolShimmer(
+                      child: CoolShimmerBone.pill(width: 80, height: 18),
                     ),
-                  );
-                }
-                final order = filteredOrders[index];
-                final displayOrderNum = order.orderNumber.isNotEmpty
-                    ? order.orderNumber
-                    : "ORD-${order.id}";
-                return _orderCard(
-                  id: displayOrderNum,
-                  date: order.createdAt,
-                  items: "${order.itemCount} article(s)",
-                  price: "${order.totalAmount} FCFA",
-                  productNames: order.productNames.join(", "),
-                  status: _selectedStatus,
+                  ),
                 );
-              },
-            ),
+              }
+              final order = filteredOrders[index];
+              final targetOrderNum = order.orderNumber.isNotEmpty
+                  ? order.orderNumber
+                  : order.id.toString();
+              return _orderCard(
+                id: targetOrderNum,
+                date: AppDateUtils.formatDate(order.createdAt),
+                items: "${order.itemCount} article(s)",
+                price: AppPriceUtils.formatPrice(order.totalAmount),
+                productNames: order.productNames.join(", "),
+                status: _selectedStatus,
+              );
+            },
+          ),
         );
       },
     );

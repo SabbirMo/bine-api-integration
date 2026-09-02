@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/providers/store_settings_provider.dart';
 import 'package:binetatour/presentation/shop/widget/cart_item_validation_card.dart';
 import 'package:binetatour/presentation/shop/widget/payment_status_dialog.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
+import 'package:binetatour/core/utils/date_utils.dart';
+import 'package:binetatour/core/utils/external_intent_launcher.dart';
 
 class ValidationScreen extends StatefulWidget {
   const ValidationScreen({super.key});
@@ -440,49 +442,41 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 return;
                               }
 
+                              if (cartItems.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text("Votre panier est vide."),
+                                    backgroundColor: Color(0xFFFF6900),
+                                  ),
+                                );
+                                return;
+                              }
+
                               setState(() => _isSubmitting = true);
 
                               try {
                                 String deliveryDate = "";
                                 if (_selectedDate == "AUJOURD'HUI") {
-                                  deliveryDate = DateFormat(
-                                    'yyyy-MM-dd',
-                                  ).format(DateTime.now());
+                                  deliveryDate = AppDateUtils.toApiDate(
+                                    DateTime.now(),
+                                  );
                                 } else if (_selectedDate == "DEMAIN") {
-                                  deliveryDate = DateFormat('yyyy-MM-dd')
-                                      .format(
-                                        DateTime.now().add(
-                                          const Duration(days: 1),
-                                        ),
-                                      );
+                                  deliveryDate = AppDateUtils.toApiDate(
+                                    DateTime.now().add(
+                                      const Duration(days: 1),
+                                    ),
+                                  );
                                 } else {
-                                  try {
-                                    final parts = _formattedDate.split('/');
-                                    deliveryDate =
-                                        "${parts[2]}-${parts[1]}-${parts[0]}";
-                                  } catch (e) {
-                                    deliveryDate = DateFormat(
-                                      'yyyy-MM-dd',
-                                    ).format(DateTime.now());
-                                  }
+                                  final parsed = AppDateUtils.tryParseDateTime(
+                                    _formattedDate,
+                                  );
+                                  deliveryDate = AppDateUtils.toApiDate(parsed);
                                 }
 
-                                String deliveryTimeStr =
-                                    "${DateFormat('HH:mm:ss.SSS').format(DateTime.now())}Z";
-                                if (_timeController.text.trim().isNotEmpty) {
-                                  final cleanTime = _timeController.text
-                                      .replaceAll('h :', ':')
-                                      .replaceAll(' ', '');
-                                  final parts = cleanTime.split(':');
-                                  if (parts.isNotEmpty && parts[0].isNotEmpty) {
-                                    final hh = parts[0].padLeft(2, '0');
-                                    final mm =
-                                        parts.length > 1 && parts[1].isNotEmpty
-                                        ? parts[1].padLeft(2, '0')
-                                        : '00';
-                                    deliveryTimeStr = "$hh:$mm:00.000Z";
-                                  }
-                                }
+                                final String deliveryTimeStr =
+                                    AppDateUtils.toApiTime(
+                                      _timeController.text,
+                                    );
 
                                 // Build items list with product_id and conditional variant_id
                                 final items = cartItems.map((cartItem) {
@@ -653,14 +647,10 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                 if (selectedPayment == "Wave" &&
                                     deepLink != null &&
                                     deepLink.isNotEmpty) {
-                                  final uri = Uri.parse(deepLink);
-                                  try {
-                                    await launchUrl(
-                                      uri,
-                                      mode: LaunchMode
-                                          .externalNonBrowserApplication,
-                                    );
-                                  } catch (_) {}
+                                  ExternalIntentLauncher.launchPaymentDeepLink(
+                                    deepLinkUrl: deepLink,
+                                    context: context,
+                                  );
                                 }
 
                                 // Step 4 – Show Payment Status Popup with live polling
@@ -738,13 +728,8 @@ class _ValidationScreenState extends State<ValidationScreen> {
                               }
                             },
                       child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
+                          ? const CoolShimmer(
+                              child: CoolShimmerBone.circle(size: 20),
                             )
                           : const Text(
                               "JE VALIDE",

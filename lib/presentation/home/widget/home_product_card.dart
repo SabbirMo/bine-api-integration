@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/home_product_card_provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class HomeProductCard extends StatelessWidget {
   final String videoUrl;
@@ -144,9 +145,8 @@ class HomeProductCard extends StatelessWidget {
                   // 6. Loading Indicator (Only shown during playback buffering)
                   if (isInitializing || (hasStartedPlaying && isBuffering))
                     const Center(
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
+                      child: CoolShimmer(
+                        child: CoolShimmerBone.circle(size: 38),
                       ),
                     ),
 

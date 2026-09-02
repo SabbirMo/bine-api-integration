@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
 import 'package:binetatour/presentation/profile/my_order/feedback/order_items_screen.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
+import 'package:binetatour/core/utils/date_utils.dart';
+import 'package:binetatour/core/utils/color_utils.dart';
 
 class InprogressScreen extends StatefulWidget {
   final String status;
@@ -51,9 +54,7 @@ class _InprogressScreenState extends State<InprogressScreen> {
       body: Consumer<OrderProvider>(
         builder: (context, provider, child) {
           if (provider.isDetailLoading) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF6900)),
-            );
+            return const ShimmerList.invoices(itemCount: 3);
           }
           if (provider.detailErrorMessage != null) {
             return Center(
@@ -210,16 +211,8 @@ class _InprogressScreenState extends State<InprogressScreen> {
             icon = _getStepIcon(index);
           }
 
-          String formattedDate = "";
-          if (step.timestamp != null && step.timestamp!.isNotEmpty) {
-            try {
-              final date = DateTime.parse(step.timestamp!);
-              formattedDate =
-                  "${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}, ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
-            } catch (e) {
-              formattedDate = step.timestamp!;
-            }
-          }
+          final String formattedDate =
+              AppDateUtils.formatDateTime(step.timestamp);
 
           return _trackingStep(
             title: step.label,
@@ -464,13 +457,8 @@ class _InprogressScreenState extends State<InprogressScreen> {
                             }
                           },
                     icon: isDownloading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
+                        ? const CoolShimmer(
+                            child: CoolShimmerBone.circle(size: 18),
                           )
                         : const Icon(Icons.file_download_outlined, size: 20),
                     label: Text(
@@ -526,13 +514,8 @@ class _InprogressScreenState extends State<InprogressScreen> {
                         }
                       },
                 icon: isDownloading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
+                    ? const CoolShimmer(
+                        child: CoolShimmerBone.circle(size: 18),
                       )
                     : const Icon(Icons.file_download_outlined, size: 20),
                 label: Text(
@@ -654,16 +637,7 @@ class _InprogressScreenState extends State<InprogressScreen> {
   }
 
   Color _hexToColor(String? hexString) {
-    if (hexString == null || hexString.isEmpty) return Colors.transparent;
-    try {
-      var hexColor = hexString.replaceAll("#", "");
-      if (hexColor.length == 6) {
-        hexColor = "FF$hexColor";
-      }
-      return Color(int.parse("0x$hexColor"));
-    } catch (e) {
-      return Colors.transparent;
-    }
+    return AppColorUtils.fromHex(hexString, fallback: Colors.transparent);
   }
 
   Widget _infoRow(IconData icon, String label, String value) {

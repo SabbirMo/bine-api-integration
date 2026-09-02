@@ -2,6 +2,7 @@ import 'package:binetatour/core/login/login_provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/notification_provider.dart';
 import 'package:binetatour/providers/order_provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -44,10 +45,8 @@ class _LoginState extends State<Login> {
             const SizedBox(height: 20),
 
             provider.isLoading
-                ? SizedBox(
-                    height: 35,
-                    width: 35,
-                    child: Center(child: CircularProgressIndicator()),
+                ? const CoolShimmer(
+                    child: CoolShimmerBone.pill(width: 80, height: 35),
                   )
                 : ElevatedButton(
                     onPressed: () async {

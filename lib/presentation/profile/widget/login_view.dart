@@ -7,6 +7,7 @@ import 'package:binetatour/providers/order_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class LoginView extends StatelessWidget {
   final VoidCallback onLogin;
@@ -83,13 +84,8 @@ class LoginView extends StatelessWidget {
               side: BorderSide(color: Colors.grey[300]!),
             ),
             child: loginProvider.isGoogleLoading
-                ? const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.black,
-                    ),
+                ? const CoolShimmer(
+                    child: CoolShimmerBone.circle(size: 24),
                   )
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -155,13 +151,8 @@ class LoginView extends StatelessWidget {
                 side: BorderSide(color: Colors.grey[300]!),
               ),
               child: loginProvider.isAppleLoading
-                  ? const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.black,
-                      ),
+                  ? const CoolShimmer(
+                      child: CoolShimmerBone.circle(size: 24),
                     )
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,

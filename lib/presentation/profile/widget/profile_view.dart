@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class ProfileView extends StatefulWidget {
   final VoidCallback onLogout;
@@ -330,7 +331,9 @@ class _ProfileViewState extends State<ProfileView> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return const Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF6900)),
+          child: CoolShimmer(
+            child: CoolShimmerBone.circle(size: 40),
+          ),
         );
       },
     );
