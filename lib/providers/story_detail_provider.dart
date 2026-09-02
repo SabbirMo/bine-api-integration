@@ -12,6 +12,7 @@ class StoryDetailProvider extends ChangeNotifier {
   final List<StoryContent> stories;
   final StoryProvider? storyProvider;
   final int categoryIndex;
+  final List<StoryGroup>? allGroups;
   final VoidCallback? onFinished;
   final VoidCallback? onPreviousAtStart;
 
@@ -29,6 +30,7 @@ class StoryDetailProvider extends ChangeNotifier {
     required this.stories,
     this.storyProvider,
     this.categoryIndex = 0,
+    this.allGroups,
     int initialStoryIndex = 0,
     this.onFinished,
     this.onPreviousAtStart,
@@ -43,9 +45,11 @@ class StoryDetailProvider extends ChangeNotifier {
   // --- Getters ---
   int get currentIndex => _currentIndex;
   StoryContent? get currentStory =>
-      (stories.isNotEmpty && _currentIndex >= 0 && _currentIndex < stories.length)
-          ? stories[_currentIndex]
-          : null;
+      (stories.isNotEmpty &&
+          _currentIndex >= 0 &&
+          _currentIndex < stories.length)
+      ? stories[_currentIndex]
+      : null;
 
   bool get isMuted => _isMuted;
   bool get isPaused => _isPaused;
@@ -77,11 +81,13 @@ class StoryDetailProvider extends ChangeNotifier {
 
     final story = stories[index];
 
-    // 1. Eagerly preload all audio and next items in background
-    StoryPreloader.preloadStories(stories);
-    if (index + 1 < stories.length) {
-      StoryPreloader.preloadNextStory(stories[index + 1]);
-    }
+    // 1. Deep intelligent preloading: next, previous, second next, and surrounding categories
+    StoryPreloader.preloadAround(
+      stories: stories,
+      currentIndex: index,
+      allGroups: allGroups,
+      categoryIndex: categoryIndex,
+    );
 
     // 2. Track view asynchronously in background (401 handled silently)
     if (story.id != null && storyProvider != null && !isTestMode) {
@@ -124,10 +130,14 @@ class StoryDetailProvider extends ChangeNotifier {
     _engineListeners.add(() => eng.isPlayingNotifier.removeListener(updateUI));
 
     eng.isBufferingNotifier.addListener(updateUI);
-    _engineListeners.add(() => eng.isBufferingNotifier.removeListener(updateUI));
+    _engineListeners.add(
+      () => eng.isBufferingNotifier.removeListener(updateUI),
+    );
 
     eng.hasFirstFrameNotifier.addListener(updateUI);
-    _engineListeners.add(() => eng.hasFirstFrameNotifier.removeListener(updateUI));
+    _engineListeners.add(
+      () => eng.hasFirstFrameNotifier.removeListener(updateUI),
+    );
 
     eng.errorNotifier.addListener(updateUI);
     _engineListeners.add(() => eng.errorNotifier.removeListener(updateUI));

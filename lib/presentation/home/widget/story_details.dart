@@ -1,7 +1,9 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:binetatour/core/story/story_hls_preloader.dart';
-import 'package:binetatour/core/story/story_preloader.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
+import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/presentation/home/widget/story/story_group_page_view.dart';
 
@@ -34,15 +36,18 @@ class StoryDetailScreen extends StatefulWidget {
   State<StoryDetailScreen> createState() => _StoryDetailScreenState();
 }
 
-class _StoryDetailScreenState extends State<StoryDetailScreen> {
+class _StoryDetailScreenState extends State<StoryDetailScreen>
+    with WidgetsBindingObserver {
   late PageController _pageController;
   late List<StoryGroup> _effectiveGroups;
   late int _currentGroupIndex;
   bool _isPageAnimating = false;
+  bool _isScreenPaused = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.storyGroups != null && widget.storyGroups!.isNotEmpty) {
       _effectiveGroups = widget.storyGroups!;
       _currentGroupIndex = widget.initialGroupIndex.clamp(
@@ -66,10 +71,48 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 
     _pageController = PageController(initialPage: _currentGroupIndex);
 
-    // Eagerly precache all category images and first stories in background
+    // Eagerly precache surrounding stories for instantaneous 0ms startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      for (final group in _effectiveGroups) {
+      if (mounted) {
+        _precacheAround(_currentGroupIndex);
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      if (mounted) setState(() => _isScreenPaused = true);
+    } else if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() => _isScreenPaused = false);
+    }
+  }
+
+  /// Priority precache surrounding categories and their stories
+  void _precacheAround(int index) {
+    if (!mounted || _effectiveGroups.isEmpty) return;
+    final total = _effectiveGroups.length;
+    final lastIdx = total - 1;
+
+    // Priority: Current category, Immediate Next, Immediate Previous, Second Next, Second Previous, Last Category
+    final indices = <int>[
+      index,
+      index + 1,
+      index - 1,
+      index + 2,
+      index - 2,
+    ];
+    if (lastIdx > 0 && !indices.contains(lastIdx)) {
+      indices.add(lastIdx);
+    }
+
+    final List<String> priorityVideos = [];
+
+    for (final targetIndex in indices) {
+      if (targetIndex >= 0 && targetIndex < total) {
+        final group = _effectiveGroups[targetIndex];
+
         if (group.categoryImage.isNotEmpty &&
             group.categoryImage.startsWith('http')) {
           precacheImage(
@@ -77,11 +120,59 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             context,
           ).catchError((_) {});
         }
-        if (group.stories.isNotEmpty) {
-          StoryPreloader.preloadNextStory(group.stories.first, context);
+
+        for (final story in group.stories) {
+          if (story.isVideo) {
+            if (story.fallbackUrl != null &&
+                story.fallbackUrl!.isNotEmpty &&
+                story.fallbackUrl!.startsWith('http')) {
+              final resolved = MediaUrlResolver.resolveUrl(story.fallbackUrl!);
+              if (resolved.isNotEmpty && !priorityVideos.contains(resolved)) {
+                priorityVideos.add(resolved);
+              }
+            }
+            if (story.url.isNotEmpty && story.url.startsWith('http')) {
+              final resolved = MediaUrlResolver.resolveUrl(story.url);
+              if (resolved.isNotEmpty && !priorityVideos.contains(resolved)) {
+                priorityVideos.add(resolved);
+              }
+            }
+          } else if (story.isAudio) {
+            final target = (story.fallbackUrl != null &&
+                    story.fallbackUrl!.isNotEmpty &&
+                    story.fallbackUrl!.startsWith('http'))
+                ? story.fallbackUrl!
+                : story.url;
+            if (target.isNotEmpty && target.startsWith('http')) {
+              final resolved = MediaUrlResolver.resolveUrl(target);
+              if (resolved.isNotEmpty && !priorityVideos.contains(resolved)) {
+                priorityVideos.add(resolved);
+              }
+            }
+          } else if (story.isImage) {
+            if (story.url.isNotEmpty && story.url.startsWith('http')) {
+              precacheImage(
+                NetworkImage(story.url),
+                context,
+              ).catchError((_) {});
+            }
+          }
+
+          if (story.thumbnailUrl != null &&
+              story.thumbnailUrl!.isNotEmpty &&
+              story.thumbnailUrl!.startsWith('http')) {
+            precacheImage(
+              NetworkImage(story.thumbnailUrl!),
+              context,
+            ).catchError((_) {});
+          }
         }
       }
-    });
+    }
+
+    if (priorityVideos.isNotEmpty) {
+      VideoCacheManager.instance.preCachePriorityUrls(priorityVideos);
+    }
   }
 
   void _onPageChanged(int index) {
@@ -89,11 +180,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       _currentGroupIndex = index;
     });
     _isPageAnimating = false;
-
-    // Silently prefetch category N+1 first story in background
-    if (index + 1 < _effectiveGroups.length && mounted) {
-      StoryPreloader.preloadCategoryFirstStory(_effectiveGroups[index + 1], context);
-    }
+    _precacheAround(index);
   }
 
   void _goToNextCategory() {
@@ -143,6 +230,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     StoryHlsPreloader.instance.cancel();
     super.dispose();
@@ -162,82 +250,92 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: AnimatedBuilder(
-        animation: _pageController,
-        builder: (context, _) {
-          return PageView.builder(
-            controller: _pageController,
-            itemCount: _effectiveGroups.length,
-            onPageChanged: _onPageChanged,
-            physics: const SnappyStoryScrollPhysics(),
-            itemBuilder: (context, index) {
-              final group = _effectiveGroups[index];
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: AnimatedBuilder(
+          animation: _pageController,
+          builder: (context, _) {
+            return PageView.builder(
+              controller: _pageController,
+              itemCount: _effectiveGroups.length,
+              onPageChanged: _onPageChanged,
+              physics: const SnappyStoryScrollPhysics(),
+              itemBuilder: (context, index) {
+                final group = _effectiveGroups[index];
 
-              double pageOffset = 0.0;
-              if (_pageController.position.haveDimensions &&
-                  _pageController.position.viewportDimension > 0) {
-                pageOffset =
-                    (_pageController.page ?? _currentGroupIndex.toDouble()) -
-                    index;
-              } else {
-                pageOffset = (_currentGroupIndex - index).toDouble();
-              }
+                double pageOffset = 0.0;
+                if (_pageController.position.haveDimensions &&
+                    _pageController.position.viewportDimension > 0) {
+                  pageOffset =
+                      (_pageController.page ?? _currentGroupIndex.toDouble()) -
+                      index;
+                } else {
+                  pageOffset = (_currentGroupIndex - index).toDouble();
+                }
 
-              // True Facebook 3D Cube 90-degree perspective rotation
-              final double angle = (pageOffset * (pi / 2)).clamp(
-                -pi / 2,
-                pi / 2,
-              );
-              final isLeaving = pageOffset > 0;
-              final matrix = Matrix4.identity()
-                ..setEntry(3, 2, 0.001) // 3D perspective depth
-                ..rotateY(angle);
+                // True Facebook 3D Cube 90-degree perspective rotation
+                final double angle = (pageOffset * (pi / 2)).clamp(
+                  -pi / 2,
+                  pi / 2,
+                );
+                final isLeaving = pageOffset > 0;
+                final matrix = Matrix4.identity()
+                  ..setEntry(3, 2, 0.001) // 3D perspective depth
+                  ..rotateY(angle);
 
-              final double shadowOpacity = (pageOffset.abs() * 0.5).clamp(
-                0.0,
-                0.6,
-              );
+                final double shadowOpacity = (pageOffset.abs() * 0.5).clamp(
+                  0.0,
+                  0.6,
+                );
 
-              return Transform(
-                transform: matrix,
-                alignment: isLeaving
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    StoryGroupPageView(
-                      key: ValueKey('story_group_${group.categoryId}_$index'),
-                      group: group,
-                      categoryIndex: index,
-                      isActive: (index == _currentGroupIndex),
-                      onNextCategory: _goToNextCategory,
-                      onPrevCategory: _goToPrevCategory,
-                      onClose: () {
-                        if (Navigator.canPop(context)) {
-                          Navigator.pop(context);
-                        }
-                      },
-                    ),
-                    // 3D Cube face shadow overlay
-                    if (shadowOpacity > 0.01)
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: Container(
-                            color: Colors.black.withValues(
-                              alpha: shadowOpacity,
+                return Transform(
+                  transform: matrix,
+                  alignment: isLeaving
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      StoryGroupPageView(
+                        key: ValueKey('story_group_${group.categoryId}_$index'),
+                        group: group,
+                        categoryIndex: index,
+                        allGroups: _effectiveGroups,
+                        isActive: (index == _currentGroupIndex),
+                        isScreenPaused: _isScreenPaused,
+                        onNextCategory: _goToNextCategory,
+                        onPrevCategory: _goToPrevCategory,
+                        onClose: () {
+                          if (Navigator.canPop(context)) {
+                            Navigator.pop(context);
+                          }
+                        },
+                      ),
+                      // 3D Cube face shadow overlay
+                      if (shadowOpacity > 0.01)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: Container(
+                              color: Colors.black.withValues(
+                                alpha: shadowOpacity,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

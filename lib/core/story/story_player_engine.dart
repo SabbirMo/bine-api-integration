@@ -121,12 +121,38 @@ class StoryPlayerEngine {
   }
 
   void _setupPlayerListeners() {
+    void checkFirstFrameReady() {
+      if (_isDisposed || _hasFirstFrameNotifier.value) return;
+      final isAudio = _currentStory?.isAudio == true;
+      final isVideo = _currentStory?.isVideo == true;
+      final pos = _player.state.position;
+      final hasWidth = (_player.state.width ?? 0) > 0;
+      final isBuffering = _isBufferingNotifier.value;
+
+      if (isAudio && pos > Duration.zero) {
+        _hasFirstFrameNotifier.value = true;
+        _isBufferingNotifier.value = false;
+        _cancelBufferingWatchdog();
+      } else if (isVideo && pos > Duration.zero && hasWidth && !isBuffering) {
+        _hasFirstFrameNotifier.value = true;
+        _isBufferingNotifier.value = false;
+        _cancelBufferingWatchdog();
+        if (_openStartTime != null) {
+          final ms = DateTime.now().difference(_openStartTime!).inMilliseconds;
+          debugPrint(
+            '🎬 [StoryPerf] FIRST FRAME VISIBLE & PLAYING #${_currentStory?.id ?? 0} = ${ms}ms',
+          );
+        }
+      }
+    }
+
     _subscriptions.add(
       _player.stream.playing.listen((playing) {
         if (_isDisposed || _currentStory?.isImage == true) return;
         _isPlayingNotifier.value = playing;
         if (playing) {
           _errorNotifier.value = null;
+          checkFirstFrameReady();
         }
       }),
     );
@@ -151,16 +177,19 @@ class StoryPlayerEngine {
     _subscriptions.add(
       _player.stream.width.listen((w) {
         if (_isDisposed || _currentStory?.isImage == true) return;
-        if (w != null && w > 0 && !_codecReadyNotifier.value) {
-          _codecReadyNotifier.value = true;
-          if (_openStartTime != null) {
-            final ms = DateTime.now()
-                .difference(_openStartTime!)
-                .inMilliseconds;
-            debugPrint(
-              '🖥️ [StoryPerf] codec ready (+${ms}ms, resolution: ${w}x${_player.state.height})',
-            );
+        if (w != null && w > 0) {
+          if (!_codecReadyNotifier.value) {
+            _codecReadyNotifier.value = true;
+            if (_openStartTime != null) {
+              final ms = DateTime.now()
+                  .difference(_openStartTime!)
+                  .inMilliseconds;
+              debugPrint(
+                '🖥️ [StoryPerf] codec ready (+${ms}ms, resolution: ${w}x${_player.state.height})',
+              );
+            }
           }
+          checkFirstFrameReady();
         }
       }),
     );
@@ -180,53 +209,58 @@ class StoryPlayerEngine {
               _errorNotifier.value!.toLowerCase().contains('slow')) {
             _errorNotifier.value = null;
           }
+          checkFirstFrameReady();
         }
       }),
     );
 
+    void triggerCompletion(String reason) {
+      if (_isDisposed || _currentStory?.isImage == true) return;
+      final int currentGen = _currentGenerationId;
+      if (!_hasCompleted && _activeCompletedGenerationId != currentGen) {
+        _cancelBufferingWatchdog();
+        _hasCompleted = true;
+        _activeCompletedGenerationId = currentGen;
+        _progressNotifier.value = 1.0;
+        onCompleted();
+      }
+    }
+
     _subscriptions.add(
       _player.stream.position.listen((pos) {
         if (_isDisposed || _currentStory?.isImage == true) return;
-        if (pos <= const Duration(milliseconds: 250)) {
-          _hasMediaStartedForCurrentGen = true;
-        }
-
         if (pos > Duration.zero) {
+          _hasMediaStartedForCurrentGen = true;
           _cancelBufferingWatchdog();
           if (_errorNotifier.value != null) {
             _errorNotifier.value = null; // Auto-hide slow connection overlay
           }
-          // For AUDIO stories only, position marks first frame ready
-          if (_currentStory?.isAudio == true && !_hasFirstFrameNotifier.value) {
-            _hasFirstFrameNotifier.value = true;
-            _isBufferingNotifier.value = false;
-          }
+          checkFirstFrameReady();
         }
 
         final dur = _player.state.duration;
-        if (dur > Duration.zero && _hasMediaStartedForCurrentGen) {
+        if (dur > Duration.zero &&
+            _hasMediaStartedForCurrentGen &&
+            _hasFirstFrameNotifier.value) {
           final frac = (pos.inMilliseconds / dur.inMilliseconds).clamp(
             0.0,
             1.0,
           );
           _progressNotifier.value = frac;
+
+          // Fail-safe: if position reaches within 200ms of end of video, auto-advance
+          if (dur.inMilliseconds > 1000 &&
+              pos.inMilliseconds >= dur.inMilliseconds - 200) {
+            triggerCompletion('position reached end');
+          }
         }
       }),
     );
 
     _subscriptions.add(
       _player.stream.completed.listen((completed) {
-        if (_isDisposed || _currentStory?.isImage == true) return;
-        final int currentGen = _currentGenerationId;
-        if (completed &&
-            !_hasCompleted &&
-            _hasMediaStartedForCurrentGen &&
-            _activeCompletedGenerationId != currentGen) {
-          _cancelBufferingWatchdog();
-          _hasCompleted = true;
-          _activeCompletedGenerationId = currentGen;
-          _progressNotifier.value = 1.0;
-          onCompleted();
+        if (completed && _hasMediaStartedForCurrentGen) {
+          triggerCompletion('completed stream event');
         }
       }),
     );
@@ -286,39 +320,28 @@ class StoryPlayerEngine {
     try {
       final platform = _player.platform;
       if (platform != null) {
-        // Hardware decoding with safe fallback outputs frames directly to Android SurfaceTexture
-        await (platform as dynamic).setProperty('hwdec', 'auto-safe');
-        // 0ms instant startup options: analyze zero frames, probe small header
-        await (platform as dynamic).setProperty(
-          'demuxer-lavf-analyzeduration',
-          '0',
-        );
-        await (platform as dynamic).setProperty(
-          'demuxer-lavf-probesize',
-          '32768',
-        );
-        await (platform as dynamic).setProperty('demuxer-readahead-secs', '1');
-        await (platform as dynamic).setProperty('demuxer-max-bytes', '2097152');
-        await (platform as dynamic).setProperty(
-          'demuxer-max-back-bytes',
-          '1048576',
-        );
-        await (platform as dynamic).setProperty('vd-lavc-fast', 'yes');
-        // DO NOT PAUSE FOR BUFFER: Play immediately on first packet!
-        await (platform as dynamic).setProperty('cache-pause', 'no');
-        await (platform as dynamic).setProperty('cache-pause-wait', '0');
-        await (platform as dynamic).setProperty('cache-pause-initial', 'no');
-        await (platform as dynamic).setProperty('cache', 'yes');
-        await (platform as dynamic).setProperty('cache-secs', '3');
-        await (platform as dynamic).setProperty('hls-bitrate', 'auto');
-        // Audio latency optimization: keeps Android AudioTrack hot and reduces startup latency
-        await (platform as dynamic).setProperty('audio-stream-silence', 'yes');
-        await (platform as dynamic).setProperty('audio-buffer', '0.05');
-        await (platform as dynamic).setProperty('network-timeout', '10');
-        await (platform as dynamic).setProperty(
-          'user-agent',
-          'CloudflareStream-Flutter-MediaKit',
-        );
+        final p = platform as dynamic;
+        await Future.wait(<Future<dynamic>>[
+          p.setProperty('hwdec', 'auto-safe'),
+          p.setProperty('hls-bitrate', 'auto'),
+          p.setProperty('cache', 'yes'),
+          p.setProperty('cache-secs', '10'),
+          p.setProperty('demuxer-lavf-analyzeduration', '0'),
+          p.setProperty('demuxer-lavf-probesize', '1048576'),
+          p.setProperty('cache-pause', 'no'),
+          p.setProperty('cache-pause-wait', '0'),
+          p.setProperty('cache-pause-initial', 'no'),
+          p.setProperty('demuxer-readahead-secs', '5'),
+          p.setProperty('demuxer-max-bytes', '25MiB'),
+          p.setProperty('demuxer-max-back-bytes', '25MiB'),
+          p.setProperty('loop-file', 'no'),
+          p.setProperty('vd-lavc-fast', 'yes'),
+          p.setProperty('vd-lavc-skiploopfilter', 'all'),
+          p.setProperty('audio-stream-silence', 'yes'),
+          p.setProperty('audio-buffer', '0.05'),
+          p.setProperty('network-timeout', '10'),
+          p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
+        ]);
       }
     } catch (_) {}
   }
@@ -329,21 +352,37 @@ class StoryPlayerEngine {
   /// 3. Fallback ➔ Adaptive HLS Stream (.m3u8) with hls-bitrate=auto.
   String resolvePlaybackUrl(StoryContent story) {
     if (story.isVideo) {
-      if (story.fallbackUrl != null && story.fallbackUrl!.isNotEmpty) {
-        final cachedPath = VideoCacheManager.instance.getCachedFilePath(
+      final candidates = <String>[
+        if (story.fallbackUrl != null && story.fallbackUrl!.isNotEmpty)
           story.fallbackUrl!,
-        );
+        if (story.url.isNotEmpty) story.url,
+      ];
+
+      for (final cand in candidates) {
+        final cachedPath = VideoCacheManager.instance.getCachedFilePath(cand);
         if (cachedPath != null) {
           debugPrint(
             '💾 [StoryPlayerEngine] Playing from local disk cache: $cachedPath',
           );
           return cachedPath;
         }
-
-        if (story.fallbackUrl!.startsWith('http')) {
-          VideoCacheManager.instance.preCacheVideo(story.fallbackUrl!);
-          return story.fallbackUrl!;
+        final downloadUrl = VideoCacheManager.getDownloadableUrl(cand);
+        final cachedDownload = VideoCacheManager.instance.getCachedFilePath(
+          downloadUrl,
+        );
+        if (cachedDownload != null) {
+          debugPrint(
+            '💾 [StoryPlayerEngine] Playing direct MP4 from local disk cache: $cachedDownload',
+          );
+          return cachedDownload;
         }
+      }
+
+      if (story.fallbackUrl != null &&
+          story.fallbackUrl!.isNotEmpty &&
+          story.fallbackUrl!.startsWith('http')) {
+        VideoCacheManager.instance.preCacheVideo(story.fallbackUrl!);
+        return story.fallbackUrl!;
       }
 
       // Fallback: Adaptive HLS Stream (.m3u8)
@@ -413,28 +452,9 @@ class StoryPlayerEngine {
 
       final effectiveUrl = resolvePlaybackUrl(story);
 
-      // Native SurfaceTexture rendered event - strictly unlocks first frame only when painted on screen!
-      _videoController.waitUntilFirstFrameRendered
-          .then((_) async {
-            if (_isDisposed || loadId != _currentGenerationId) return;
-            if (!_hasFirstFrameNotifier.value) {
-              _hasFirstFrameNotifier.value = true;
-              _isBufferingNotifier.value = false;
-              _cancelBufferingWatchdog();
-              if (_openStartTime != null) {
-                final ms = DateTime.now()
-                    .difference(_openStartTime!)
-                    .inMilliseconds;
-                debugPrint('🖥️ [StoryPerf] surface ready');
-                debugPrint('🎬 [StoryPerf] FIRST FRAME');
-                debugPrint(
-                  '👁️ [StoryPerf] FIRST FRAME VISIBLE #${story.id ?? 0} = ${ms}ms',
-                );
-              }
-              _recordFirstFrameTelemetry('surface rendered frame');
-            }
-          })
-          .catchError((_) {});
+      // Note: First frame readiness is strictly verified across stream position,
+      // video dimensions, and buffering state by checkFirstFrameReady() so loading
+      // completes smoothly before revealing video playback.
 
       try {
         debugPrint('▶️ [StoryPerf] play()');

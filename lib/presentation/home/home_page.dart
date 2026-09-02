@@ -730,8 +730,8 @@ class _AccueilScreenState extends State<AccueilScreen>
               FeedVideoManager.instance.pauseAll();
               await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => StoryDetailScreen(
+                CupertinoReelsRoute(
+                  page: StoryDetailScreen(
                     storyGroups: allGroups,
                     initialGroupIndex: initialGroupIndex,
                   ),

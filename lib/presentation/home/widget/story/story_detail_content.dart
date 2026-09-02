@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
+import 'package:binetatour/presentation/common/widgets/video_loading_indicator.dart';
 import 'package:binetatour/providers/story_detail_provider.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/presentation/home/widget/story/story_audio_wave.dart';
@@ -131,9 +133,7 @@ class StoryDetailContent extends StatelessWidget {
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                     const SizedBox(height: 14),
-                    const CoolShimmer(
-                      child: CoolShimmerBone.circle(size: 20),
-                    ),
+                    const CoolShimmer(child: CoolShimmerBone.circle(size: 20)),
                   ],
                 ),
               ),
@@ -189,29 +189,17 @@ class StoryDetailContent extends StatelessWidget {
           width: double.infinity,
           height: double.infinity,
           frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-            if (wasSynchronouslyLoaded || frame != null) {
-              return child;
-            }
-            return const SizedBox.shrink();
+            if (wasSynchronouslyLoaded) return child;
+            return AnimatedOpacity(
+              opacity: frame != null ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              child: child,
+            );
           },
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;
-            return Center(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.black45,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFFF6900).withValues(alpha: 0.3),
-                    width: 1.5,
-                  ),
-                ),
-                child: const CoolShimmer(
-                  child: CoolShimmerBone.circle(size: 26),
-                ),
-              ),
-            );
+            return const Center(child: VideoLoadingIndicator(size: 48));
           },
           errorBuilder: (_, e, s) => const Center(
             child: Icon(Icons.broken_image, color: Colors.white54, size: 54),
@@ -226,17 +214,16 @@ class StoryDetailContent extends StatelessWidget {
 
     if (story.isVideo) {
       final String thumb = _resolveStoryThumbnail(story);
+      final bool isReady = provider.hasFirstFrame && provider.progress > 0.0;
 
       return Container(
         color: Colors.black,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Live Video surface (smoothly faded in once first frame is ready)
+            // 1. Live Video surface — permanently rendered underneath at full opacity
             if (provider.videoController != null)
-              AnimatedOpacity(
-                opacity: provider.hasFirstFrame ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 150),
+              RepaintBoundary(
                 child: SizedBox.expand(
                   child: Video(
                     controller: provider.videoController!,
@@ -247,47 +234,51 @@ class StoryDetailContent extends StatelessWidget {
                 ),
               ),
 
-            // 2. Story's OWN poster thumbnail displayed until first video frame arrives
-            AnimatedOpacity(
-              opacity: provider.hasFirstFrame ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 150),
-              child: _buildVideoPlaceholder(story, thumb),
-            ),
-
-            // 3. Subtle loading spinner if still buffering before first frame
-            if (provider.isLoading && !provider.hasFirstFrame)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: const Color(0xFFFF6900).withValues(alpha: 0.3),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: const CoolShimmer(
-                    child: CoolShimmerBone.circle(size: 24),
-                  ),
+            // 2. Story's OWN poster thumbnail overlay — smoothly crossfades out ONLY when video is actively playing
+            IgnorePointer(
+              ignoring: isReady,
+              child: RepaintBoundary(
+                child: AnimatedOpacity(
+                  opacity: isReady ? 0.0 : 1.0,
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutCubic,
+                  child: _buildVideoPlaceholder(story, thumb),
                 ),
               ),
+            ),
+
+            // 3. Low internet / loading buffering Lottie animation — smoothly fades out once playback is active
+            IgnorePointer(
+              ignoring: isReady,
+              child: RepaintBoundary(
+                child: AnimatedOpacity(
+                  opacity: isReady ? 0.0 : 1.0,
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOut,
+                  child: const Center(child: VideoLoadingIndicator(size: 56)),
+                ),
+              ),
+            ),
           ],
         ),
       );
     }
 
     // Default loading canvas
-    return const Center(
-      child: CoolShimmer(
-        child: CoolShimmerBone.circle(size: 48),
-      ),
-    );
+    return const Center(child: VideoLoadingIndicator(size: 56));
   }
 
   String _resolveStoryThumbnail(StoryContent story) {
     if (story.thumbnailUrl != null && story.thumbnailUrl!.trim().isNotEmpty) {
       return story.thumbnailUrl!.trim();
+    }
+    final cfThumb = MediaUrlResolver.extractThumbnailFromVideoUrl(story.url);
+    if (cfThumb.isNotEmpty) return cfThumb;
+    if (story.fallbackUrl != null) {
+      final cfFallbackThumb = MediaUrlResolver.extractThumbnailFromVideoUrl(
+        story.fallbackUrl!,
+      );
+      if (cfFallbackThumb.isNotEmpty) return cfFallbackThumb;
     }
     // Auto-derive thumbnail from Cloudflare Stream URL
     if (story.url.contains('cloudflarestream.com') &&
@@ -389,9 +380,7 @@ class StoryDetailContent extends StatelessWidget {
                 ],
               ),
               child: provider.isLoading && !provider.isPlaying
-                  ? const CoolShimmer(
-                      child: CoolShimmerBone.circle(size: 36),
-                    )
+                  ? const CoolShimmer(child: CoolShimmerBone.circle(size: 36))
                   : Icon(
                       provider.isPlaying
                           ? Icons.pause_rounded

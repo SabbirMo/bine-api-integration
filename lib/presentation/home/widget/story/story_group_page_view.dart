@@ -8,7 +8,9 @@ import 'package:binetatour/presentation/home/widget/story/story_detail_content.d
 class StoryGroupPageView extends StatefulWidget {
   final StoryGroup group;
   final int categoryIndex;
+  final List<StoryGroup>? allGroups;
   final bool isActive;
+  final bool isScreenPaused;
   final VoidCallback onNextCategory;
   final VoidCallback onPrevCategory;
   final VoidCallback onClose;
@@ -17,7 +19,9 @@ class StoryGroupPageView extends StatefulWidget {
     super.key,
     required this.group,
     this.categoryIndex = 0,
+    this.allGroups,
     required this.isActive,
+    this.isScreenPaused = false,
     required this.onNextCategory,
     required this.onPrevCategory,
     required this.onClose,
@@ -43,11 +47,12 @@ class _StoryGroupPageViewState extends State<StoryGroupPageView> {
     _provider = StoryDetailProvider(
       stories: widget.group.stories,
       categoryIndex: widget.categoryIndex,
+      allGroups: widget.allGroups,
       storyProvider: context.read<StoryProvider>(),
       onFinished: widget.onNextCategory,
       onPreviousAtStart: widget.onPrevCategory,
     );
-    _provider!.loadCurrentStory(play: true);
+    _provider!.loadCurrentStory(play: !widget.isScreenPaused);
   }
 
   void _deactivate() {
@@ -65,6 +70,12 @@ class _StoryGroupPageViewState extends State<StoryGroupPageView> {
         _deactivate();
       }
       setState(() {});
+    } else if (widget.isScreenPaused != oldWidget.isScreenPaused) {
+      if (widget.isScreenPaused) {
+        _provider?.pauseStory();
+      } else if (widget.isActive) {
+        _provider?.resumeStory();
+      }
     }
   }
 
@@ -89,7 +100,8 @@ class _StoryGroupPageViewState extends State<StoryGroupPageView> {
         body: thumb.isNotEmpty && thumb.startsWith('http')
             ? Image.network(
                 thumb,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
                 width: double.infinity,
                 height: double.infinity,
                 errorBuilder: (_, e, s) => Container(color: Colors.black),
