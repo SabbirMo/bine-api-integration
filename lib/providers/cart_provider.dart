@@ -1,11 +1,15 @@
+import 'dart:convert';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
 import 'package:binetatour/data/models/cart_model.dart';
 import 'package:binetatour/data/models/product_model.dart';
 
 class CartProvider extends ChangeNotifier {
+  static const String _cachedCartKey = 'cached_cart_data';
   final ApiServices _apiServices = ApiServices();
 
   bool _isLoading = false;
@@ -20,6 +24,55 @@ class CartProvider extends ChangeNotifier {
   final Map<int, ProductModel> _productDetailsCache = {};
   ProductModel? getProductFromCache(int id) => _productDetailsCache[id];
   Map<int, ProductModel> get productDetailsCache => _productDetailsCache;
+
+  CartProvider() {
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadFromCache();
+    await _fetchIfAuthenticated();
+  }
+
+  Future<void> _fetchIfAuthenticated() async {
+    try {
+      final token = await TokenStorage.getAccessToken();
+      if (token != null && token.isNotEmpty) {
+        await fetchCart(showLoading: false);
+      }
+    } catch (e) {
+      debugPrint("Error auto-fetching cart on init: $e");
+    }
+  }
+
+  Future<void> _saveToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_cart != null && _cart!.items.isNotEmpty) {
+        await prefs.setString(_cachedCartKey, json.encode(_cart!.toJson()));
+      } else {
+        await prefs.remove(_cachedCartKey);
+      }
+    } catch (e) {
+      debugPrint("Error saving cached cart: $e");
+    }
+  }
+
+  Future<void> _loadFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedStr = prefs.getString(_cachedCartKey);
+      if (cachedStr != null && cachedStr.isNotEmpty) {
+        final dynamic raw = json.decode(cachedStr);
+        if (raw is Map<String, dynamic>) {
+          _cart = CartModel.fromJson(raw);
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading cached cart: $e");
+    }
+  }
 
   Future<void> fetchCart({bool showLoading = true}) async {
     if (showLoading) {
@@ -114,6 +167,9 @@ class CartProvider extends ChangeNotifier {
     } finally {
       if (showLoading) {
         _isLoading = false;
+      }
+      if (_errorMessage == null) {
+        _saveToCache();
       }
       notifyListeners();
     }
@@ -411,6 +467,7 @@ class CartProvider extends ChangeNotifier {
 
     _cart = null;
     _errorMessage = null;
+    await _saveToCache();
     notifyListeners();
 
     try {

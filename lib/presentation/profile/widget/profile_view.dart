@@ -63,14 +63,18 @@ class _ProfileViewState extends State<ProfileView> {
     return RefreshIndicator(
       color: const Color(0xFFFF6900),
       onRefresh: () async {
-        await Future.wait([
-          _loadProfileData(),
-          context.read<OrderProvider>().fetchOrderHistory(),
-          context.read<NotificationProvider>().fetchNotifications(
-            forceRefresh: true,
-          ),
-          context.read<CartProvider>().fetchCart(showLoading: false),
-        ]);
+        try {
+          await Future.wait([
+            _loadProfileData(),
+            context.read<OrderProvider>().fetchOrderHistory(),
+            context.read<NotificationProvider>().fetchNotifications(
+              forceRefresh: true,
+            ),
+            context.read<CartProvider>().fetchCart(showLoading: false),
+          ]).timeout(const Duration(seconds: 8));
+        } catch (e) {
+          debugPrint("Profile refresh error or timeout: $e");
+        }
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),

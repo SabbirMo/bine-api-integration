@@ -247,7 +247,13 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           return RefreshIndicator(
             color: const Color(0xFFFF6900),
             onRefresh: () async {
-              await context.read<OrderProvider>().fetchOrderHistory();
+              try {
+                await context.read<OrderProvider>().fetchOrderHistory().timeout(
+                  const Duration(seconds: 8),
+                );
+              } catch (e) {
+                debugPrint("Order history refresh error or timeout: $e");
+              }
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -262,7 +268,13 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
         return RefreshIndicator(
           color: const Color(0xFFFF6900),
           onRefresh: () async {
-            await context.read<OrderProvider>().fetchOrderHistory();
+            try {
+              await context.read<OrderProvider>().fetchOrderHistory().timeout(
+                const Duration(seconds: 8),
+              );
+            } catch (e) {
+              debugPrint("Order history refresh error or timeout: $e");
+            }
           },
           child: ListView.builder(
             controller: _scrollController,

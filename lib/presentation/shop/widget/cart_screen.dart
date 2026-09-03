@@ -112,7 +112,13 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                         child: RefreshIndicator(
                           color: const Color(0xFFFF6900),
                           onRefresh: () async {
-                            await context.read<CartProvider>().fetchCart();
+                            try {
+                              await context.read<CartProvider>().fetchCart().timeout(
+                                const Duration(seconds: 8),
+                              );
+                            } catch (e) {
+                              debugPrint("Cart refresh error or timeout: $e");
+                            }
                           },
                           child: items.isEmpty
                               ? ListView(

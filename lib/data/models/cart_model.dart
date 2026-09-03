@@ -5,18 +5,23 @@ class CartModel {
   CartModel({required this.items, required this.total});
 
   factory CartModel.fromJson(Map<String, dynamic> json) {
-    final rawItems = (json['items'] ??
-            json['results'] ??
-            (json['data'] is Map
-                ? (json['data']['items'] ?? json['data']['results'])
-                : (json['data'] is List ? json['data'] : null)))
-        as List?;
+    final rawItems =
+        (json['items'] ??
+                json['results'] ??
+                (json['data'] is Map
+                    ? (json['data']['items'] ?? json['data']['results'])
+                    : (json['data'] is List ? json['data'] : null)))
+            as List?;
 
     return CartModel(
       items:
           rawItems
               ?.where((item) => item != null && item is Map)
-              .map((item) => CartItemModel.fromJson(Map<String, dynamic>.from(item as Map)))
+              .map(
+                (item) => CartItemModel.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ),
+              )
               .toList() ??
           [],
       total:
@@ -25,12 +30,19 @@ class CartModel {
                   json['total_price'] ??
                   (json['data'] is Map
                       ? (json['data']['total'] ??
-                          json['data']['total_amount'] ??
-                          json['data']['total_price'])
+                            json['data']['total_amount'] ??
+                            json['data']['total_price'])
                       : null) ??
                   '')
               .toString(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'items': items.map((item) => item.toJson()).toList(),
+      'total': total,
+    };
   }
 
   static int _parseInt(dynamic value, [int fallback = 0]) {
@@ -258,5 +270,23 @@ class CartItemModel {
       size: (variantData != null ? variantData['size'] : json['size'])
           ?.toString(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'product_id': productId,
+      'variant_id': variantId,
+      'product_name': productName,
+      'selling_price': sellingPrice,
+      'price_after_discount': priceAfterDiscount,
+      'main_image': mainImage,
+      'video_url': videoUrl,
+      'thumbnail_url': thumbnailUrl,
+      'quantity': quantity,
+      'color_name': colorName,
+      'color_code': colorCode,
+      'size': size,
+    };
   }
 }

@@ -1,5 +1,4 @@
 import 'package:binetatour/core/token_storage/token_storage.dart';
-import 'package:binetatour/core/widgets/fireworks_overlay.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
@@ -147,7 +146,6 @@ class _ProductDetailsActionSidebarState
         widget.onResume?.call();
         return;
       }
-      FireworksOverlay.show(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -53,6 +53,15 @@ class _AccueilScreenState extends State<AccueilScreen>
       await context.read<HomeProvider>().fetchHomeData().timeout(
         const Duration(seconds: 6),
       );
+      // Silently refresh cart data in background
+      if (mounted) {
+        context
+            .read<CartProvider>()
+            .fetchCart(showLoading: false)
+            .catchError((e) {
+              debugPrint("Silent cart fetch error in home refresh: $e");
+            });
+      }
       final renderTime = DateTime.now()
           .difference(AppStartupTracker.appStartTime)
           .inMilliseconds;
@@ -98,13 +107,19 @@ class _AccueilScreenState extends State<AccueilScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       FeedVideoManager.instance.resume();
-      debugPrint("App resumed from background: refreshing notifications...");
+      debugPrint("App resumed from background: refreshing notifications & cart...");
       if (mounted) {
         context
             .read<NotificationProvider>()
             .fetchNotifications(forceRefresh: true)
             .catchError((e) {
               debugPrint("Error refreshing notifications on resume: $e");
+            });
+        context
+            .read<CartProvider>()
+            .fetchCart(showLoading: false)
+            .catchError((e) {
+              debugPrint("Error refreshing cart on resume: $e");
             });
       }
     } else if (state == AppLifecycleState.inactive ||

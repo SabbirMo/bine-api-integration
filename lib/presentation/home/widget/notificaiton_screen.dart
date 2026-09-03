@@ -46,9 +46,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
   Widget build(BuildContext context) {
     return Consumer<NotificationProvider>(
       builder: (context, provider, child) {
-        Future<void> refreshAction() => context
-            .read<NotificationProvider>()
-            .fetchNotifications(forceRefresh: true);
+        Future<void> refreshAction() async {
+          try {
+            await context
+                .read<NotificationProvider>()
+                .fetchNotifications(forceRefresh: true)
+                .timeout(const Duration(seconds: 8));
+          } catch (e) {
+            debugPrint("Notification refresh error or timeout: $e");
+          }
+        }
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -101,9 +108,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                           child: _buildEmptyState(),
                         )
                       else ...[
-                        ...List.generate(provider.notifications.length, (index) {
+                        ...List.generate(provider.notifications.length, (
+                          index,
+                        ) {
                           final item = provider.notifications[index];
-                          final widgets = <Widget>[_buildNotificationItem(item)];
+                          final widgets = <Widget>[
+                            _buildNotificationItem(item),
+                          ];
                           if (index < provider.notifications.length - 1) {
                             widgets.add(const Divider(height: 1, indent: 70));
                           }
