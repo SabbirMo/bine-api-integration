@@ -17,7 +17,7 @@ class StoryPlayerEngine {
 
   final ValueNotifier<double> _progressNotifier = ValueNotifier<double>(0.0);
   final ValueNotifier<bool> _isPlayingNotifier = ValueNotifier<bool>(false);
-  final ValueNotifier<bool> _isBufferingNotifier = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _isBufferingNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _metadataReadyNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _codecReadyNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _hasFirstFrameNotifier = ValueNotifier<bool>(false);
@@ -28,7 +28,6 @@ class StoryPlayerEngine {
   Timer? _bufferingWatchdogTimer;
   int _imageElapsedMs = 0;
   static const Duration _defaultImageDuration = Duration(seconds: 5);
-  static const Duration _bufferingTimeout = Duration(seconds: 8);
   static const int _imageTickMs = 50;
 
   StoryContent? _currentStory;
@@ -103,14 +102,11 @@ class StoryPlayerEngine {
 
   void _startBufferingWatchdog(int genId) {
     _bufferingWatchdogTimer?.cancel();
-    _bufferingWatchdogTimer = Timer(_bufferingTimeout, () {
+    // Grace period: if video doesn't have first frame within 450ms, show buffering indicator
+    _bufferingWatchdogTimer = Timer(const Duration(milliseconds: 450), () {
       if (_isDisposed || genId != _currentGenerationId) return;
-      if (_isBufferingNotifier.value && !_hasFirstFrameNotifier.value) {
-        debugPrint(
-          '⏱️ [StoryPlayerEngine] Buffering watchdog fired (8s) for genId: $genId',
-        );
-        _isBufferingNotifier.value = false;
-        _errorNotifier.value = 'Slow connection';
+      if (!_hasFirstFrameNotifier.value) {
+        _isBufferingNotifier.value = true;
       }
     });
   }
@@ -126,21 +122,19 @@ class StoryPlayerEngine {
       final isAudio = _currentStory?.isAudio == true;
       final isVideo = _currentStory?.isVideo == true;
       final pos = _player.state.position;
-      final hasWidth = (_player.state.width ?? 0) > 0;
-      final isBuffering = _isBufferingNotifier.value;
 
       if (isAudio && pos > Duration.zero) {
         _hasFirstFrameNotifier.value = true;
         _isBufferingNotifier.value = false;
         _cancelBufferingWatchdog();
-      } else if (isVideo && pos > Duration.zero && hasWidth && !isBuffering) {
+      } else if (isVideo && pos > Duration.zero) {
         _hasFirstFrameNotifier.value = true;
         _isBufferingNotifier.value = false;
         _cancelBufferingWatchdog();
         if (_openStartTime != null) {
           final ms = DateTime.now().difference(_openStartTime!).inMilliseconds;
           debugPrint(
-            '🎬 [StoryPerf] FIRST FRAME VISIBLE & PLAYING #${_currentStory?.id ?? 0} = ${ms}ms',
+            '🎬 [StoryPerf] FIRST FRAME VISIBLE #${_currentStory?.id ?? 0} = ${ms}ms',
           );
         }
       }
@@ -440,15 +434,16 @@ class StoryPlayerEngine {
     } else {
       _hasFirstFrameNotifier.value =
           story.isAudio; // Audio doesn't need video texture frame
-      _isBufferingNotifier.value = true;
+      _isBufferingNotifier.value = false;
       _isPlayingNotifier.value = autoPlay;
 
-      _startBufferingWatchdog(loadId);
+      if (autoPlay) {
+        _startBufferingWatchdog(loadId);
+        // Immediately cancel background prefetch to dedicate 100% bandwidth to foreground playback
+        StoryHlsPreloader.instance.cancel();
+      }
 
-      // Immediately cancel background prefetch to dedicate 100% bandwidth to foreground playback
-      StoryHlsPreloader.instance.cancel();
-
-      await _player.setVolume(_isMuted ? 0.0 : 100.0);
+      await _player.setVolume(autoPlay ? (_isMuted ? 0.0 : 100.0) : 0.0);
 
       final effectiveUrl = resolvePlaybackUrl(story);
 
@@ -457,7 +452,7 @@ class StoryPlayerEngine {
       // completes smoothly before revealing video playback.
 
       try {
-        debugPrint('▶️ [StoryPerf] play()');
+        debugPrint('▶️ [StoryPerf] play() autoPlay=$autoPlay');
         await _player.open(Media(effectiveUrl), play: autoPlay);
       } catch (e) {
         if (!_isDisposed && loadId == _currentGenerationId) {
@@ -503,6 +498,7 @@ class StoryPlayerEngine {
       _startImageTimer(_currentGenerationId);
     } else {
       try {
+        await _player.setVolume(_isMuted ? 0.0 : 100.0);
         await _player.play();
       } catch (_) {}
     }

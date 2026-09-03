@@ -7,7 +7,9 @@ import 'package:binetatour/core/story/story_preloader.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
 import 'package:binetatour/providers/story_provider.dart';
 
-/// Clean, robust single-engine controller for Story Video, Audio, and Image playback
+/// Production-grade Dual-Engine (Ping-Pong) Pool controller for Story Video, Audio, and Image playback.
+/// Eliminates codec initialization latency by pre-rolling the next story to Frame 0 on an idle engine
+/// while the active story is playing. Transition between stories occurs in 0ms!
 class StoryDetailProvider extends ChangeNotifier {
   final List<StoryContent> stories;
   final StoryProvider? storyProvider;
@@ -16,7 +18,9 @@ class StoryDetailProvider extends ChangeNotifier {
   final VoidCallback? onFinished;
   final VoidCallback? onPreviousAtStart;
 
-  StoryPlayerEngine? _engine;
+  StoryPlayerEngine? _engineA;
+  StoryPlayerEngine? _engineB;
+  bool _useEngineA = true;
   final List<VoidCallback> _engineListeners = [];
 
   int _currentIndex = 0;
@@ -42,7 +46,18 @@ class StoryDetailProvider extends ChangeNotifier {
     );
   }
 
-  // --- Getters ---
+  // --- Engine Getters ---
+  StoryPlayerEngine get _activeEngine => (_useEngineA ? _engineA : _engineB) ?? _engineA!;
+  StoryPlayerEngine get _backgroundEngine => (_useEngineA ? _engineB : _engineA) ?? _engineB!;
+
+  bool get isEngineAActive => _useEngineA;
+  VideoController? get videoControllerA => _engineA?.videoController;
+  VideoController? get videoControllerB => _engineB?.videoController;
+  VideoController? get videoController => _activeEngine.videoController;
+  Player? get player => _activeEngine.player;
+  StoryPlayerEngine? get engine => _activeEngine;
+
+  // --- State Getters ---
   int get currentIndex => _currentIndex;
   StoryContent? get currentStory =>
       (stories.isNotEmpty &&
@@ -53,17 +68,78 @@ class StoryDetailProvider extends ChangeNotifier {
 
   bool get isMuted => _isMuted;
   bool get isPaused => _isPaused;
-  bool get isPlaying => _engine?.isPlaying ?? false;
-  bool get isBuffering => _engine?.isBuffering ?? false;
+  bool get isPlaying => _activeEngine.isPlaying;
+  bool get isBuffering => _activeEngine.isBuffering;
   bool get isLoading => !hasFirstFrame && isBuffering;
-  bool get hasFirstFrame => _engine?.hasFirstFrame ?? false;
-  double get progress => _engine?.progress ?? 0.0;
+  bool get hasFirstFrame => _activeEngine.hasFirstFrame;
+  double get progress => _activeEngine.progress;
   double get currentMediaProgress => progress;
   double get imageProgress => progress;
-  String? get error => _engine?.error;
-  VideoController? get videoController => _engine?.videoController;
-  Player? get player => _engine?.player;
-  StoryPlayerEngine? get engine => _engine;
+  String? get error => _activeEngine.error;
+
+  // --- Lifecycle & Initialization ---
+
+  void _initEngines() {
+    if (_engineA != null && _engineB != null) return;
+    _cleanupEngines();
+
+    _engineA = StoryPlayerEngine(
+      onCompleted: () {
+        if (!_isDisposed && _useEngineA) {
+          nextStory();
+        }
+      },
+      initialMuted: _isMuted,
+    );
+    _attachEngineListeners(_engineA!, true);
+
+    _engineB = StoryPlayerEngine(
+      onCompleted: () {
+        if (!_isDisposed && !_useEngineA) {
+          nextStory();
+        }
+      },
+      initialMuted: _isMuted,
+    );
+    _attachEngineListeners(_engineB!, false);
+  }
+
+  void _attachEngineListeners(StoryPlayerEngine eng, bool isEngineA) {
+    void updateUI() {
+      if (_isDisposed) return;
+      if ((isEngineA && _useEngineA) || (!isEngineA && !_useEngineA)) {
+        notifyListeners();
+      }
+    }
+
+    eng.progressNotifier.addListener(updateUI);
+    _engineListeners.add(() => eng.progressNotifier.removeListener(updateUI));
+
+    eng.isPlayingNotifier.addListener(updateUI);
+    _engineListeners.add(() => eng.isPlayingNotifier.removeListener(updateUI));
+
+    eng.isBufferingNotifier.addListener(updateUI);
+    _engineListeners.add(() => eng.isBufferingNotifier.removeListener(updateUI));
+
+    eng.hasFirstFrameNotifier.addListener(updateUI);
+    _engineListeners.add(() => eng.hasFirstFrameNotifier.removeListener(updateUI));
+
+    eng.errorNotifier.addListener(updateUI);
+    _engineListeners.add(() => eng.errorNotifier.removeListener(updateUI));
+  }
+
+  void _cleanupEngines() {
+    for (final remove in _engineListeners) {
+      remove();
+    }
+    _engineListeners.clear();
+
+    _engineA?.dispose();
+    _engineA = null;
+
+    _engineB?.dispose();
+    _engineB = null;
+  }
 
   // --- Playback Management ---
 
@@ -75,13 +151,15 @@ class StoryDetailProvider extends ChangeNotifier {
     if (_isDisposed || stories.isEmpty) return;
     if (index < 0 || index >= stories.length) return;
 
+    _initEngines();
+
     _currentIndex = index;
     _isPaused = !play;
     notifyListeners();
 
     final story = stories[index];
 
-    // 1. Deep intelligent preloading: next, previous, second next, and surrounding categories
+    // 1. Deep intelligent preloading of video files and posters into local disk
     StoryPreloader.preloadAround(
       stories: stories,
       currentIndex: index,
@@ -89,7 +167,7 @@ class StoryDetailProvider extends ChangeNotifier {
       categoryIndex: categoryIndex,
     );
 
-    // 2. Track view asynchronously in background (401 handled silently)
+    // 2. Track view asynchronously in background
     if (story.id != null && storyProvider != null && !isTestMode) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_isDisposed) {
@@ -98,60 +176,27 @@ class StoryDetailProvider extends ChangeNotifier {
       });
     }
 
-    // 3. Use persistent session engine (avoids tearing down Android SurfaceTextures mid-category)
+    // 3. Load active story on active engine
     if (!isTestMode) {
-      if (_engine == null) {
-        _engine = StoryPlayerEngine(
-          onCompleted: nextStory,
-          initialMuted: _isMuted,
-        );
-        _attachEngineListeners();
-      }
+      await _activeEngine.loadStory(story, autoPlay: play);
 
-      await _engine!.loadStory(story, autoPlay: play);
+      // Pre-roll the NEXT story onto the background engine to Frame 0
+      _prewarmNextStory(index);
     } else {
       notifyListeners();
     }
   }
 
-  void _attachEngineListeners() {
-    if (_engine == null) return;
-    final eng = _engine!;
-
-    void updateUI() {
-      if (_isDisposed) return;
-      notifyListeners();
-    }
-
-    eng.progressNotifier.addListener(updateUI);
-    _engineListeners.add(() => eng.progressNotifier.removeListener(updateUI));
-
-    eng.isPlayingNotifier.addListener(updateUI);
-    _engineListeners.add(() => eng.isPlayingNotifier.removeListener(updateUI));
-
-    eng.isBufferingNotifier.addListener(updateUI);
-    _engineListeners.add(
-      () => eng.isBufferingNotifier.removeListener(updateUI),
-    );
-
-    eng.hasFirstFrameNotifier.addListener(updateUI);
-    _engineListeners.add(
-      () => eng.hasFirstFrameNotifier.removeListener(updateUI),
-    );
-
-    eng.errorNotifier.addListener(updateUI);
-    _engineListeners.add(() => eng.errorNotifier.removeListener(updateUI));
-  }
-
-  void _cleanupEngine() {
-    for (final remove in _engineListeners) {
-      remove();
-    }
-    _engineListeners.clear();
-
-    if (_engine != null) {
-      _engine!.dispose();
-      _engine = null;
+  void _prewarmNextStory(int currentIndex) {
+    if (_isDisposed || isTestMode) return;
+    if (currentIndex + 1 < stories.length) {
+      final nextStory = stories[currentIndex + 1];
+      _backgroundEngine.loadStory(nextStory, autoPlay: false);
+    } else if (allGroups != null && categoryIndex + 1 < allGroups!.length) {
+      final nextCat = allGroups![categoryIndex + 1];
+      if (nextCat.stories.isNotEmpty) {
+        _backgroundEngine.loadStory(nextCat.stories.first, autoPlay: false);
+      }
     }
   }
 
@@ -160,9 +205,35 @@ class StoryDetailProvider extends ChangeNotifier {
   void nextStory() {
     if (_isDisposed) return;
     if (_currentIndex < stories.length - 1) {
-      _loadStory(_currentIndex + 1, play: true);
+      // 1. Pause current engine
+      _activeEngine.pause();
+
+      // 2. Flip active engine pointer (Engine A <-> Engine B)
+      _useEngineA = !_useEngineA;
+      _currentIndex++;
+      _isPaused = false;
+
+      // 3. Start the newly active engine immediately (it was already pre-rolled to Frame 0!)
+      _activeEngine.play();
+      notifyListeners();
+
+      // 4. Pre-roll the next upcoming story onto the idle background engine
+      _prewarmNextStory(_currentIndex);
+
+      // 5. Trigger disk cache pre-warm for upcoming queue
+      StoryPreloader.preloadAround(
+        stories: stories,
+        currentIndex: _currentIndex,
+        allGroups: allGroups,
+        categoryIndex: categoryIndex,
+      );
+
+      // 6. Track view
+      if (currentStory?.id != null && storyProvider != null && !isTestMode) {
+        storyProvider!.viewStory(currentStory!.id!).catchError((_) {});
+      }
     } else {
-      _engine?.pause();
+      _activeEngine.pause();
       if (onFinished != null) {
         onFinished!();
       }
@@ -172,7 +243,21 @@ class StoryDetailProvider extends ChangeNotifier {
   void previousStory() {
     if (_isDisposed) return;
     if (_currentIndex > 0) {
-      _loadStory(_currentIndex - 1, play: true);
+      _activeEngine.pause();
+      _useEngineA = !_useEngineA;
+      _currentIndex--;
+      _isPaused = false;
+
+      _activeEngine.loadStory(stories[_currentIndex], autoPlay: true);
+      _prewarmNextStory(_currentIndex);
+
+      StoryPreloader.preloadAround(
+        stories: stories,
+        currentIndex: _currentIndex,
+        allGroups: allGroups,
+        categoryIndex: categoryIndex,
+      );
+      notifyListeners();
     } else {
       if (onPreviousAtStart != null) {
         onPreviousAtStart!();
@@ -189,14 +274,14 @@ class StoryDetailProvider extends ChangeNotifier {
   void pauseStory() {
     if (_isDisposed) return;
     _isPaused = true;
-    _engine?.pause();
+    _activeEngine.pause();
     notifyListeners();
   }
 
   void resumeStory() {
     if (_isDisposed) return;
     _isPaused = false;
-    _engine?.play();
+    _activeEngine.play();
     notifyListeners();
   }
 
@@ -212,7 +297,8 @@ class StoryDetailProvider extends ChangeNotifier {
   void toggleMute() {
     if (_isDisposed) return;
     _isMuted = !_isMuted;
-    _engine?.setMuted(_isMuted);
+    _engineA?.setMuted(_isMuted);
+    _engineB?.setMuted(_isMuted);
     notifyListeners();
   }
 
@@ -224,7 +310,7 @@ class StoryDetailProvider extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
-    _cleanupEngine();
+    _cleanupEngines();
     super.dispose();
   }
 }

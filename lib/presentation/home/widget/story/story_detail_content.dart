@@ -214,51 +214,61 @@ class StoryDetailContent extends StatelessWidget {
 
     if (story.isVideo) {
       final String thumb = _resolveStoryThumbnail(story);
-      final bool isReady = provider.hasFirstFrame && provider.progress > 0.0;
+      final hasFrame = provider.hasFirstFrame;
 
       return Container(
         color: Colors.black,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Live Video surface — permanently rendered underneath at full opacity
-            if (provider.videoController != null)
-              RepaintBoundary(
-                child: SizedBox.expand(
-                  child: Video(
-                    controller: provider.videoController!,
-                    controls: NoVideoControls,
-                    fit: BoxFit.contain,
-                    fill: Colors.black,
+            // 1. Live Video Surface A (Hardware Texture)
+            if (provider.videoControllerA != null)
+              Offstage(
+                offstage: !provider.isEngineAActive,
+                child: RepaintBoundary(
+                  child: SizedBox.expand(
+                    child: Video(
+                      controller: provider.videoControllerA!,
+                      controls: NoVideoControls,
+                      fit: BoxFit.contain,
+                      fill: Colors.black,
+                    ),
                   ),
                 ),
               ),
 
-            // 2. Story's OWN poster thumbnail overlay — smoothly crossfades out ONLY when video is actively playing
+            // 2. Live Video Surface B (Hardware Texture - pre-rolled in background)
+            if (provider.videoControllerB != null)
+              Offstage(
+                offstage: provider.isEngineAActive,
+                child: RepaintBoundary(
+                  child: SizedBox.expand(
+                    child: Video(
+                      controller: provider.videoControllerB!,
+                      controls: NoVideoControls,
+                      fit: BoxFit.contain,
+                      fill: Colors.black,
+                    ),
+                  ),
+                ),
+              ),
+
+            // 3. Story's OWN poster thumbnail overlay — smoothly crossfades out once first frame is ready
             IgnorePointer(
-              ignoring: isReady,
+              ignoring: hasFrame,
               child: RepaintBoundary(
                 child: AnimatedOpacity(
-                  opacity: isReady ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeOutCubic,
+                  opacity: hasFrame ? 0.0 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
                   child: _buildVideoPlaceholder(story, thumb),
                 ),
               ),
             ),
 
-            // 3. Low internet / loading buffering Lottie animation — smoothly fades out once playback is active
-            IgnorePointer(
-              ignoring: isReady,
-              child: RepaintBoundary(
-                child: AnimatedOpacity(
-                  opacity: isReady ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOut,
-                  child: const Center(child: VideoLoadingIndicator(size: 56)),
-                ),
-              ),
-            ),
+            // 4. Low internet / loading buffering Lottie animation — ONLY shown if genuine buffering occurs
+            if (provider.isBuffering)
+              const Center(child: VideoLoadingIndicator(size: 56)),
           ],
         ),
       );
@@ -296,31 +306,38 @@ class StoryDetailContent extends StatelessWidget {
         '/thumbnails/thumbnail.jpg?width=640',
       );
     }
+    if (userProfile.isNotEmpty && userProfile.startsWith('http')) {
+      return userProfile;
+    }
     return '';
   }
 
   Widget _buildVideoPlaceholder(StoryContent story, String thumb) {
-    if (thumb.isNotEmpty && thumb.startsWith('http')) {
+    final effectiveThumb = thumb.isNotEmpty
+        ? thumb
+        : (userProfile.isNotEmpty ? userProfile : '');
+
+    if (effectiveThumb.isNotEmpty && effectiveThumb.startsWith('http')) {
       return Image.network(
-        thumb,
+        effectiveThumb,
         fit: BoxFit.contain,
         gaplessPlayback: true,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (_, e, s) => Container(color: const Color(0xFF121212)),
+        frameBuilder: (context, child, frame, wasSync) {
+          if (wasSync) return child;
+          return AnimatedOpacity(
+            opacity: frame != null ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            child: child,
+          );
+        },
+        errorBuilder: (_, e, s) => Container(color: Colors.black),
       );
     }
 
-    return Container(
-      color: const Color(0xFF141414),
-      child: const Center(
-        child: Icon(
-          Icons.play_circle_outline_rounded,
-          size: 64,
-          color: Colors.white24,
-        ),
-      ),
-    );
+    return Container(color: Colors.black);
   }
 
   Widget _buildAudioView(StoryDetailProvider provider) {

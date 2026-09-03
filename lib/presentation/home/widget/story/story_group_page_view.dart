@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:binetatour/providers/story_provider.dart';
 import 'package:binetatour/providers/story_detail_provider.dart';
 import 'package:binetatour/presentation/home/widget/story/story_models.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/presentation/home/widget/story/story_detail_content.dart';
 
 class StoryGroupPageView extends StatefulWidget {
@@ -89,11 +90,19 @@ class _StoryGroupPageViewState extends State<StoryGroupPageView> {
   Widget build(BuildContext context) {
     // If not active, render clean poster thumbnail or category image without allocating any player
     if (_provider == null || !widget.isActive) {
-      final thumb = (widget.group.stories.isNotEmpty &&
-              widget.group.stories.first.thumbnailUrl != null &&
-              widget.group.stories.first.thumbnailUrl!.trim().isNotEmpty)
-          ? widget.group.stories.first.thumbnailUrl!
-          : widget.group.categoryImage;
+      String thumb = '';
+      if (widget.group.stories.isNotEmpty) {
+        final firstStory = widget.group.stories.first;
+        if (firstStory.thumbnailUrl != null &&
+            firstStory.thumbnailUrl!.trim().isNotEmpty) {
+          thumb = firstStory.thumbnailUrl!.trim();
+        } else {
+          thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(firstStory.url);
+        }
+      }
+      if (thumb.isEmpty) {
+        thumb = widget.group.categoryImage;
+      }
 
       return Scaffold(
         backgroundColor: Colors.black,

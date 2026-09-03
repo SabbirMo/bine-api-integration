@@ -60,8 +60,12 @@ class StoryPreloader {
       }
 
       // Pre-cache thumbnail images into Flutter RAM cache so transitions have 0ms poster frames
-      if (story.thumbnailUrl != null) {
-        _precacheNetworkImage(story.thumbnailUrl, context);
+      String? thumb = story.thumbnailUrl;
+      if (thumb == null || thumb.isEmpty) {
+        thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(story.url);
+      }
+      if (thumb.isNotEmpty) {
+        _precacheNetworkImage(thumb, context);
       }
     }
 
@@ -93,7 +97,13 @@ class StoryPreloader {
         VideoCacheManager.instance.preCachePriorityUrls(priority);
       }
 
-      _precacheNetworkImage(nextStory.thumbnailUrl, context);
+      String? thumb = nextStory.thumbnailUrl;
+      if (thumb == null || thumb.isEmpty) {
+        thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(nextStory.url);
+      }
+      if (thumb.isNotEmpty) {
+        _precacheNetworkImage(thumb, context);
+      }
     } else if (nextStory.isAudio) {
       final target =
           (nextStory.fallbackUrl != null &&

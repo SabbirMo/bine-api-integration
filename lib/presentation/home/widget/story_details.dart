@@ -158,11 +158,13 @@ class _StoryDetailScreenState extends State<StoryDetailScreen>
             }
           }
 
-          if (story.thumbnailUrl != null &&
-              story.thumbnailUrl!.isNotEmpty &&
-              story.thumbnailUrl!.startsWith('http')) {
+          String? thumb = story.thumbnailUrl;
+          if (thumb == null || thumb.isEmpty) {
+            thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(story.url);
+          }
+          if (thumb.isNotEmpty && thumb.startsWith('http')) {
             precacheImage(
-              NetworkImage(story.thumbnailUrl!),
+              NetworkImage(thumb),
               context,
             ).catchError((_) {});
           }

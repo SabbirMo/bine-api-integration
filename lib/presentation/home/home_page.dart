@@ -528,13 +528,14 @@ class _AccueilScreenState extends State<AccueilScreen>
 
       for (final story in cat.stories) {
         String? thumb = story.thumbnailUrl;
-        if (thumb != null &&
-            thumb.trim().isNotEmpty &&
-            !thumb.startsWith('http')) {
+        if (thumb == null || thumb.trim().isEmpty) {
+          thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(story.effectiveMediaUrl);
+        }
+        if (thumb.trim().isNotEmpty && !thumb.startsWith('http')) {
           final base = BaseUrl.baseUrl;
           thumb = thumb.startsWith('/') ? '$base$thumb' : '$base/$thumb';
         }
-        if (thumb != null && thumb.startsWith('http')) {
+        if (thumb.startsWith('http')) {
           precacheImage(NetworkImage(thumb), context).catchError((_) {});
         }
       }
