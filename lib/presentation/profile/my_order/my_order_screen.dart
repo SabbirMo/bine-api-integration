@@ -29,7 +29,11 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<OrderProvider>().fetchOrderHistory();
+      final provider = context.read<OrderProvider>();
+      provider.fetchOrderHistory(
+        refresh: true,
+        showLoading: provider.orderHistory.isEmpty,
+      );
     });
   }
 

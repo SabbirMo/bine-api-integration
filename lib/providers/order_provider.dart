@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'package:binetatour/core/network/error/api_error_handle.dart';
@@ -5,12 +6,15 @@ import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:binetatour/core/token_storage/token_storage.dart';
 import 'package:binetatour/core/network/api_services/api_services.dart';
 import 'package:binetatour/data/models/order_history_model.dart';
 import 'package:binetatour/data/models/order_detail_model.dart';
 import 'package:binetatour/data/models/payment_status_model.dart';
 
 class OrderProvider extends ChangeNotifier {
+  static const String _cachedOrderHistoryKey = 'cached_order_history_data';
   final ApiServices _apiServices = ApiServices();
 
   bool _isHistoryLoading = false;
@@ -43,6 +47,56 @@ class OrderProvider extends ChangeNotifier {
   List<OrderHistoryModel> _orderHistory = [];
   List<OrderHistoryModel> get orderHistory => _orderHistory;
 
+  OrderProvider() {
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadFromCache();
+    await _fetchIfAuthenticated();
+  }
+
+  Future<void> _fetchIfAuthenticated() async {
+    try {
+      final token = await TokenStorage.getAccessToken();
+      if (token != null && token.isNotEmpty) {
+        await fetchOrderHistory(refresh: true, showLoading: false);
+      }
+    } catch (e) {
+      debugPrint("OrderProvider auto-fetch error: $e");
+    }
+  }
+
+  Future<void> _saveToCache(dynamic rawData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (rawData != null) {
+        await prefs.setString(_cachedOrderHistoryKey, json.encode(rawData));
+      } else {
+        await prefs.remove(_cachedOrderHistoryKey);
+      }
+    } catch (e) {
+      debugPrint("Error saving cached order history: $e");
+    }
+  }
+
+  Future<void> _loadFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedStr = prefs.getString(_cachedOrderHistoryKey);
+      if (cachedStr != null && cachedStr.isNotEmpty) {
+        final dynamic raw = json.decode(cachedStr);
+        final parsed = _parseOrderList(raw);
+        if (parsed.isNotEmpty && _orderHistory.isEmpty) {
+          _orderHistory = parsed;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading cached order history: $e");
+    }
+  }
+
   List<OrderHistoryModel> _parseOrderList(dynamic raw) {
     if (raw == null) return [];
     List<dynamic> list = [];
@@ -72,11 +126,16 @@ class OrderProvider extends ChangeNotifier {
         .toList();
   }
 
-  Future<void> fetchOrderHistory({bool refresh = true}) async {
+  Future<void> fetchOrderHistory({
+    bool refresh = true,
+    bool showLoading = true,
+  }) async {
     if (refresh) {
       _historyCurrentPage = 1;
       _historyHasMore = true;
-      _isHistoryLoading = true;
+      if (showLoading && _orderHistory.isEmpty) {
+        _isHistoryLoading = true;
+      }
       _historyErrorMessage = null;
       notifyListeners();
     }
@@ -105,6 +164,7 @@ class OrderProvider extends ChangeNotifier {
 
       if (refresh) {
         _orderHistory = parsed;
+        _saveToCache(raw);
       } else {
         for (final order in parsed) {
           if (!_orderHistory.any(
@@ -509,6 +569,7 @@ class OrderProvider extends ChangeNotifier {
     _orderHistory = [];
     _orderDetail = null;
     _errorMessage = null;
+    _saveToCache(null);
     notifyListeners();
   }
 }
