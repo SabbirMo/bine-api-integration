@@ -256,11 +256,11 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                       child: Text(
                         "${widget.product.sellingPrice} FCFA",
                         style: TextStyle(
-                          color: Colors.red.withValues(alpha: 0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                           decoration: TextDecoration.lineThrough,
-                          decorationColor: Colors.black.withValues(alpha: 0.7),
+                          decorationColor: Colors.white.withValues(alpha: 0.7),
                           decorationThickness: 1.5,
                         ),
                         maxLines: 1,
@@ -304,62 +304,62 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
                           height: 1.4,
                         ),
                       ),
-                      if (widget.isExpanded) ...[
-                        const SizedBox(height: 10),
-                        if (widget.product.isProductMode) ...[
-                          Text(
-                            "Stock: ${widget.product.totalStock} en stock",
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ] else ...[
-                          const Text(
-                            "Variantes & Stock:",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (widget.product.isMixedMode &&
-                              widget.product.unassignedStock > 0)
-                            Text(
-                              "• Sans préférence : ${widget.product.unassignedStock} en stock",
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ...widget.product.variants.map(
-                            (v) => Text(
-                              "• ${v.colorName} (${v.size}) : ${v.stockQuantity} en stock",
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                      if (widget.isExpanded &&
-                          widget.product.deliveryMessage != null) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          "Livraison: ${widget.product.deliveryPrice != null ? '${widget.product.deliveryPrice} FCFA' : 'Gratuite'}",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          widget.product.deliveryMessage!,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+                      // if (widget.isExpanded) ...[
+                      //   const SizedBox(height: 10),
+                      //   if (widget.product.isProductMode) ...[
+                      //     Text(
+                      //       "Stock: ${widget.product.totalStock} en stock",
+                      //       style: const TextStyle(
+                      //         color: Colors.white70,
+                      //         fontSize: 13,
+                      //       ),
+                      //     ),
+                      //   ] else ...[
+                      //     const Text(
+                      //       "Variantes & Stock:",
+                      //       style: TextStyle(
+                      //         color: Colors.white,
+                      //         fontWeight: FontWeight.bold,
+                      //       ),
+                      //     ),
+                      //     if (widget.product.isMixedMode &&
+                      //         widget.product.unassignedStock > 0)
+                      //       Text(
+                      //         "• Sans préférence : ${widget.product.unassignedStock} en stock",
+                      //         style: const TextStyle(
+                      //           color: Colors.white70,
+                      //           fontSize: 13,
+                      //         ),
+                      //       ),
+                      //     ...widget.product.variants.map(
+                      //       (v) => Text(
+                      //         "• ${v.colorName} (${v.size}) : ${v.stockQuantity} en stock",
+                      //         style: const TextStyle(
+                      //           color: Colors.white70,
+                      //           fontSize: 13,
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ],
+                      // ],
+                      // if (widget.isExpanded &&
+                      //     widget.product.deliveryMessage != null) ...[
+                      //   const SizedBox(height: 10),
+                      //   Text(
+                      //     "Livraison: ${widget.product.deliveryPrice != null ? '${widget.product.deliveryPrice} FCFA' : 'Gratuite'}",
+                      //     style: const TextStyle(
+                      //       color: Colors.white,
+                      //       fontWeight: FontWeight.bold,
+                      //     ),
+                      //   ),
+                      //   Text(
+                      //     widget.product.deliveryMessage!,
+                      //     style: const TextStyle(
+                      //       color: Colors.white70,
+                      //       fontSize: 13,
+                      //     ),
+                      //   ),
+                      // ],
                     ],
                   ),
                 ),

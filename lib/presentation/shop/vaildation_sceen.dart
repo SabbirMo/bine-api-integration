@@ -8,6 +8,7 @@ import 'package:binetatour/providers/order_provider.dart';
 import 'package:binetatour/providers/store_settings_provider.dart';
 import 'package:binetatour/presentation/shop/widget/cart_item_validation_card.dart';
 import 'package:binetatour/presentation/shop/widget/payment_status_dialog.dart';
+import 'package:binetatour/core/widgets/fireworks_overlay.dart';
 import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 import 'package:binetatour/core/utils/date_utils.dart';
 import 'package:binetatour/core/utils/external_intent_launcher.dart';
@@ -696,18 +697,27 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                   // Fallback if no transactionId
                                   await cartProvider.clearServerCart();
                                   if (context.mounted) {
+                                    FireworksOverlay.show(context);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text("Commande confirmée"),
+                                        backgroundColor: Color(0xFF2E7D32),
+                                        content: Text(
+                                          "Commande confirmée avec succès !",
+                                        ),
                                       ),
                                     );
-                                    Navigator.pushAndRemoveUntil(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const MainDashboard(),
-                                      ),
-                                      (route) => false,
+                                    await Future.delayed(
+                                      const Duration(milliseconds: 1800),
                                     );
+                                    if (context.mounted) {
+                                      Navigator.pushAndRemoveUntil(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const MainDashboard(),
+                                        ),
+                                        (route) => false,
+                                      );
+                                    }
                                   }
                                 }
                               } catch (e) {

@@ -234,7 +234,7 @@ class _ProductDetailsActionSidebarState
         ? "Bonjour, je souhaite commander ce produit : $productUrl.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?"
         : "Bonjour, je souhaite commander ce produit.\nVoici mes informations de livraison :\n\n* Adresse ?\n* Heure souhaitée ?\n* Numéro téléphone ?";
 
-    final String phoneNumber = dotenv.env["WHATSAPP_PHONE"] ?? "+221771635015";
+    final String phoneNumber = dotenv.env["WHATSAPP_PHONE"] ?? " ";
 
     final whatsappAppUrl = Uri.parse(
       "whatsapp://send?phone=$phoneNumber&text=${Uri.encodeComponent(shareText)}",

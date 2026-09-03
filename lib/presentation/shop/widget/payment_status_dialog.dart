@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:binetatour/data/models/payment_status_model.dart';
 import 'package:binetatour/providers/order_provider.dart';
+import 'package:binetatour/core/widgets/fireworks_overlay.dart';
 import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class PaymentStatusDialog extends StatefulWidget {
@@ -159,8 +160,9 @@ class _PaymentStatusDialogState extends State<PaymentStatusDialog> {
         setState(() {
           _isSuccess = true;
         });
-        // Auto trigger success callback after short delay
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        FireworksOverlay.show(context);
+        // Auto trigger success callback after short delay to allow fireworks to play
+        Future.delayed(const Duration(milliseconds: 2200), () {
           if (mounted) {
             widget.onPaymentSuccess(result);
           }
