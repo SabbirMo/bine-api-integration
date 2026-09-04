@@ -1,3 +1,5 @@
+import 'package:binetatour/core/utils/media_url_resolver.dart';
+
 class CartModel {
   final List<CartItemModel> items;
   String total;
@@ -126,6 +128,11 @@ class CartItemModel {
         !isVideoUrl(mainImage)) {
       return mainImage!.trim();
     }
+    if (effectiveVideoUrl.isNotEmpty) {
+      final extracted =
+          MediaUrlResolver.extractThumbnailFromVideoUrl(effectiveVideoUrl);
+      if (extracted.isNotEmpty) return extracted;
+    }
     return '';
   }
 
@@ -162,8 +169,12 @@ class CartItemModel {
         : null;
 
     final productMap = json['product'] is Map ? (json['product'] as Map) : null;
-    final rawProductId =
-        json['product_id'] ?? (productMap != null ? productMap['id'] : null);
+    final rawProductId = json['product_id'] ??
+        (productMap != null
+            ? productMap['id']
+            : (json['product'] is num || json['product'] is String
+                ? json['product']
+                : null));
 
     String? vUrl =
         json['video_url']?.toString() ??
@@ -223,6 +234,13 @@ class CartItemModel {
             mImg = mUrl;
           }
         }
+      }
+    }
+
+    if ((tUrl == null || tUrl.isEmpty) && vUrl != null && vUrl.isNotEmpty) {
+      final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(vUrl);
+      if (extracted.isNotEmpty) {
+        tUrl = extracted;
       }
     }
 

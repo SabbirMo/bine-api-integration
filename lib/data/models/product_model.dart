@@ -250,12 +250,18 @@ class ProductModel {
       pad = json['selling_price']?.toString() ?? '0';
     }
 
-    final catIdRaw = json['category_id'] ?? json['category'];
+    dynamic catIdRaw = json['category_id'] ?? json['category'];
+    if (catIdRaw is Map) {
+      catIdRaw = catIdRaw['id'];
+    }
     final int categoryId = catIdRaw is num
         ? catIdRaw.toInt()
         : (int.tryParse(catIdRaw?.toString() ?? '0') ?? 0);
 
-    final subCatIdRaw = json['subcategory_id'] ?? json['subcategory'];
+    dynamic subCatIdRaw = json['subcategory_id'] ?? json['subcategory'];
+    if (subCatIdRaw is Map) {
+      subCatIdRaw = subCatIdRaw['id'];
+    }
     final int? subcategoryId = subCatIdRaw is num
         ? subCatIdRaw.toInt()
         : int.tryParse(subCatIdRaw?.toString() ?? '');

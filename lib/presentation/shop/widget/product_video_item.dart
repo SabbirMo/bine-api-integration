@@ -35,6 +35,8 @@ class ProductVideoItem extends StatefulWidget {
 
 class _ProductVideoItemState extends State<ProductVideoItem> {
   ReelsPlayerSlot? _slot;
+  final ValueNotifier<bool> _isManuallyPaused = ValueNotifier<bool>(false);
+  VoidCallback? _slotListener;
 
   // Global memoized aspect ratios by URL (prevents layout jump on swiping)
   static final Map<String, bool> _landscapeCache = {};
@@ -53,6 +55,21 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   );
   static const _blackContainer = ColoredBox(color: Colors.black);
 
+  void _attachSlotListener(ReelsPlayerSlot? newSlot) {
+    _slotListener?.call();
+    _slotListener = null;
+    if (newSlot != null) {
+      void listener() {
+        if (newSlot.isPlaying.value && _isManuallyPaused.value) {
+          _isManuallyPaused.value = false;
+        }
+      }
+
+      newSlot.isPlaying.addListener(listener);
+      _slotListener = () => newSlot.isPlaying.removeListener(listener);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +80,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       itemIdx,
       _cachedVideoUrl,
     );
+    _attachSlotListener(_slot);
     if (widget.isActive) {
       if (_slot == null ||
           ReelsVideoControllerPool.instance.activeProductIndex != itemIdx) {
@@ -160,6 +178,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     if (existing != null &&
         ReelsVideoControllerPool.instance.activeProductIndex == itemIdx) {
       _slot = existing;
+      _attachSlotListener(_slot);
       if (!existing.player.state.playing) {
         try {
           existing.player.play();
@@ -171,6 +190,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         url: _cachedVideoUrl,
         nextUrls: widget.upcomingUrls,
       );
+      _attachSlotListener(_slot);
     }
 
     if (!_hasTrackedView) {
@@ -195,6 +215,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     // Only re-activate slot if VIDEO URL or ITEM INDEX actually changed.
     // Never restart video on thumbnail or other metadata updates to eliminate slight reload.
     if (isVideoChanged || isIndexChanged) {
+      _isManuallyPaused.value = false;
       _checkInitialAspect();
       if (widget.isActive) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -204,10 +225,12 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           }
         });
       } else {
+        _attachSlotListener(null);
         _slot = null;
         setState(() {});
       }
     } else if (oldWidget.isActive != widget.isActive) {
+      _isManuallyPaused.value = false;
       if (widget.isActive) {
         final itemIdx = widget.itemIndex ?? widget.productId;
         _slot = ReelsVideoControllerPool.instance.getSlotForIndex(
@@ -216,13 +239,17 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         );
         if (_slot == null) {
           _activateSlot();
-        } else if (!_slot!.player.state.playing) {
-          try {
-            _slot!.player.play();
-          } catch (_) {}
+        } else {
+          _attachSlotListener(_slot);
+          if (!_slot!.player.state.playing) {
+            try {
+              _slot!.player.play();
+            } catch (_) {}
+          }
         }
         setState(() {});
       } else {
+        _attachSlotListener(null);
         try {
           _slot?.player.pause();
         } catch (_) {}
@@ -233,6 +260,9 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
   @override
   void dispose() {
+    _slotListener?.call();
+    _slotListener = null;
+    _isManuallyPaused.dispose();
     super.dispose();
   }
 
@@ -261,10 +291,11 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
             if (slot != null) {
               if (slot.player.state.playing) {
                 slot.player.pause();
+                _isManuallyPaused.value = true;
               } else {
                 slot.player.play();
+                _isManuallyPaused.value = false;
               }
-              // No setState needed — ValueListenableBuilder on slot.isPlaying handles UI
             }
           },
           child: ColoredBox(
@@ -353,12 +384,21 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                     },
                   ),
 
-                // 4. Play icon overlay — uses ValueListenableBuilder instead of setState
+                // 4. Play icon overlay — ONLY shown when user manually paused the video
                 if (slot != null)
-                  ValueListenableBuilder<bool>(
-                    valueListenable: slot.isPlaying,
-                    builder: (context, isPlaying, child) {
-                      if (isPlaying) return const SizedBox.shrink();
+                  ListenableBuilder(
+                    listenable: Listenable.merge([
+                      slot.isPlaying,
+                      _isManuallyPaused,
+                    ]),
+                    builder: (context, child) {
+                      final isPlaying = slot.isPlaying.value;
+                      final isManuallyPaused = _isManuallyPaused.value;
+
+                      // Never show during loading/buffering or when playing
+                      if (isPlaying || !isManuallyPaused) {
+                        return const SizedBox.shrink();
+                      }
                       return child!;
                     },
                     child: const Center(

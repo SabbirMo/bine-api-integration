@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/core/base_url/base_url.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
@@ -82,28 +84,34 @@ class _ProductThumbnailOrVideoFrameState
   }
 
   void _checkAndFetchMissingDetails() {
-    final hasValidImage =
-        widget.imageUrl != null &&
+    final hasValidDirectImage = widget.imageUrl != null &&
         widget.imageUrl!.trim().isNotEmpty &&
         !isVideoUrl(widget.imageUrl);
 
-    final rawVideo =
-        (widget.videoUrl != null && widget.videoUrl!.trim().isNotEmpty)
-        ? widget.videoUrl!
-        : (isVideoUrl(widget.imageUrl) ? widget.imageUrl! : '');
+    final hasExtractableVideoThumb =
+        (widget.videoUrl != null &&
+            MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl).isNotEmpty) ||
+        (widget.imageUrl != null &&
+            isVideoUrl(widget.imageUrl) &&
+            MediaUrlResolver.extractThumbnailFromVideoUrl(widget.imageUrl).isNotEmpty);
 
-    if (!hasValidImage &&
-        rawVideo.isEmpty &&
-        widget.productId != null &&
-        widget.productId! > 0) {
+    if (widget.productId != null && widget.productId! > 0) {
       final productId = widget.productId!;
       final cartProv = context.read<CartProvider>();
       final prodProv = context.read<ProductProvider>();
 
-      if (cartProv.getProductFromCache(productId) != null) {
-        _fetchedProduct = cartProv.getProductFromCache(productId);
-      } else if (prodProv.getCachedProduct(productId) != null) {
-        _fetchedProduct = prodProv.getCachedProduct(productId);
+      final cached = cartProv.getProductFromCache(productId) ??
+          prodProv.getCachedProduct(productId);
+      if (cached != null) {
+        _fetchedProduct = cached;
+      } else if (!hasValidDirectImage && !hasExtractableVideoThumb) {
+        prodProv.fetchProductDetails(productId).then((details) {
+          if (mounted && details != null) {
+            setState(() {
+              _fetchedProduct = details;
+            });
+          }
+        }).catchError((_) {});
       }
     }
   }
@@ -119,10 +127,36 @@ class _ProductThumbnailOrVideoFrameState
         widget.imageUrl!.trim().isNotEmpty &&
         !isVideoUrl(widget.imageUrl)) {
       activeImageUrl = resolveUrl(widget.imageUrl);
-    } else if (_fetchedProduct != null &&
-        _fetchedProduct!.effectiveThumbnailUrl.isNotEmpty &&
-        !isVideoUrl(_fetchedProduct!.effectiveThumbnailUrl)) {
-      activeImageUrl = resolveUrl(_fetchedProduct!.effectiveThumbnailUrl);
+    } else if (widget.imageUrl != null && isVideoUrl(widget.imageUrl)) {
+      final extracted =
+          MediaUrlResolver.extractThumbnailFromVideoUrl(widget.imageUrl);
+      if (extracted.isNotEmpty) {
+        activeImageUrl = extracted;
+      }
+    }
+
+    if (activeImageUrl.isEmpty &&
+        widget.videoUrl != null &&
+        widget.videoUrl!.trim().isNotEmpty) {
+      final extracted =
+          MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl);
+      if (extracted.isNotEmpty) {
+        activeImageUrl = extracted;
+      }
+    }
+
+    if (activeImageUrl.isEmpty && _fetchedProduct != null) {
+      if (_fetchedProduct!.effectiveThumbnailUrl.isNotEmpty &&
+          !isVideoUrl(_fetchedProduct!.effectiveThumbnailUrl)) {
+        activeImageUrl = resolveUrl(_fetchedProduct!.effectiveThumbnailUrl);
+      } else if (_fetchedProduct!.effectiveVideoUrl.isNotEmpty) {
+        final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(
+          _fetchedProduct!.effectiveVideoUrl,
+        );
+        if (extracted.isNotEmpty) {
+          activeImageUrl = extracted;
+        }
+      }
     }
 
     // 2. Determine active Video URL
@@ -144,9 +178,27 @@ class _ProductThumbnailOrVideoFrameState
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildFallbackShimmer();
+        },
         errorBuilder: (context, error, stackTrace) {
           if (activeVideoUrl.isNotEmpty) {
-            return _buildVideoFrame(activeVideoUrl);
+            final thumbFromVideo =
+                MediaUrlResolver.extractThumbnailFromVideoUrl(activeVideoUrl);
+            if (thumbFromVideo.isNotEmpty && thumbFromVideo != activeImageUrl) {
+              return Image.network(
+                thumbFromVideo,
+                width: widget.width,
+                height: widget.height,
+                fit: widget.fit,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return _buildFallbackShimmer();
+                },
+                errorBuilder: (ctx, err, st) => _buildFallbackShimmer(),
+              );
+            }
           }
           return _buildFallbackShimmer();
         },
@@ -169,6 +221,20 @@ class _ProductThumbnailOrVideoFrameState
   }
 
   Widget _buildVideoFrame(String vUrl) {
+    final thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(vUrl);
+    if (thumb.isNotEmpty) {
+      return Image.network(
+        thumb,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildFallbackShimmer();
+        },
+        errorBuilder: (context, error, stackTrace) => _buildFallbackShimmer(),
+      );
+    }
     return _buildFallbackShimmer();
   }
 
@@ -177,11 +243,11 @@ class _ProductThumbnailOrVideoFrameState
       width: widget.width,
       height: widget.height,
       color: const Color(0xFF222224),
-      child: const Center(
-        child: Icon(
-          Icons.shopping_bag_outlined,
-          color: Color(0xFF666666),
-          size: 22,
+      child: const CoolShimmer(
+        child: SizedBox.expand(
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: Color(0xFF2A2A2E)),
+          ),
         ),
       ),
     );

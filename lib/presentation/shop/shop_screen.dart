@@ -1,6 +1,7 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/home/widget/shorts_product_card.dart';
 import 'package:binetatour/presentation/shop/widget/product_details.dart';
@@ -13,6 +14,7 @@ import 'package:binetatour/data/models/category_model.dart';
 import 'package:binetatour/providers/product_provider.dart';
 import 'package:binetatour/providers/cart_provider.dart';
 import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
+import 'package:binetatour/presentation/landing_page/main_dashboard.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 class BoutiqueScreen extends StatefulWidget {
@@ -30,6 +32,17 @@ class BoutiqueScreen extends StatefulWidget {
 }
 
 class BoutiqueScreenState extends State<BoutiqueScreen> {
+  static final CategoryModel _tousCategory = CategoryModel(
+    id: -1,
+    name: "Tous",
+    imageUrl: "assets/icon/tous.svg",
+    subcategories: [],
+  );
+
+  List<CategoryModel> _getAllCategories(List<CategoryModel> apiCategories) {
+    return [_tousCategory, ...apiCategories];
+  }
+
   int selectedCategory = 0;
   late ScrollController _categoryScrollController;
   String selectedCategoryName = "Tous";
@@ -38,26 +51,49 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
   int selectedSubCategoryIndex = -1;
   bool _initialCategorySet = false;
 
+  void _scrollToCategory(int index) {
+    void doScroll() {
+      if (!_categoryScrollController.hasClients) return;
+      final maxScroll = _categoryScrollController.position.maxScrollExtent;
+      final screenWidth = MediaQuery.of(context).size.width;
+      final itemCenter = 16.0 + (index * 95.0) + 40.0;
+      final targetOffset = (itemCenter - (screenWidth / 2)).clamp(
+        0.0,
+        maxScroll,
+      );
+
+      _categoryScrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      doScroll();
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) doScroll();
+      });
+    });
+  }
+
   void selectCategoryById(int categoryId) {
     final categories = context.read<CategoryProvider>().categories;
-    final index = categories.indexWhere((c) => c.id == categoryId);
+    final allCategories = _getAllCategories(categories);
+    final index = allCategories.indexWhere((c) => c.id == categoryId);
     if (index != -1) {
       setState(() {
         selectedCategory = index;
-        selectedCategoryName = categories[index].name;
+        selectedCategoryName = allCategories[index].name;
         selectedSubCategoryIndex = -1;
       });
-      if (_categoryScrollController.hasClients) {
-        final targetOffset = (index * 90.0).clamp(
-          0.0,
-          _categoryScrollController.position.maxScrollExtent,
-        );
-        _categoryScrollController.animateTo(
-          targetOffset,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
+      _scrollToCategory(index);
+      final catId = (categoryId == -1) ? null : categoryId;
+      context.read<ProductProvider>().fetchProducts(
+        categoryId: catId,
+        subcategoryId: null,
+        refresh: false,
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         VisibilityDetectorController.instance.notifyNow();
         FeedVideoManager.instance.evaluatePlaybackNow();
@@ -65,13 +101,38 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
     }
   }
 
+  void resetToFirstCategory() {
+    setState(() {
+      selectedCategory = 0;
+      selectedCategoryName = "Tous";
+      selectedSubCategoryIndex = -1;
+    });
+    _scrollToCategory(0);
+    context.read<ProductProvider>().fetchProducts(
+      categoryId: null,
+      subcategoryId: null,
+      refresh: false,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      VisibilityDetectorController.instance.notifyNow();
+      FeedVideoManager.instance.evaluatePlaybackNow();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _categoryScrollController = ScrollController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CategoryProvider>().fetchCategories();
-      context.read<ProductProvider>().fetchProducts();
+      context.read<CategoryProvider>().fetchCategories(refresh: false);
+      if (widget.initialCategoryId != null && widget.initialCategoryId! > 0) {
+        context.read<ProductProvider>().fetchProducts(
+          categoryId: widget.initialCategoryId,
+          refresh: false,
+        );
+      } else {
+        context.read<ProductProvider>().fetchProducts(refresh: false);
+      }
       VisibilityDetectorController.instance.notifyNow();
     });
   }
@@ -164,6 +225,11 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
         return _resolveUrl(m.effectiveMediaUrl);
       }
     }
+    final vUrl = _resolveProductVideo(product);
+    if (vUrl.isNotEmpty) {
+      final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(vUrl);
+      if (extracted.isNotEmpty) return _resolveUrl(extracted);
+    }
     return '';
   }
 
@@ -180,52 +246,42 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
   Widget build(BuildContext context) {
     final categoryProvider = context.watch<CategoryProvider>();
     final categories = categoryProvider.categories;
+    final allCategories = _getAllCategories(categories);
     final isLoading = categoryProvider.isLoading;
 
     final productProvider = context.watch<ProductProvider>();
     final isProductsLoading = productProvider.isLoading;
 
     if (!_initialCategorySet &&
-        categories.isNotEmpty &&
+        allCategories.isNotEmpty &&
         widget.initialCategoryId != null) {
-      final index = categories.indexWhere(
+      final index = allCategories.indexWhere(
         (c) => c.id == widget.initialCategoryId,
       );
       if (index != -1) {
         selectedCategory = index;
-        selectedCategoryName = categories[index].name;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_categoryScrollController.hasClients) {
-            final targetOffset = (index * 90.0).clamp(
-              0.0,
-              _categoryScrollController.position.maxScrollExtent,
-            );
-            _categoryScrollController.animateTo(
-              targetOffset,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
-          }
-        });
+        selectedCategoryName = allCategories[index].name;
+        _scrollToCategory(index);
       }
       _initialCategorySet = true;
     }
 
     int? currentCategoryId;
-    if (categories.isNotEmpty && selectedCategory < categories.length) {
-      currentCategoryId = categories[selectedCategory].id;
+    if (allCategories.isNotEmpty && selectedCategory < allCategories.length) {
+      final catId = allCategories[selectedCategory].id;
+      currentCategoryId = (catId == -1) ? null : catId;
+    } else if (widget.initialCategoryId != null &&
+        widget.initialCategoryId! > 0) {
+      currentCategoryId = widget.initialCategoryId;
     }
 
     List<SubcategoryModel> currentSubCategories = [];
-    if (categories.isNotEmpty) {
-      if (selectedCategory >= categories.length) {
+    if (allCategories.isNotEmpty) {
+      if (selectedCategory >= allCategories.length) {
         selectedCategory = 0;
       }
-      currentSubCategories = categories[selectedCategory].subcategories;
-      if (selectedCategoryName == "Tous" ||
-          categories.where((c) => c.name == selectedCategoryName).isEmpty) {
-        selectedCategoryName = categories[selectedCategory].name;
-      }
+      currentSubCategories = allCategories[selectedCategory].subcategories;
+      selectedCategoryName = allCategories[selectedCategory].name;
     }
 
     int? currentSubcategoryId;
@@ -242,17 +298,20 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
 
     _precacheVideos(filteredProducts);
 
-    final bool showBack = widget.showBackButton == true;
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        leading: showBack
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.black),
-                onPressed: () => Navigator.pop(context),
-              )
-            : null,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () {
+            FeedVideoManager.instance.pauseAll();
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              MainDashboard.of(context)?.switchToTab(0);
+            }
+          },
+        ),
         automaticallyImplyLeading: false,
         title: const Text(
           "Boutique",
@@ -304,7 +363,11 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
           try {
             await Future.wait([
               context.read<CategoryProvider>().fetchCategories(),
-              context.read<ProductProvider>().fetchProducts(),
+              context.read<ProductProvider>().fetchProducts(
+                categoryId: currentCategoryId,
+                subcategoryId: currentSubcategoryId,
+                refresh: true,
+              ),
               context.read<CartProvider>().fetchCart(showLoading: false),
             ]).timeout(const Duration(seconds: 10));
           } catch (e) {
@@ -348,7 +411,7 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                       // Horizontal Category Selector
                       SizedBox(
                         height: 100,
-                        child: isLoading
+                        child: (isLoading && categories.isEmpty)
                             ? const ShimmerStoryRow(count: 6, itemSize: 52)
                             : ListView.builder(
                                 controller: _categoryScrollController,
@@ -356,10 +419,10 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                 ),
-                                itemCount: categories.length,
+                                itemCount: allCategories.length,
                                 itemBuilder: (context, index) =>
                                     _buildCategoryItem(
-                                      categories[index],
+                                      allCategories[index],
                                       index,
                                     ),
                               ),
@@ -375,7 +438,9 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                           children: [
                             Expanded(
                               child: Text(
-                                "$selectedCategoryName catégori",
+                                selectedCategoryName == "Tous"
+                                    ? "Tous"
+                                    : "$selectedCategoryName catégori",
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -384,19 +449,23 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  isSubcategoryShow = !isSubcategoryShow;
-                                });
-                              },
-                              icon: isSubcategoryShow
-                                  ? const Icon(Icons.close, color: Colors.black)
-                                  : const Icon(
-                                      Icons.arrow_drop_down,
-                                      color: Colors.black,
-                                    ),
-                            ),
+                            if (currentSubCategories.isNotEmpty)
+                              IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    isSubcategoryShow = !isSubcategoryShow;
+                                  });
+                                },
+                                icon: isSubcategoryShow
+                                    ? const Icon(
+                                        Icons.close,
+                                        color: Colors.black,
+                                      )
+                                    : const Icon(
+                                        Icons.arrow_drop_down,
+                                        color: Colors.black,
+                                      ),
+                              ),
                           ],
                         ),
                       ),
@@ -436,11 +505,11 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                     sliver: SliverGrid(
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 0.58,
-                      ),
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.58,
+                          ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) => const ShimmerCard.product(),
                         childCount: 6,
@@ -467,110 +536,122 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 14,
                           ),
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final product = filteredProducts[index];
-                        final double discount =
-                            double.tryParse(product.discountPercentage) ?? 0;
-                        final bool hasDiscount = discount > 0;
-                        final String videoUrl = _resolveProductVideo(product);
-                        final String thumbnailUrl = _resolveProductThumbnail(
-                          product,
-                        );
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final product = filteredProducts[index];
+                          final double discount =
+                              double.tryParse(product.discountPercentage) ?? 0;
+                          final bool hasDiscount = discount > 0;
+                          final String videoUrl = _resolveProductVideo(product);
+                          final String thumbnailUrl = _resolveProductThumbnail(
+                            product,
+                          );
 
-                        return ShortsProductCard(
-                          key: ValueKey('boutique_prod_${product.id}'),
-                          heroTag: 'product_hero_${product.id}',
-                          keyString: 'boutique_prod_${product.id}',
-                          videoUrl: videoUrl,
-                          thumbnailUrl: thumbnailUrl,
-                          title: product.productName,
-                          price: "${product.priceAfterDiscount} FCFA",
-                          oldPrice: hasDiscount
-                              ? "${product.sellingPrice} FCFA"
-                              : null,
-                          discount: hasDiscount
-                              ? "-${discount.toInt()}%"
-                              : null,
-                          width: double.infinity,
-                          height: double.infinity,
-                          onTap: () async {
-                            FeedVideoManager.instance.pauseAll();
+                          return ShortsProductCard(
+                            key: ValueKey('boutique_prod_${product.id}'),
+                            heroTag: 'product_hero_${product.id}',
+                            keyString: 'boutique_prod_${product.id}',
+                            videoUrl: videoUrl,
+                            thumbnailUrl: thumbnailUrl,
+                            title: product.productName,
+                            price: "${product.priceAfterDiscount} FCFA",
+                            oldPrice: hasDiscount
+                                ? "${product.sellingPrice} FCFA"
+                                : null,
+                            discount: hasDiscount
+                                ? "-${discount.toInt()}%"
+                                : null,
+                            width: double.infinity,
+                            height: double.infinity,
+                            onTap: () async {
+                              FeedVideoManager.instance.pauseAll();
 
-                            final convertedProducts = filteredProducts.map((p) {
-                              final cachedFull = context
-                                  .read<ProductProvider>()
-                                  .getCachedProduct(p.id);
-                              if (cachedFull != null &&
-                                  cachedFull.media.isNotEmpty) {
-                                return cachedFull;
-                              }
+                              final convertedProducts = filteredProducts.map((
+                                p,
+                              ) {
+                                final cachedFull = context
+                                    .read<ProductProvider>()
+                                    .getCachedProduct(p.id);
+                                if (cachedFull != null &&
+                                    cachedFull.media.isNotEmpty) {
+                                  return cachedFull;
+                                }
 
-                              final pVideo = _resolveProductVideo(p);
-                              if (p.media.isEmpty && pVideo.isNotEmpty) {
-                                return ProductModel(
-                                  id: p.id,
-                                  productName: p.productName,
-                                  categoryId: p.categoryId,
-                                  categoryName: p.categoryName,
-                                  subcategoryId: p.subcategoryId,
-                                  subcategoryName: p.subcategoryName,
-                                  sellingPrice: p.sellingPrice,
-                                  discountPercentage: p.discountPercentage,
-                                  priceAfterDiscount: p.priceAfterDiscount,
-                                  status: p.status,
-                                  mainImage: p.mainImage,
-                                  media: [
-                                    MediaModel(
-                                      id: 0,
-                                      mediaType: 'video',
-                                      mediaUrl: pVideo,
-                                      thumbnailUrl: p.mainImage,
-                                    ),
-                                  ],
-                                  actualPrice: p.actualPrice,
-                                  deliveryPrice: p.deliveryPrice,
-                                  description: p.description,
-                                  deliveryMessage: p.deliveryMessage,
-                                  variants: p.variants,
-                                  stockMode: p.stockMode,
-                                  stockQuantity: p.stockQuantity,
-                                  unassignedStock: p.unassignedStock,
-                                  totalStock: p.totalStock,
-                                  noVariant: p.noVariant,
-                                  stock: p.stock,
-                                );
-                              }
-                              return p;
-                            }).toList();
+                                final pVideo = _resolveProductVideo(p);
+                                if (p.media.isEmpty && pVideo.isNotEmpty) {
+                                  return ProductModel(
+                                    id: p.id,
+                                    productName: p.productName,
+                                    categoryId: p.categoryId,
+                                    categoryName: p.categoryName,
+                                    subcategoryId: p.subcategoryId,
+                                    subcategoryName: p.subcategoryName,
+                                    sellingPrice: p.sellingPrice,
+                                    discountPercentage: p.discountPercentage,
+                                    priceAfterDiscount: p.priceAfterDiscount,
+                                    status: p.status,
+                                    mainImage: p.mainImage,
+                                    media: [
+                                      MediaModel(
+                                        id: 0,
+                                        mediaType: 'video',
+                                        mediaUrl: pVideo,
+                                        thumbnailUrl: p.mainImage,
+                                      ),
+                                    ],
+                                    actualPrice: p.actualPrice,
+                                    deliveryPrice: p.deliveryPrice,
+                                    description: p.description,
+                                    deliveryMessage: p.deliveryMessage,
+                                    variants: p.variants,
+                                    stockMode: p.stockMode,
+                                    stockQuantity: p.stockQuantity,
+                                    unassignedStock: p.unassignedStock,
+                                    totalStock: p.totalStock,
+                                    noVariant: p.noVariant,
+                                    stock: p.stock,
+                                  );
+                                }
+                                return p;
+                              }).toList();
 
-                            // Pre-cache clicked video and adjacent videos with top priority
-                            final indices = [index, index + 1, index + 2, index - 1];
-                            for (final idx in indices) {
-                              if (idx >= 0 && idx < convertedProducts.length) {
-                                final vUrl = convertedProducts[idx].effectiveVideoUrl;
-                                if (vUrl.isNotEmpty) {
-                                  VideoCacheManager.instance.preCachePriority(_resolveUrl(vUrl));
+                              // Pre-cache clicked video and adjacent videos with top priority
+                              final indices = [
+                                index,
+                                index + 1,
+                                index + 2,
+                                index - 1,
+                              ];
+                              for (final idx in indices) {
+                                if (idx >= 0 &&
+                                    idx < convertedProducts.length) {
+                                  final vUrl =
+                                      convertedProducts[idx].effectiveVideoUrl;
+                                  if (vUrl.isNotEmpty) {
+                                    VideoCacheManager.instance.preCachePriority(
+                                      _resolveUrl(vUrl),
+                                    );
+                                  }
                                 }
                               }
-                            }
 
-                            await Navigator.push(
-                              context,
-                              CupertinoReelsRoute(
-                                page: ProductDetailsScreen(
-                                  allProducts: convertedProducts,
-                                  initialProductIndex: index,
+                              await Navigator.push(
+                                context,
+                                CupertinoReelsRoute(
+                                  page: ProductDetailsScreen(
+                                    allProducts: convertedProducts,
+                                    initialProductIndex: index,
+                                  ),
                                 ),
-                              ),
-                            );
-                            FeedVideoManager.instance.resume();
-                          },
-                        );
-                      },
-                      childCount: filteredProducts.length,
-                      addRepaintBoundaries: true,
+                              );
+                              FeedVideoManager.instance.resume();
+                            },
+                          );
+                        },
+                        childCount: filteredProducts.length,
+                        addRepaintBoundaries: true,
+                      ),
                     ),
-                  ),
                   ),
                 if (productProvider.isLoadingMore)
                   const SliverToBoxAdapter(
@@ -604,6 +685,13 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
           selectedCategoryName = category.name;
           selectedSubCategoryIndex = -1;
         });
+        _scrollToCategory(index);
+        final catId = (category.id == -1) ? null : category.id;
+        context.read<ProductProvider>().fetchProducts(
+          categoryId: catId,
+          subcategoryId: null,
+          refresh: false,
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           VisibilityDetectorController.instance.notifyNow();
           FeedVideoManager.instance.evaluatePlaybackNow();
@@ -634,7 +722,10 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                               Colors.white,
                               BlendMode.srcIn,
                             )
-                          : null,
+                          : const ColorFilter.mode(
+                              Color(0xFF555555),
+                              BlendMode.srcIn,
+                            ),
                     )
                   : ClipRRect(
                       borderRadius: BorderRadius.circular(10),
@@ -676,9 +767,24 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
         FeedVideoManager.instance.setActiveTab(1);
         FeedVideoManager.instance.clearCategoryCards('boutique_');
         FeedVideoManager.instance.setIsAtBottom(false);
+        final newSubIndex = isSelected ? -1 : index;
         setState(() {
-          selectedSubCategoryIndex = isSelected ? -1 : index;
+          selectedSubCategoryIndex = newSubIndex;
         });
+        final allCats = _getAllCategories(
+          context.read<CategoryProvider>().categories,
+        );
+        int? catId;
+        if (allCats.isNotEmpty && selectedCategory < allCats.length) {
+          final id = allCats[selectedCategory].id;
+          if (id != -1) catId = id;
+        }
+        final subCatId = (newSubIndex >= 0) ? subcategory.id : null;
+        context.read<ProductProvider>().fetchProducts(
+          categoryId: catId,
+          subcategoryId: subCatId,
+          refresh: false,
+        );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           VisibilityDetectorController.instance.notifyNow();
           FeedVideoManager.instance.evaluatePlaybackNow();

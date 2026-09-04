@@ -4,6 +4,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/utils/media_url_resolver.dart';
+import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 
 class ShortsProductCard extends StatefulWidget {
   final String keyString;
@@ -112,8 +113,8 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
   Widget _buildVideoFirstFrame() {
     final thumb =
         (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty)
-        ? widget.thumbnailUrl!.trim()
-        : MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl);
+            ? widget.thumbnailUrl!.trim()
+            : MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl);
 
     if (thumb.isNotEmpty) {
       return Image.network(
@@ -121,25 +122,40 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
         fit: BoxFit.cover,
         gaplessPlayback: true,
         filterQuality: FilterQuality.medium,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: const Color(0xFFF5F5F5),
-          child: const Center(
-            child: Icon(
-              Icons.shopping_bag_outlined,
-              color: Color(0xFFB0B0B0),
-              size: 32,
-            ),
-          ),
-        ),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildShimmerPlaceholder();
+        },
+        errorBuilder: (context, error, stackTrace) {
+          final altThumb =
+              MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl);
+          if (altThumb.isNotEmpty && altThumb != thumb) {
+            return Image.network(
+              altThumb,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return _buildShimmerPlaceholder();
+              },
+              errorBuilder: (ctx, err, st) => _buildShimmerPlaceholder(),
+            );
+          }
+          return _buildShimmerPlaceholder();
+        },
       );
     }
+    return _buildShimmerPlaceholder();
+  }
+
+  Widget _buildShimmerPlaceholder() {
     return Container(
-      color: const Color(0xFFF5F5F5),
-      child: const Center(
-        child: Icon(
-          Icons.shopping_bag_outlined,
-          color: Color(0xFFB0B0B0),
-          size: 32,
+      color: const Color(0xFFF0F0F0),
+      child: const CoolShimmer(
+        child: SizedBox.expand(
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: Color(0xFFE5E5E5)),
+          ),
         ),
       ),
     );

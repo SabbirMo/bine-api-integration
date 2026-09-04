@@ -3,6 +3,7 @@ import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/widget/cart_screen.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/providers/product_provider.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -137,6 +138,7 @@ class _ProductDetailsActionSidebarState
     if (mounted) setState(() => _isAddingToCart = true);
 
     try {
+      context.read<ProductProvider>().seedProductCache(widget.product);
       await context
           .read<CartProvider>()
           .addToCart(widget.product, syncImmediately: false)

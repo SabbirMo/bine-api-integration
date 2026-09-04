@@ -55,12 +55,11 @@ class _AccueilScreenState extends State<AccueilScreen>
       );
       // Silently refresh cart data in background
       if (mounted) {
-        context
-            .read<CartProvider>()
-            .fetchCart(showLoading: false)
-            .catchError((e) {
-              debugPrint("Silent cart fetch error in home refresh: $e");
-            });
+        context.read<CartProvider>().fetchCart(showLoading: false).catchError((
+          e,
+        ) {
+          debugPrint("Silent cart fetch error in home refresh: $e");
+        });
       }
       final renderTime = DateTime.now()
           .difference(AppStartupTracker.appStartTime)
@@ -107,7 +106,9 @@ class _AccueilScreenState extends State<AccueilScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       FeedVideoManager.instance.resume();
-      debugPrint("App resumed from background: refreshing notifications & cart...");
+      debugPrint(
+        "App resumed from background: refreshing notifications & cart...",
+      );
       if (mounted) {
         context
             .read<NotificationProvider>()
@@ -115,12 +116,11 @@ class _AccueilScreenState extends State<AccueilScreen>
             .catchError((e) {
               debugPrint("Error refreshing notifications on resume: $e");
             });
-        context
-            .read<CartProvider>()
-            .fetchCart(showLoading: false)
-            .catchError((e) {
-              debugPrint("Error refreshing cart on resume: $e");
-            });
+        context.read<CartProvider>().fetchCart(showLoading: false).catchError((
+          e,
+        ) {
+          debugPrint("Error refreshing cart on resume: $e");
+        });
       }
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
@@ -399,8 +399,8 @@ class _AccueilScreenState extends State<AccueilScreen>
                       ),
 
                     // Address Section
-                    // if (homeData.storeAddress != null)
-                    //   _buildAddressBar(homeData.storeAddress!),
+                    if (homeData.storeAddress != null)
+                      _buildAddressBar(homeData.storeAddress!),
                     _buildSectionHeader(
                       "Clients Livrés 🙍‍♂️",
                       "assets/icon/right.svg",
@@ -448,27 +448,27 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // Widget _buildAddressBar(String address) {
-  //   return Container(
-  //     margin: const EdgeInsets.symmetric(horizontal: 16),
-  //     padding: const EdgeInsets.all(12),
-  //     decoration: BoxDecoration(
-  //       color: const Color(0xFFFFF1E6),
-  //       borderRadius: BorderRadius.circular(10),
-  //     ),
-  //     child: Row(
-  //       children: [
-  //         Icon(Icons.location_on_outlined, color: Colors.orange, size: 20),
-  //         SizedBox(width: 8),
-  //         Text("Adresse :", style: TextStyle(fontWeight: FontWeight.bold)),
-  //         SizedBox(width: 6),
-  //         Expanded(
-  //           child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
+  Widget _buildAddressBar(String address) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1E6),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.location_on_outlined, color: Colors.orange, size: 20),
+          SizedBox(width: 8),
+          Text("Adresse :", style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(width: 6),
+          Expanded(
+            child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildSectionHeader(
     String title,
@@ -544,7 +544,9 @@ class _AccueilScreenState extends State<AccueilScreen>
       for (final story in cat.stories) {
         String? thumb = story.thumbnailUrl;
         if (thumb == null || thumb.trim().isEmpty) {
-          thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(story.effectiveMediaUrl);
+          thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(
+            story.effectiveMediaUrl,
+          );
         }
         if (thumb.trim().isNotEmpty && !thumb.startsWith('http')) {
           final base = BaseUrl.baseUrl;
@@ -589,6 +591,11 @@ class _AccueilScreenState extends State<AccueilScreen>
     for (final sec in sections) {
       for (final prod in sec.products) {
         String thumb = prod.effectiveThumbnailUrl;
+        if (thumb.isEmpty && prod.effectiveVideoUrl.isNotEmpty) {
+          thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(
+            prod.effectiveVideoUrl,
+          );
+        }
         if (thumb.isNotEmpty && !thumb.startsWith('http')) {
           final base = BaseUrl.baseUrl;
           thumb = thumb.startsWith('/') ? '$base$thumb' : '$base/$thumb';
@@ -857,7 +864,10 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
         final targetIndices = [newIndex + 1, newIndex + 2, totalCount - 1];
         for (final idx in targetIndices) {
           if (idx >= 0 && idx < totalCount) {
-            final v = _resolveProductVideo(widget.section.products[idx], pProvider);
+            final v = _resolveProductVideo(
+              widget.section.products[idx],
+              pProvider,
+            );
             if (v.isNotEmpty) {
               VideoCacheManager.instance.preCachePriority(_resolveUrl(v));
             }
@@ -993,7 +1003,14 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
       }
     }
 
-    // 4. Cached product detail (if already in memory cache)
+    // 4. Extract from video URL if available
+    final vUrl = _resolveProductVideo(product, productProvider);
+    if (vUrl.isNotEmpty) {
+      final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(vUrl);
+      if (extracted.isNotEmpty) return _resolveUrl(extracted);
+    }
+
+    // 5. Cached product detail (if already in memory cache)
     final cached = productProvider.getCachedProduct(product.id);
     if (cached != null) {
       final cThumb = cached.effectiveThumbnailUrl;
@@ -1006,6 +1023,12 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
             m.effectiveMediaUrl.isNotEmpty) {
           return _resolveUrl(m.effectiveMediaUrl);
         }
+      }
+      if (cached.effectiveVideoUrl.isNotEmpty) {
+        final cExtracted = MediaUrlResolver.extractThumbnailFromVideoUrl(
+          cached.effectiveVideoUrl,
+        );
+        if (cExtracted.isNotEmpty) return _resolveUrl(cExtracted);
       }
     }
     return '';
@@ -1154,11 +1177,14 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                           thumbnailUrl: pThumb,
                         ),
                       ];
-                    } else if (p.mainImage != null && p.mainImage!.trim().isNotEmpty) {
+                    } else if (p.mainImage != null &&
+                        p.mainImage!.trim().isNotEmpty) {
                       mediaList = [
                         shop_model.MediaModel(
                           id: 0,
-                          mediaType: _isVideoUrl(p.mainImage!) ? 'video' : 'image',
+                          mediaType: _isVideoUrl(p.mainImage!)
+                              ? 'video'
+                              : 'image',
                           mediaUrl: _resolveUrl(p.mainImage!),
                           thumbnailUrl: _resolveUrl(p.mainImage!),
                         ),

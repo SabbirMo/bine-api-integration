@@ -285,6 +285,12 @@ class ProductModel {
         return m.effectiveMediaUrl;
       }
     }
+    if (effectiveVideoUrl.isNotEmpty) {
+      final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(
+        effectiveVideoUrl,
+      );
+      if (extracted.isNotEmpty) return extracted;
+    }
     return '';
   }
 

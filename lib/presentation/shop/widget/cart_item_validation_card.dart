@@ -39,13 +39,55 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   @override
   void initState() {
     super.initState();
-    _fetchProductDetails();
+    final cached = widget.item.productId > 0
+        ? (context.read<ProductProvider>().getCachedProduct(
+                widget.item.productId,
+              ) ??
+              context.read<CartProvider>().getProductFromCache(
+                widget.item.productId,
+              ))
+        : null;
+
+    if (cached != null) {
+      _productDetails = cached;
+      _isLoading = false;
+      String? initialColor = widget.item.colorCode;
+      String? initialSize = widget.item.size;
+      if (initialColor != null && initialColor.isEmpty) initialColor = null;
+      if (initialSize != null && initialSize.isEmpty) initialSize = null;
+      _selectedColorCode = initialColor;
+      _selectedSize = initialSize;
+      _isUnassignedSelected = false;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (cached.isProductMode || cached.variants.isEmpty) {
+          _notify(isValid: true, variantId: null);
+        } else {
+          _notifyVariant();
+        }
+        _clampQuantityToMaxStock();
+      });
+    } else {
+      _fetchProductDetails();
+    }
   }
 
   Future<void> _fetchProductDetails() async {
-    final details = await context.read<ProductProvider>().fetchProductDetails(
-      widget.item.productId,
-    );
+    ProductModel? details = widget.item.productId > 0
+        ? (context.read<ProductProvider>().getCachedProduct(
+                widget.item.productId,
+              ) ??
+              context.read<CartProvider>().getProductFromCache(
+                widget.item.productId,
+              ))
+        : null;
+
+    if (details == null && widget.item.productId > 0) {
+      details = await context.read<ProductProvider>().fetchProductDetails(
+        widget.item.productId,
+      );
+    }
     if (mounted) {
       String? initialColor = widget.item.colorCode;
       String? initialSize = widget.item.size;
@@ -162,7 +204,11 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     return hasColors || hasSizes;
   }
 
-  Widget _cardWrapper({String? title, required Widget child}) {
+  Widget _cardWrapper({
+    String? title,
+    Widget? trailing,
+    required Widget child,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -175,13 +221,20 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (title != null) ...[
-            Text(
-              title,
-              style: const TextStyle(
-                color: Color(0xFF344054),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF344054),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                ?trailing,
+              ],
             ),
             const SizedBox(height: 12),
           ],
@@ -202,6 +255,16 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         // ── CARD 1: Articles & Quantité ──
         _cardWrapper(
           title: "Articles & Quantité",
+          trailing: InkWell(
+            onTap: () {
+              context.read<CartProvider>().remove(widget.item.id);
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: const Padding(
+              padding: EdgeInsets.all(4.0),
+              child: Icon(Icons.delete_outline, color: Colors.red, size: 22),
+            ),
+          ),
           child: Row(
             children: [
               ProductThumbnailOrVideoFrame(
@@ -467,11 +530,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
             ),
             child: const Row(
               children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.red,
-                  size: 18,
-                ),
+                Icon(Icons.warning_amber_rounded, color: Colors.red, size: 18),
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -565,7 +624,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   Widget _colorDot(Color color, String colorCode, String name) {
     final bool isSelected =
         _selectedColorCode == colorCode && !_isUnassignedSelected;
-    final bool isLightColor = color == Colors.white ||
+    final bool isLightColor =
+        color == Colors.white ||
         color.toARGB32() == 0xFFFFFFFF ||
         color.computeLuminance() > 0.85;
 
@@ -617,7 +677,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: isSelected ? const Color(0xFFFF6900) : Colors.transparent,
+                color: isSelected
+                    ? const Color(0xFFFF6900)
+                    : Colors.transparent,
                 width: 2.0,
               ),
             ),
@@ -677,7 +739,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           border: Border.all(
             color: isSelected
                 ? (isOutOfStock ? Colors.red : const Color(0xFFFF6900))
-                : (isOutOfStock ? Colors.grey.shade300 : const Color(0xFF6B7280)),
+                : (isOutOfStock
+                      ? Colors.grey.shade300
+                      : const Color(0xFF6B7280)),
             width: isSelected ? 1.5 : 1.1,
           ),
         ),
@@ -690,8 +754,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
                 color: isOutOfStock
                     ? Colors.grey
                     : (isSelected
-                        ? const Color(0xFFFF6900)
-                        : const Color(0xFF374151)),
+                          ? const Color(0xFFFF6900)
+                          : const Color(0xFF374151)),
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                 decoration: isOutOfStock ? TextDecoration.lineThrough : null,
@@ -797,8 +861,9 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               child: Icon(
                 Icons.add_circle_outline,
                 size: 22,
-                color:
-                    isBlocked ? Colors.grey.shade400 : const Color(0xFF101828),
+                color: isBlocked
+                    ? Colors.grey.shade400
+                    : const Color(0xFF101828),
               ),
             ),
           ),
@@ -807,4 +872,3 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
     );
   }
 }
-

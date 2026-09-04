@@ -41,9 +41,13 @@ class MainDashboardState extends State<MainDashboard> {
     }
     FeedVideoManager.instance.setActiveTab(index);
 
-    if (index == 1 && categoryId != null) {
+    if (index == 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _boutiqueKey.currentState?.selectCategoryById(categoryId);
+        if (categoryId != null) {
+          _boutiqueKey.currentState?.selectCategoryById(categoryId);
+        } else {
+          _boutiqueKey.currentState?.resetToFirstCategory();
+        }
       });
     }
 
@@ -66,7 +70,9 @@ class MainDashboardState extends State<MainDashboard> {
         backgroundColor: Colors.white,
         currentIndex: _currentIndex,
         onTap: (index) {
-          if (index != _currentIndex) {
+          if (index == 1 && _currentIndex == 1) {
+            _boutiqueKey.currentState?.resetToFirstCategory();
+          } else if (index != _currentIndex) {
             switchToTab(index);
           }
         },

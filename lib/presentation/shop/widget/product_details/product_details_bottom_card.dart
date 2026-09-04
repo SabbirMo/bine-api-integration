@@ -3,6 +3,7 @@ import 'package:binetatour/data/models/product_model.dart';
 import 'package:binetatour/presentation/profile/widget/login_view.dart';
 import 'package:binetatour/presentation/shop/vaildation_sceen.dart';
 import 'package:binetatour/providers/cart_provider.dart';
+import 'package:binetatour/providers/product_provider.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -100,6 +101,7 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
 
     bool success = false;
     try {
+      context.read<ProductProvider>().seedProductCache(widget.product);
       await context
           .read<CartProvider>()
           .addToCart(widget.product, syncImmediately: false)
@@ -284,83 +286,22 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
               ],
             ),
 
-            // 3. Description & Expandable Stock Section
+            // 3. Description Section
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Description: ${widget.product.description ?? ''}",
-                        maxLines: widget.isExpanded ? 100 : 1,
-                        overflow: widget.isExpanded
-                            ? TextOverflow.visible
-                            : TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          height: 1.4,
-                        ),
-                      ),
-                      // if (widget.isExpanded) ...[
-                      //   const SizedBox(height: 10),
-                      //   if (widget.product.isProductMode) ...[
-                      //     Text(
-                      //       "Stock: ${widget.product.totalStock} en stock",
-                      //       style: const TextStyle(
-                      //         color: Colors.white70,
-                      //         fontSize: 13,
-                      //       ),
-                      //     ),
-                      //   ] else ...[
-                      //     const Text(
-                      //       "Variantes & Stock:",
-                      //       style: TextStyle(
-                      //         color: Colors.white,
-                      //         fontWeight: FontWeight.bold,
-                      //       ),
-                      //     ),
-                      //     if (widget.product.isMixedMode &&
-                      //         widget.product.unassignedStock > 0)
-                      //       Text(
-                      //         "• Sans préférence : ${widget.product.unassignedStock} en stock",
-                      //         style: const TextStyle(
-                      //           color: Colors.white70,
-                      //           fontSize: 13,
-                      //         ),
-                      //       ),
-                      //     ...widget.product.variants.map(
-                      //       (v) => Text(
-                      //         "• ${v.colorName} (${v.size}) : ${v.stockQuantity} en stock",
-                      //         style: const TextStyle(
-                      //           color: Colors.white70,
-                      //           fontSize: 13,
-                      //         ),
-                      //       ),
-                      //     ),
-                      //   ],
-                      // ],
-                      // if (widget.isExpanded &&
-                      //     widget.product.deliveryMessage != null) ...[
-                      //   const SizedBox(height: 10),
-                      //   Text(
-                      //     "Livraison: ${widget.product.deliveryPrice != null ? '${widget.product.deliveryPrice} FCFA' : 'Gratuite'}",
-                      //     style: const TextStyle(
-                      //       color: Colors.white,
-                      //       fontWeight: FontWeight.bold,
-                      //     ),
-                      //   ),
-                      //   Text(
-                      //     widget.product.deliveryMessage!,
-                      //     style: const TextStyle(
-                      //       color: Colors.white70,
-                      //       fontSize: 13,
-                      //     ),
-                      //   ),
-                      // ],
-                    ],
+                  child: Text(
+                    "Description: ${widget.product.description ?? ''}",
+                    maxLines: widget.isExpanded ? 100 : 1,
+                    overflow: widget.isExpanded
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
                   ),
                 ),
                 GestureDetector(

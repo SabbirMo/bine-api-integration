@@ -78,10 +78,7 @@ class ProductDetailsTopOverlay extends StatelessWidget {
                 ),
               const SizedBox(width: 8),
               // Close Button
-              _buildCircleIcon(
-                icon: CupertinoIcons.xmark,
-                onTap: onClose,
-              ),
+              _buildCircleIcon(icon: CupertinoIcons.xmark, onTap: onClose),
             ],
           ),
         ),

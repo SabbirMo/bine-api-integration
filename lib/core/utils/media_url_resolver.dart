@@ -40,7 +40,9 @@ class MediaUrlResolver {
     // 2. Otherwise check direct mediaUrl / videoUrl
     final rawMedia = (mediaUrl != null && mediaUrl.trim().isNotEmpty)
         ? mediaUrl.trim()
-        : (videoUrl != null && videoUrl.trim().isNotEmpty ? videoUrl.trim() : null);
+        : (videoUrl != null && videoUrl.trim().isNotEmpty
+              ? videoUrl.trim()
+              : null);
 
     if (rawMedia != null && rawMedia.isNotEmpty) {
       // If direct media is from Cloudflare Stream with /downloads/default.mp4, convert to
@@ -73,16 +75,28 @@ class MediaUrlResolver {
         clean.contains('.m3u8');
   }
 
-  static final RegExp _cloudflareRegExp = RegExp(r'cloudflarestream\.com\/([a-zA-Z0-9]+)');
+  static final RegExp _cloudflareRegExp = RegExp(
+    r'(https?://[^/]+)/([a-fA-F0-9]{32})',
+  );
+  static final RegExp _cloudflareFallbackRegExp = RegExp(
+    r'(?:cloudflarestream\.com|videodelivery\.net)/([a-zA-Z0-9]+)',
+  );
 
   /// Extracts a Cloudflare thumbnail URL if the video is hosted on Cloudflare Stream
   static String extractThumbnailFromVideoUrl(String? videoUrl) {
     if (videoUrl == null || videoUrl.trim().isEmpty) return '';
     final clean = videoUrl.trim();
-    if (clean.contains('cloudflarestream.com')) {
+    if (clean.contains('cloudflarestream.com') ||
+        clean.contains('videodelivery.net')) {
       final match = _cloudflareRegExp.firstMatch(clean);
-      if (match != null && match.groupCount >= 1) {
-        final id = match.group(1);
+      if (match != null && match.groupCount >= 2) {
+        final host = match.group(1);
+        final id = match.group(2);
+        return '$host/$id/thumbnails/thumbnail.jpg?width=640';
+      }
+      final fallbackMatch = _cloudflareFallbackRegExp.firstMatch(clean);
+      if (fallbackMatch != null && fallbackMatch.groupCount >= 1) {
+        final id = fallbackMatch.group(1);
         return 'https://customer-xe2czubswwdkm567.cloudflarestream.com/$id/thumbnails/thumbnail.jpg?width=640';
       }
     }
