@@ -59,7 +59,9 @@ class FeedPlayerState extends ChangeNotifier {
 
     _bufferingSub = player.stream.buffering.listen((buffering) {
       // Suppress buffering spinner on instant seamless loops back to time 0
-      if (buffering && hasFirstFrame && player.state.position < const Duration(milliseconds: 400)) {
+      if (buffering &&
+          hasFirstFrame &&
+          player.state.position < const Duration(milliseconds: 400)) {
         return;
       }
       if (isBuffering != buffering) {
@@ -82,14 +84,16 @@ class FeedPlayerState extends ChangeNotifier {
       }
     });
 
-    videoController.waitUntilFirstFrameRendered.then((_) {
-      if (!player.state.buffering) {
-        hasFirstFrame = true;
-        isBuffering = false;
-        notifyListeners();
-        onUpdate();
-      }
-    }).catchError((_) {});
+    videoController.waitUntilFirstFrameRendered
+        .then((_) {
+          if (!player.state.buffering) {
+            hasFirstFrame = true;
+            isBuffering = false;
+            notifyListeners();
+            onUpdate();
+          }
+        })
+        .catchError((_) {});
 
     _positionSub = player.stream.position.listen((pos) {
       if (pos > Duration.zero) {
@@ -213,7 +217,8 @@ class FeedVideoManager extends ChangeNotifier {
   FeedPlayerState _createPlayerState() {
     final player = Player(
       configuration: const PlayerConfiguration(
-        bufferSize: 2 * 1024 * 1024, // 2 MB — lightweight & ultra-fast playback start
+        bufferSize:
+            2 * 1024 * 1024, // 2 MB — lightweight & ultra-fast playback start
         logLevel: MPVLogLevel.warn,
       ),
     );
@@ -565,10 +570,10 @@ class FeedVideoManager extends ChangeNotifier {
         : (vHeight * (0.32 + (_scrollRatio * 0.43)));
 
     // 1. If currently on Home page (tab 0)
-    if (_activeTabIndex == 0 && _sectionVisibility.isNotEmpty) {
+    if (_activeTabIndex == 0) {
       String? bestSectionId;
       double bestScore = -999999.0;
-      
+
       String? runnerUpSectionId;
       double runnerUpScore = -999999.0;
 
@@ -706,8 +711,10 @@ class FeedVideoManager extends ChangeNotifier {
         if (runnerUpKey != null) {
           nextUrl = _urlMap[runnerUpKey];
         }
-        
-        if (nextUrl != null && nextUrl.isNotEmpty && _playerPool.length < maxPoolSize) {
+
+        if (nextUrl != null &&
+            nextUrl.isNotEmpty &&
+            _playerPool.length < maxPoolSize) {
           final alreadyLoaded = _playerPool.any((p) => p.currentUrl == nextUrl);
           if (!alreadyLoaded) {
             // Silently open nextUrl in a new idle player so it's buffered

@@ -278,7 +278,9 @@ class CartItemModel {
       mainImage: mImg,
       videoUrl: vUrl,
       thumbnailUrl: tUrl,
-      quantity: CartModel._parseInt(json['quantity']),
+      quantity: CartModel._parseInt(json['quantity']) > 0
+          ? CartModel._parseInt(json['quantity'])
+          : 1,
       colorName:
           (variantData != null ? variantData['color_name'] : json['color_name'])
               ?.toString(),

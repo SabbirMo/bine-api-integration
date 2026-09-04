@@ -123,6 +123,10 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
   void initState() {
     super.initState();
     _categoryScrollController = ScrollController();
+    if (widget.showBackButton == true) {
+      FeedVideoManager.instance.setActiveTab(1);
+      FeedVideoManager.instance.resume();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CategoryProvider>().fetchCategories(refresh: false);
       if (widget.initialCategoryId != null && widget.initialCategoryId! > 0) {
@@ -134,12 +138,23 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
         context.read<ProductProvider>().fetchProducts(refresh: false);
       }
       VisibilityDetectorController.instance.notifyNow();
+      if (widget.showBackButton == true) {
+        FeedVideoManager.instance.evaluatePlaybackNow();
+      }
     });
   }
 
   @override
   void dispose() {
     _categoryScrollController.dispose();
+    if (widget.showBackButton == true) {
+      FeedVideoManager.instance.setActiveTab(0);
+      FeedVideoManager.instance.resume();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        VisibilityDetectorController.instance.notifyNow();
+        FeedVideoManager.instance.evaluatePlaybackNow();
+      });
+    }
     super.dispose();
   }
 
@@ -297,6 +312,16 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
     );
 
     _precacheVideos(filteredProducts);
+
+    if (widget.showBackButton == true &&
+        filteredProducts.isNotEmpty &&
+        !isProductsLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !FeedVideoManager.instance.isGloballyPaused) {
+          FeedVideoManager.instance.evaluatePlaybackNow();
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -645,6 +670,10 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                                 ),
                               );
                               FeedVideoManager.instance.resume();
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                VisibilityDetectorController.instance.notifyNow();
+                                FeedVideoManager.instance.evaluatePlaybackNow();
+                              });
                             },
                           );
                         },

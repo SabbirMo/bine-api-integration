@@ -1063,7 +1063,12 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                   ),
                 ),
               );
+              FeedVideoManager.instance.setActiveTab(0);
               FeedVideoManager.instance.resume();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                VisibilityDetectorController.instance.notifyNow();
+                FeedVideoManager.instance.evaluatePlaybackNow();
+              });
             },
           ),
 
@@ -1266,7 +1271,12 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
                 await pushFuture;
 
+                FeedVideoManager.instance.setActiveTab(0);
                 FeedVideoManager.instance.resume();
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  VisibilityDetectorController.instance.notifyNow();
+                  FeedVideoManager.instance.evaluatePlaybackNow();
+                });
               },
             ),
           );

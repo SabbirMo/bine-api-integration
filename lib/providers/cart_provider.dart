@@ -272,6 +272,9 @@ class CartProvider extends ChangeNotifier {
         maxStock = product.totalStock > 0
             ? product.totalStock
             : product.stockQuantity;
+        if (maxStock <= 0 && !product.isOutOfStock) {
+          maxStock = 999;
+        }
       } else if (product.variants.isNotEmpty) {
         // Variant mode with no variant yet or fallback
         ProductVariantModel? matchingVariant;
@@ -287,10 +290,12 @@ class CartProvider extends ChangeNotifier {
         }
         if (matchingVariant != null) {
           maxStock = matchingVariant.stockQuantity;
+        } else if (!product.isOutOfStock) {
+          maxStock = product.totalStock > 0 ? product.totalStock : 999;
         }
       }
 
-      if (product.isOutOfStock || maxStock <= 0) {
+      if (product.isOutOfStock || (maxStock <= 0 && product.isOutOfStock)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

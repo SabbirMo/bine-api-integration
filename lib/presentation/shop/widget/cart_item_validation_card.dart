@@ -55,6 +55,23 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       String? initialSize = widget.item.size;
       if (initialColor != null && initialColor.isEmpty) initialColor = null;
       if (initialSize != null && initialSize.isEmpty) initialSize = null;
+
+      if ((initialColor == null || initialSize == null) &&
+          widget.item.variantId != null &&
+          widget.item.variantId! > 0) {
+        final matching = cached.variants
+            .where((v) => v.id == widget.item.variantId)
+            .firstOrNull;
+        if (matching != null) {
+          if (initialColor == null && matching.colorCode.isNotEmpty) {
+            initialColor = matching.colorCode;
+          }
+          if (initialSize == null && matching.size.isNotEmpty) {
+            initialSize = matching.size;
+          }
+        }
+      }
+
       _selectedColorCode = initialColor;
       _selectedSize = initialSize;
       _isUnassignedSelected = false;
@@ -62,7 +79,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (cached.isProductMode || cached.variants.isEmpty) {
-          _notify(isValid: true, variantId: null);
+          _notify(isValid: !cached.isOutOfStock, variantId: null);
         } else {
           _notifyVariant();
         }
@@ -95,6 +112,23 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       if (initialColor != null && initialColor.isEmpty) initialColor = null;
       if (initialSize != null && initialSize.isEmpty) initialSize = null;
 
+      if (details != null &&
+          (initialColor == null || initialSize == null) &&
+          widget.item.variantId != null &&
+          widget.item.variantId! > 0) {
+        final matching = details.variants
+            .where((v) => v.id == widget.item.variantId)
+            .firstOrNull;
+        if (matching != null) {
+          if (initialColor == null && matching.colorCode.isNotEmpty) {
+            initialColor = matching.colorCode;
+          }
+          if (initialSize == null && matching.size.isNotEmpty) {
+            initialSize = matching.size;
+          }
+        }
+      }
+
       setState(() {
         _productDetails = details;
         _isLoading = false;
@@ -106,8 +140,8 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       if (details == null ||
           details.isProductMode ||
           details.variants.isEmpty) {
-        // Product mode: automatically valid, no variant_id
-        _notify(isValid: true, variantId: null);
+        // Product mode: automatically valid if not out of stock, no variant_id
+        _notify(isValid: !(details?.isOutOfStock ?? false), variantId: null);
       } else {
         // Variant mode or mixed mode: user needs to make a selection
         _notifyVariant();
@@ -365,6 +399,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   /// Check if the currently selected choice is out of stock
   bool get _isCurrentChoiceOutOfStock {
     if (_productDetails == null) return false;
+    if (_productDetails!.isOutOfStock) return true;
     if (_isUnassignedSelected) {
       return _productDetails!.unassignedStock <= 0;
     }
@@ -373,7 +408,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
       return variant.stockQuantity <= 0;
     }
     if (_productDetails!.isProductMode || _productDetails!.variants.isEmpty) {
-      return _productDetails!.totalStock <= 0;
+      return _productDetails!.isOutOfStock;
     }
     return false;
   }
@@ -382,16 +417,24 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   int get _maxAvailableStock {
     if (_productDetails == null) return 999;
     if (_isUnassignedSelected) {
-      return _productDetails!.unassignedStock;
+      return _productDetails!.unassignedStock > 0
+          ? _productDetails!.unassignedStock
+          : (_productDetails!.isOutOfStock ? 0 : 999);
     }
     final variant = _selectedVariant;
     if (variant != null) {
-      return variant.stockQuantity;
+      return variant.stockQuantity > 0
+          ? variant.stockQuantity
+          : (_productDetails!.isOutOfStock ? 0 : 999);
     }
     if (_productDetails!.isProductMode || _productDetails!.variants.isEmpty) {
-      return _productDetails!.totalStock > 0
+      final stockVal = _productDetails!.totalStock > 0
           ? _productDetails!.totalStock
           : _productDetails!.stockQuantity;
+      if (stockVal <= 0 && !_productDetails!.isOutOfStock) {
+        return 999;
+      }
+      return stockVal > 0 ? stockVal : (_productDetails!.isOutOfStock ? 0 : 999);
     }
 
     final variants = _productDetails!.variants;
@@ -403,24 +446,28 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         (v) => v.colorCode == _selectedColorCode,
       );
       if (colorVariants.isNotEmpty) {
-        return colorVariants.fold<int>(
+        final maxVal = colorVariants.fold<int>(
           0,
           (max, v) => v.stockQuantity > max ? v.stockQuantity : max,
         );
+        return maxVal > 0 ? maxVal : (_productDetails!.isOutOfStock ? 0 : 999);
       }
     }
 
     if (_selectedSize != null && hasColors && _selectedColorCode == null) {
       final sizeVariants = variants.where((v) => v.size == _selectedSize);
       if (sizeVariants.isNotEmpty) {
-        return sizeVariants.fold<int>(
+        final maxVal = sizeVariants.fold<int>(
           0,
           (max, v) => v.stockQuantity > max ? v.stockQuantity : max,
         );
+        return maxVal > 0 ? maxVal : (_productDetails!.isOutOfStock ? 0 : 999);
       }
     }
 
-    return _productDetails!.totalStock;
+    return _productDetails!.totalStock > 0
+        ? _productDetails!.totalStock
+        : (!_productDetails!.isOutOfStock ? 999 : 0);
   }
 
   Widget _buildStockAndVariantsSection(ProductModel product) {
@@ -774,11 +821,15 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
   Widget _quantityStepper(CartItemModel item) {
     final bool isBlocked = _isCurrentChoiceOutOfStock;
     final int maxStock = _maxAvailableStock;
+    final int displayQuantity = item.quantity > 0 ? item.quantity : 1;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF101828), width: 1.1),
+        border: Border.all(
+          color: isBlocked ? Colors.grey.shade400 : const Color(0xFF101828),
+          width: 1.1,
+        ),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
@@ -786,7 +837,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(15),
-            onTap: (isBlocked || item.quantity <= 1)
+            onTap: (isBlocked || displayQuantity <= 1)
                 ? null
                 : () {
                     context.read<CartProvider>().decrement(item.id);
@@ -796,7 +847,7 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
               child: Icon(
                 Icons.remove_circle_outline,
                 size: 22,
-                color: (isBlocked || item.quantity <= 1)
+                color: (isBlocked || displayQuantity <= 1)
                     ? Colors.grey.shade400
                     : const Color(0xFF101828),
               ),
@@ -805,11 +856,11 @@ class _CartItemValidationCardState extends State<CartItemValidationCard> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10.0),
             child: Text(
-              isBlocked ? "0" : "${item.quantity}",
-              style: const TextStyle(
+              "$displayQuantity",
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
-                color: Color(0xFF101828),
+                color: isBlocked ? Colors.grey.shade500 : const Color(0xFF101828),
               ),
             ),
           ),
