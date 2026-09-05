@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 
 class ProductDetailsTopOverlay extends StatelessWidget {
   final int currentMediaIndex;
@@ -30,7 +31,7 @@ class ProductDetailsTopOverlay extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: const BoxDecoration(
-          color: Color(0x33FFFFFF), // Translucent Cupertino glass feel
+          color: Colors.black45,
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: CupertinoColors.white, size: 20),
