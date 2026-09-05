@@ -74,6 +74,28 @@ class _ProfileViewState extends State<ProfileView> {
     final user = FirebaseAuth.instance.currentUser;
     final userPhotoUrl = user?.photoURL;
     final localProfileImage = profileImage;
+
+    final String currentName = user?.displayName ?? name;
+    final String currentEmail = user?.email ?? email;
+
+    String initial = "U";
+    if (currentName.trim().isNotEmpty && currentName != "Loading...") {
+      initial = currentName.trim()[0].toUpperCase();
+    } else if (currentEmail.trim().isNotEmpty && currentEmail != "Loading...") {
+      initial = currentEmail.trim()[0].toUpperCase();
+    }
+
+    final String? effectiveImageUrl =
+        (userPhotoUrl != null &&
+            userPhotoUrl.trim().isNotEmpty &&
+            userPhotoUrl != "null")
+        ? userPhotoUrl.trim()
+        : ((localProfileImage != null &&
+                  localProfileImage.trim().isNotEmpty &&
+                  localProfileImage != "null")
+              ? localProfileImage.trim()
+              : null);
+
     return RefreshIndicator(
       color: const Color(0xFFFF6900),
       onRefresh: () async {
@@ -105,35 +127,19 @@ class _ProfileViewState extends State<ProfileView> {
               child: Row(
                 children: [
                   ClipOval(
-                    child: Container(
+                    child: SizedBox(
                       width: 70,
                       height: 70,
-                      color: Colors.grey[200],
-                      child: (userPhotoUrl != null && userPhotoUrl.isNotEmpty)
+                      child:
+                          (effectiveImageUrl != null &&
+                              effectiveImageUrl.isNotEmpty)
                           ? Image.network(
-                              userPhotoUrl,
+                              effectiveImageUrl,
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) =>
-                                  Image.asset(
-                                    "assets/images/dp.png",
-                                    fit: BoxFit.cover,
-                                  ),
+                                  _buildInitialAvatar(initial),
                             )
-                          : (localProfileImage != null &&
-                                localProfileImage.isNotEmpty)
-                          ? Image.network(
-                              localProfileImage,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Image.asset(
-                                    "assets/images/dp.png",
-                                    fit: BoxFit.cover,
-                                  ),
-                            )
-                          : Image.asset(
-                              "assets/images/dp.png",
-                              fit: BoxFit.cover,
-                            ),
+                          : _buildInitialAvatar(initial),
                     ),
                   ),
                   const SizedBox(width: 15),
@@ -148,7 +154,6 @@ class _ProfileViewState extends State<ProfileView> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-
                         Text(
                           user?.email ?? email,
                           style: const TextStyle(
@@ -395,6 +400,23 @@ class _ProfileViewState extends State<ProfileView> {
         );
       }
     }
+  }
+
+  Widget _buildInitialAvatar(String initial) {
+    return Container(
+      width: 70,
+      height: 70,
+      color: const Color(0xFFFF6900),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 
   Widget _buildMenuItem(String icon, String title, Color iconColor) {
