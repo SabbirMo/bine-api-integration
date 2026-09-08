@@ -12,6 +12,7 @@ import 'package:binetatour/core/widgets/fireworks_overlay.dart';
 import 'package:binetatour/core/widgets/shimmer/cool_shimmer_kit.dart';
 import 'package:binetatour/core/utils/date_utils.dart';
 import 'package:binetatour/core/utils/external_intent_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ValidationScreen extends StatefulWidget {
   const ValidationScreen({super.key});
@@ -33,6 +34,12 @@ class _ValidationScreenState extends State<ValidationScreen> {
   /// Maps cartItemId -> whether the item is valid for order
   final Map<int, bool> _validItems = {};
 
+  static const String _prefKeyName = 'saved_customer_name';
+  static const String _prefKeySurname = 'saved_customer_surname';
+  static const String _prefKeyPhone = 'saved_customer_phone';
+  static const String _prefKeyPhone2 = 'saved_customer_phone2';
+  static const String _prefKeyAddress = 'saved_customer_address';
+
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _surnameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -44,9 +51,56 @@ class _ValidationScreenState extends State<ValidationScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedCustomerInfo();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<StoreSettingsProvider>().fetchStoreSettings();
     });
+  }
+
+  Future<void> _loadSavedCustomerInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString(_prefKeyName);
+      final surname = prefs.getString(_prefKeySurname);
+      final phone = prefs.getString(_prefKeyPhone);
+      final phone2 = prefs.getString(_prefKeyPhone2);
+      final address = prefs.getString(_prefKeyAddress);
+
+      if (!mounted) return;
+
+      if (name != null && name.isNotEmpty) {
+        _nameController.text = name;
+      }
+      if (surname != null && surname.isNotEmpty) {
+        _surnameController.text = surname;
+      }
+      if (phone != null && phone.isNotEmpty) {
+        _phoneController.text = phone;
+      }
+      if (phone2 != null && phone2.isNotEmpty) {
+        _phone2Controller.text = phone2;
+      }
+      if (address != null && address.isNotEmpty) {
+        _addressController.text = address;
+      }
+    } catch (e) {
+      debugPrint("Error loading saved customer info: $e");
+    }
+  }
+
+  Future<void> _saveCustomerInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await Future.wait([
+        prefs.setString(_prefKeyName, _nameController.text.trim()),
+        prefs.setString(_prefKeySurname, _surnameController.text.trim()),
+        prefs.setString(_prefKeyPhone, _phoneController.text.trim()),
+        prefs.setString(_prefKeyPhone2, _phone2Controller.text.trim()),
+        prefs.setString(_prefKeyAddress, _addressController.text.trim()),
+      ]);
+    } catch (e) {
+      debugPrint("Error saving customer info: $e");
+    }
   }
 
   @override
@@ -121,7 +175,15 @@ class _ValidationScreenState extends State<ValidationScreen> {
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MainDashboard(initialIndex: 0),
+                        ),
+                        (route) => false,
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF6900),
                       shape: RoundedRectangleBorder(
@@ -528,9 +590,7 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                   );
                                 } else if (_selectedDate == "DEMAIN") {
                                   deliveryDate = AppDateUtils.toApiDate(
-                                    DateTime.now().add(
-                                      const Duration(days: 1),
-                                    ),
+                                    DateTime.now().add(const Duration(days: 1)),
                                   );
                                 } else {
                                   final parsed = AppDateUtils.tryParseDateTime(
@@ -602,6 +662,9 @@ class _ValidationScreenState extends State<ValidationScreen> {
                                   }
                                   return;
                                 }
+
+                                // Save customer info for next order
+                                await _saveCustomerInfo();
 
                                 // Step 2 – Handle Cash on Delivery vs Online Payment
                                 if (payProvider == "cash_on_delivery") {
