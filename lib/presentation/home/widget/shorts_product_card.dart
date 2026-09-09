@@ -113,8 +113,8 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
   Widget _buildVideoFirstFrame() {
     final thumb =
         (widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty)
-            ? widget.thumbnailUrl!.trim()
-            : MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl);
+        ? widget.thumbnailUrl!.trim()
+        : MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl);
 
     if (thumb.isNotEmpty) {
       return Image.network(
@@ -127,8 +127,9 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
           return _buildShimmerPlaceholder();
         },
         errorBuilder: (context, error, stackTrace) {
-          final altThumb =
-              MediaUrlResolver.extractThumbnailFromVideoUrl(widget.videoUrl);
+          final altThumb = MediaUrlResolver.extractThumbnailFromVideoUrl(
+            widget.videoUrl,
+          );
           if (altThumb.isNotEmpty && altThumb != thumb) {
             return Image.network(
               altThumb,
@@ -318,12 +319,16 @@ class _ShortsProductCardState extends State<ShortsProductCard> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Text(
-                      widget.price,
-                      style: const TextStyle(
-                        color: Color(0xFFFF8000),
-                        fontWeight: FontWeight.w900,
-                        fontSize: 13,
+                    Flexible(
+                      child: Text(
+                        widget.price,
+                        style: const TextStyle(
+                          color: Color(0xFFFF8000),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (widget.oldPrice != null &&

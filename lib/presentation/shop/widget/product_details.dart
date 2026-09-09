@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/core/widgets/smooth_reels_scroll_physics.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
@@ -32,6 +33,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
   bool isExpanded = false;
   bool _isMuted = false;
   bool _isScreenPaused = false;
+  Timer? _precacheTimer;
 
   @override
   void initState() {
@@ -189,9 +191,20 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     }
   }
 
+  void _schedulePrecacheAround(int index) {
+    _precacheTimer?.cancel();
+    // Allow the active video 1500ms of dedicated network bandwidth to stream smoothly
+    // before starting heavy background precaching downloads.
+    _precacheTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (!mounted || _currentPageNotifier.value != index) return;
+      _precacheAround(index);
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _precacheTimer?.cancel();
     _verticalController.dispose();
     _currentPageNotifier.dispose();
     ReelsVideoControllerPool.instance.releaseSession();
@@ -234,7 +247,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                 );
               }
             }
-            _precacheAround(index);
+            _schedulePrecacheAround(index);
           },
           itemBuilder: (context, index) {
             final product = widget.allProducts[index];

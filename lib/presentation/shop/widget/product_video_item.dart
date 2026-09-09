@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -37,6 +38,9 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   ReelsPlayerSlot? _slot;
   final ValueNotifier<bool> _isManuallyPaused = ValueNotifier<bool>(false);
   VoidCallback? _slotListener;
+  Timer? _stallWatchdogTimer;
+  Duration _lastStallCheckPosition = Duration.zero;
+  int _stallCount = 0;
 
   // Global memoized aspect ratios by URL (prevents layout jump on swiping)
   static final Map<String, bool> _landscapeCache = {};
@@ -55,18 +59,107 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   );
   static const _blackContainer = ColoredBox(color: Colors.black);
 
+  void _startStallWatchdog(ReelsPlayerSlot slot) {
+    _stallWatchdogTimer?.cancel();
+    _stallCount = 0;
+    _lastStallCheckPosition = slot.player.state.position;
+
+    _stallWatchdogTimer = Timer.periodic(const Duration(milliseconds: 750), (
+      timer,
+    ) {
+      if (!mounted ||
+          !widget.isActive ||
+          _isManuallyPaused.value ||
+          slot.isCompleted.value ||
+          ReelsVideoControllerPool.instance.isGloballyPaused) {
+        return;
+      }
+
+      final currentPos = slot.player.state.position;
+      final isPlayingState = slot.player.state.playing;
+      final hasRendered = slot.hasFirstFrame.value;
+
+      // Only check for stall if the video has already rendered and claims to be playing while not buffering:
+      if (hasRendered && isPlayingState && !slot.isBuffering.value) {
+        if (currentPos == _lastStallCheckPosition &&
+            currentPos > Duration.zero) {
+          _stallCount++;
+          // Stalled for >= 1.5 seconds at the exact same position while supposedly playing:
+          if (_stallCount >= 2) {
+            _stallCount = 0;
+            debugPrint(
+              '⚡️ [ProductVideoItem] iOS playback freeze detected at $currentPos. Auto-unfreezing...',
+            );
+            // Quick pause then play kick to unfreeze native libmpv/VideoToolbox pipeline
+            try {
+              slot.player
+                  .pause()
+                  .then((_) {
+                    if (mounted &&
+                        widget.isActive &&
+                        !_isManuallyPaused.value) {
+                      slot.player.play().catchError((_) {});
+                    }
+                  })
+                  .catchError((_) {});
+            } catch (_) {}
+          }
+        } else {
+          _stallCount = 0;
+          _lastStallCheckPosition = currentPos;
+        }
+      } else {
+        _stallCount = 0;
+        _lastStallCheckPosition = currentPos;
+      }
+    });
+  }
+
+  void _stopStallWatchdog() {
+    _stallWatchdogTimer?.cancel();
+    _stallWatchdogTimer = null;
+    _stallCount = 0;
+  }
+
   void _attachSlotListener(ReelsPlayerSlot? newSlot) {
     _slotListener?.call();
     _slotListener = null;
+    _stopStallWatchdog();
+
     if (newSlot != null) {
       void listener() {
-        if (newSlot.isPlaying.value && _isManuallyPaused.value) {
-          _isManuallyPaused.value = false;
+        if (newSlot.isPlaying.value) {
+          if (_isManuallyPaused.value) {
+            _isManuallyPaused.value = false;
+          }
+        } else {
+          // Auto-resume watchdog: If playback stopped unexpectedly while this item is active,
+          // not manually paused by the user, and not genuinely completed:
+          if (mounted &&
+              widget.isActive &&
+              !_isManuallyPaused.value &&
+              !newSlot.isCompleted.value &&
+              !ReelsVideoControllerPool.instance.isGloballyPaused) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  widget.isActive &&
+                  !_isManuallyPaused.value &&
+                  !newSlot.isCompleted.value &&
+                  !newSlot.isPlaying.value &&
+                  !ReelsVideoControllerPool.instance.isGloballyPaused) {
+                newSlot.player.play().catchError((_) {});
+              }
+            });
+          }
         }
       }
 
       newSlot.isPlaying.addListener(listener);
       _slotListener = () => newSlot.isPlaying.removeListener(listener);
+
+      if (widget.isActive) {
+        _startStallWatchdog(newSlot);
+      }
     }
   }
 
@@ -89,10 +182,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         _slot!.setCompleted(false);
         if (!_slot!.player.state.playing) {
           try {
-            if (_slot!.player.state.position >
-                const Duration(milliseconds: 300)) {
-              _slot!.player.seek(Duration.zero).catchError((_) {});
-            }
             _slot!.player.play().catchError((_) {});
           } catch (_) {}
         }
@@ -187,10 +276,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       _slot!.setCompleted(false);
       if (!existing.player.state.playing) {
         try {
-          if (existing.player.state.position >
-              const Duration(milliseconds: 300)) {
-            existing.player.seek(Duration.zero).catchError((_) {});
-          }
           existing.player.play().catchError((_) {});
         } catch (_) {}
       }
@@ -254,25 +339,18 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           _slot!.setCompleted(false);
           if (!_slot!.player.state.playing) {
             try {
-              if (_slot!.player.state.position >
-                  const Duration(milliseconds: 300)) {
-                _slot!.player.seek(Duration.zero).catchError((_) {});
-              }
               _slot!.player.play().catchError((_) {});
             } catch (_) {}
           }
+          _startStallWatchdog(_slot!);
         }
         setState(() {});
       } else {
+        _stopStallWatchdog();
         _attachSlotListener(null);
         try {
           _slot?.setCompleted(false);
           _slot?.player.pause().catchError((_) {});
-          if (_slot != null &&
-              _slot!.player.state.position >
-                  const Duration(milliseconds: 300)) {
-            _slot?.player.seek(Duration.zero).catchError((_) {});
-          }
         } catch (_) {}
         setState(() {});
       }
@@ -281,6 +359,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
 
   @override
   void dispose() {
+    _stopStallWatchdog();
     _slotListener?.call();
     _slotListener = null;
     _isManuallyPaused.dispose();
@@ -315,12 +394,15 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                 _isManuallyPaused.value = false;
                 slot.player.seek(Duration.zero).catchError((_) {});
                 slot.player.play().catchError((_) {});
+                _startStallWatchdog(slot);
               } else if (slot.player.state.playing) {
                 slot.player.pause().catchError((_) {});
                 _isManuallyPaused.value = true;
+                _stopStallWatchdog();
               } else {
                 slot.player.play().catchError((_) {});
                 _isManuallyPaused.value = false;
+                _startStallWatchdog(slot);
               }
             }
           },

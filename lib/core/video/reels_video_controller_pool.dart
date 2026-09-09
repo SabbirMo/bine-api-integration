@@ -88,20 +88,23 @@ class ReelsPlayerSlot {
       final dur = player.state.duration;
 
       // Genuine completion check:
-      // Video must have valid duration (> 800ms), must have rendered first frame,
-      // and position must genuinely be near the end (within 800ms of duration).
-      // This strictly prevents iOS VideoToolbox premature completed events on initial load/seek.
-      if (dur > const Duration(milliseconds: 800) &&
+      // Video must have valid duration (> 3 seconds), must have rendered first frame,
+      // and position must genuinely be near the end (within 500ms of duration).
+      // This strictly prevents iOS VideoToolbox premature EOF events on initial chunk load/seek.
+      if (dur > const Duration(seconds: 3) &&
           hasFirstFrame.value &&
-          pos >= dur - const Duration(milliseconds: 800)) {
+          pos >= dur - const Duration(milliseconds: 500)) {
         setCompleted(true);
-        setPlaying(false);
-      } else if (!fromCompletedStream) {
-        // If playback position is well before the end, ensure completed is false
-        if (isCompleted.value &&
-            dur > Duration.zero &&
-            pos < dur - const Duration(milliseconds: 1200)) {
-          setCompleted(false);
+      } else {
+        // Spurious completed event from iOS VideoToolbox/demuxer during startup/chunk transition:
+        // Position is NOT genuinely at the end. Auto-resume immediately!
+        setCompleted(false);
+        if (ReelsVideoControllerPool.instance.activeProductIndex ==
+                currentItemIndex &&
+            !ReelsVideoControllerPool.instance.isGloballyPaused) {
+          try {
+            player.play().catchError((_) {});
+          } catch (_) {}
         }
       }
     }
@@ -172,7 +175,8 @@ class ReelsPlayerSlot {
         if (pos > Duration.zero) {
           checkFirstFrameReady();
         }
-        checkCompletion(false);
+        // Note: NEVER call checkCompletion from position.listen!
+        // Completion must solely be signaled by player.stream.completed.
       }),
     );
     videoController.waitUntilFirstFrameRendered
@@ -249,7 +253,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
 
   ReelsVideoControllerPool._internal();
 
-  static const int poolSize = 4;
+  static const int poolSize = 3;
   final List<ReelsPlayerSlot> _slots = [];
   bool _initialized = false;
 
@@ -284,7 +288,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         ),
       );
 
-      _applyMpvProperties(player);
+      _applyMpvProperties(player, isAudioEnabled: false);
 
       try {
         player.setPlaylistMode(PlaylistMode.none);
@@ -297,7 +301,10 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     }
   }
 
-  Future<void> _applyMpvProperties(Player player) async {
+  Future<void> _applyMpvProperties(
+    Player player, {
+    bool isAudioEnabled = false,
+  }) async {
     try {
       final platform = player.platform;
       if (platform == null) return;
@@ -307,22 +314,19 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         // Auto adaptive bitrate: dynamically adjusts quality based on network throughput
         p.setProperty('hls-bitrate', 'auto'),
         p.setProperty('cache', 'yes'),
-        p.setProperty('cache-secs', '10'),
-        p.setProperty('demuxer-lavf-analyzeduration', '0'),
-        p.setProperty('demuxer-lavf-probesize', '1048576'),
-        p.setProperty('cache-pause', 'no'),
-        p.setProperty('cache-pause-wait', '0'),
-        p.setProperty('cache-pause-initial', 'no'),
-        p.setProperty('demuxer-readahead-secs', '5'),
-        p.setProperty('demuxer-max-bytes', '25MiB'),
+        p.setProperty('cache-secs', '15'),
+        p.setProperty('demuxer-readahead-secs', '8'),
+        p.setProperty('demuxer-max-bytes', '32MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
         p.setProperty('demuxer-max-back-bytes', '25MiB'),
-        // loop-file: no ensures completed event fires when video reaches end so play button appears
+        // loop-file: no ensures completed event fires when video reaches end so replay icon appears
         p.setProperty('loop-file', 'no'),
-        p.setProperty('network-timeout', '10'),
+        p.setProperty('network-timeout', '15'),
         p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
-        p.setProperty('vd-lavc-fast', 'yes'),
-        p.setProperty('vd-lavc-skiploopfilter', 'all'),
+        p.setProperty('audio-stream-silence', 'yes'),
+        p.setProperty('ao-null-fallback', 'yes'),
+        // Disable audio track on background/idle slots to prevent AVAudioSession conflict on iOS
+        p.setProperty('aid', isAudioEnabled ? 'auto' : 'no'),
       ]);
     } catch (_) {}
   }
@@ -370,9 +374,15 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     _activeUrl = url;
     _isGloballyPaused = false;
 
-    // Pause other slots if any
+    // Enable audio on active slot
+    try {
+      (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
+    } catch (_) {}
+
+    // Pause other slots and disable audio
     for (int i = 1; i < _slots.length; i++) {
       try {
+        (slot.player.platform as dynamic)?.setProperty('aid', 'no');
         _slots[i].player.pause();
       } catch (_) {}
     }
@@ -426,35 +436,33 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         initialPosition: initialPosition,
       );
     } else {
-      // Slot already has this media - rewind to start (only if already played past 300ms) and play
+      // Slot already has this media - play without destructive seek interruption
       activeSlot.setCompleted(false);
+      try {
+        (activeSlot.player.platform as dynamic)?.setProperty('aid', 'auto');
+      } catch (_) {}
       activeSlot.player.setVolume(_isMuted ? 0.0 : 100.0);
       try {
         if (initialPosition != null && initialPosition > Duration.zero) {
           activeSlot.player.seek(initialPosition).catchError((_) {});
-        } else if (activeSlot.player.state.position >
-            const Duration(milliseconds: 300)) {
-          activeSlot.player.seek(Duration.zero).catchError((_) {});
         }
         activeSlot.player.play().catchError((_) {});
       } catch (_) {}
     }
 
-    // 3. Pause all other slots and rewind them to start so returning starts from beginning
+    // 3. Pause all other slots and disable their audio so iOS AVAudioSession belongs 100% to activeSlot
     for (final slot in _slots) {
       if (slot != activeSlot) {
         try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
           slot.setCompleted(false);
           slot.player.pause().catchError((_) {});
-          if (slot.player.state.position > const Duration(milliseconds: 300)) {
-            slot.player.seek(Duration.zero).catchError((_) {});
-          }
         } catch (_) {}
       }
     }
 
-    // 4. Pre-warm BOTH Next and Previous videos in background for seamless bidirectional swiping
-    _prewarmSurroundingVideos(
+    // 4. Pre-warm surrounding video in background with debounce so active video has 100% bandwidth
+    _schedulePrewarmSurroundingVideos(
       currentItemIndex: itemIndex,
       nextUrls: nextUrls,
       prevUrl: prevUrl,
@@ -464,7 +472,29 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     return activeSlot;
   }
 
-  /// Pre-streams BOTH next and previous videos into idle slots so they are ready at frame 0.
+  Timer? _prewarmTimer;
+
+  void _schedulePrewarmSurroundingVideos({
+    required int currentItemIndex,
+    required List<String>? nextUrls,
+    required String? prevUrl,
+    String? secondPrevUrl,
+  }) {
+    _prewarmTimer?.cancel();
+    // Allow the active video 800ms of dedicated network & CPU bandwidth
+    // to render and buffer its first chunks cleanly before prewarming background candidates.
+    _prewarmTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!_initialized || _activeProductIndex != currentItemIndex) return;
+      _prewarmSurroundingVideos(
+        currentItemIndex: currentItemIndex,
+        nextUrls: nextUrls,
+        prevUrl: prevUrl,
+        secondPrevUrl: secondPrevUrl,
+      );
+    });
+  }
+
+  /// Pre-streams next video into idle slot so it is ready at frame 0.
   /// Preserves the ideal [previous, active, next] distribution across the 3 pool slots.
   void _prewarmSurroundingVideos({
     required int currentItemIndex,
@@ -477,79 +507,30 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         ? nextUrls.first.trim()
         : null;
 
-    final int prevIndex = currentItemIndex - 1;
-    final String? pUrl =
-        (prevUrl != null && prevUrl.trim().isNotEmpty && currentItemIndex > 0)
-        ? prevUrl.trim()
-        : null;
-
-    final wantedTargets = <int, String>{};
     if (nextUrl != null && nextUrl.isNotEmpty) {
-      wantedTargets[nextIndex] = nextUrl;
-    }
-    if (pUrl != null && pUrl.isNotEmpty) {
-      wantedTargets[prevIndex] = pUrl;
-      // If at the end of the feed (no next video), pre-warm second previous video to keep all slots warm
-      if (nextUrl == null &&
-          secondPrevUrl != null &&
-          secondPrevUrl.trim().isNotEmpty &&
-          currentItemIndex > 1) {
-        wantedTargets[currentItemIndex - 2] = secondPrevUrl.trim();
-      }
-    } else if (nextUrls != null && nextUrls.length > 1) {
-      final secondNextUrl = nextUrls[1].trim();
-      if (secondNextUrl.isNotEmpty) {
-        wantedTargets[currentItemIndex + 2] = secondNextUrl;
-      }
-    }
-
-    for (final entry in wantedTargets.entries) {
-      final targetIdx = entry.key;
-      final targetUrl = entry.value;
-
-      // 1. Check if already loaded in any slot
       final alreadyLoaded = _slots.any(
-        (s) => s.currentUrl == targetUrl && s.currentItemIndex == targetIdx,
+        (s) => s.currentUrl == nextUrl && s.currentItemIndex == nextIndex,
       );
-      if (alreadyLoaded) continue;
-
-      // 2. Find a candidate slot that is NOT activeIndex AND NOT another target already loaded
-      ReelsPlayerSlot? candidate;
-
-      // Prefer empty slot first
-      for (final slot in _slots) {
-        if (slot.currentUrl == null) {
-          candidate = slot;
-          break;
-        }
-      }
-
-      // If no empty slot, pick a slot that doesn't hold activeIndex or another wanted target
-      if (candidate == null) {
+      if (!alreadyLoaded) {
+        ReelsPlayerSlot? candidate;
         for (final slot in _slots) {
-          if (slot.currentItemIndex == currentItemIndex) continue;
-          final isOtherWantedTarget = wantedTargets.keys.any(
-            (k) => k != targetIdx && slot.currentItemIndex == k,
-          );
-          if (isOtherWantedTarget) continue;
-
-          candidate = slot;
-          break;
-        }
-      }
-
-      // Fallback: any non-active slot
-      if (candidate == null) {
-        for (final slot in _slots) {
-          if (slot.currentItemIndex != currentItemIndex) {
+          if (slot.currentItemIndex != currentItemIndex &&
+              slot.currentUrl == null) {
             candidate = slot;
             break;
           }
         }
-      }
-
-      if (candidate != null) {
-        _loadMediaIntoSlot(candidate, targetIdx, targetUrl, autoPlay: false);
+        if (candidate == null) {
+          for (final slot in _slots) {
+            if (slot.currentItemIndex != currentItemIndex) {
+              candidate = slot;
+              break;
+            }
+          }
+        }
+        if (candidate != null) {
+          _loadMediaIntoSlot(candidate, nextIndex, nextUrl, autoPlay: false);
+        }
       }
     }
   }
@@ -588,15 +569,13 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     if (slot.currentUrl == url && slot.currentItemIndex == itemIndex) {
       slot.setCompleted(false);
       if (autoPlay && !slot.player.state.playing) {
+        try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
+        } catch (_) {}
         slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         if (initialPosition != null && initialPosition > Duration.zero) {
           try {
             slot.player.seek(initialPosition).catchError((_) {});
-          } catch (_) {}
-        } else if (slot.player.state.position >
-            const Duration(milliseconds: 300)) {
-          try {
-            slot.player.seek(Duration.zero).catchError((_) {});
           } catch (_) {}
         }
         try {
@@ -604,10 +583,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         } catch (_) {}
       } else if (!autoPlay) {
         try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
           slot.player.pause().catchError((_) {});
-          if (slot.player.state.position > const Duration(milliseconds: 300)) {
-            slot.player.seek(Duration.zero).catchError((_) {});
-          }
         } catch (_) {}
       }
       return;
@@ -623,22 +600,25 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     final playUrl = cachedPath ?? url;
 
     try {
-      slot.player.setVolume(autoPlay ? (_isMuted ? 0.0 : 100.0) : 0.0);
+      if (autoPlay) {
+        try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
+        } catch (_) {}
+        slot.player.setVolume(_isMuted ? 0.0 : 100.0);
+      } else {
+        try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
+        } catch (_) {}
+        slot.player.setVolume(0.0);
+      }
+
       final startPos =
           (initialPosition != null && initialPosition > Duration.zero)
           ? initialPosition
           : null;
       slot.player.open(Media(playUrl, start: startPos), play: autoPlay);
-      // Note: player.open(play: false) already pauses at frame 0 natively.
-      // Do NOT call slot.player.pause() here — it races with the async loadfile
-      // command and can cause state desynchronization in libmpv.
     } catch (e) {
       debugPrint('⚠️ [ReelsVideoControllerPool] Error opening $url: $e');
-    }
-
-    // If not cached, trigger background caching with top priority
-    if (cachedPath == null && url.startsWith('http')) {
-      VideoCacheManager.instance.preCachePriority(url);
     }
   }
 
@@ -696,6 +676,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
   }
 
   void releaseSession() {
+    _prewarmTimer?.cancel();
     _isGloballyPaused = true;
     _activeProductIndex = null;
     _activeUrl = null;
@@ -727,6 +708,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
 
   @override
   void dispose() {
+    _prewarmTimer?.cancel();
     for (final slot in _slots) {
       slot.dispose();
     }
