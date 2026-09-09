@@ -84,9 +84,7 @@ class LoginView extends StatelessWidget {
               side: BorderSide(color: Colors.grey[300]!),
             ),
             child: loginProvider.isGoogleLoading
-                ? const CoolShimmer(
-                    child: CoolShimmerBone.circle(size: 24),
-                  )
+                ? const CoolShimmer(child: CoolShimmerBone.circle(size: 24))
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -94,9 +92,14 @@ class LoginView extends StatelessWidget {
                         "assets/icon/google.svg",
                       ), // Use a local asset in production
                       const SizedBox(width: 12),
-                      const Text(
-                        "Se Continuer avec Google",
-                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      Expanded(
+                        child: const Text(
+                          "Se Continuer avec Google",
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: TextStyle(color: Colors.black, fontSize: 16),
+                        ),
                       ),
                     ],
                   ),
@@ -151,17 +154,20 @@ class LoginView extends StatelessWidget {
                 side: BorderSide(color: Colors.grey[300]!),
               ),
               child: loginProvider.isAppleLoading
-                  ? const CoolShimmer(
-                      child: CoolShimmerBone.circle(size: 24),
-                    )
+                  ? const CoolShimmer(child: CoolShimmerBone.circle(size: 24))
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         SvgPicture.asset("assets/icon/apple.svg"),
                         const SizedBox(width: 12),
-                        const Text(
-                          "Continuer avec Apple",
-                          style: TextStyle(color: Colors.black, fontSize: 16),
+                        Expanded(
+                          child: const Text(
+                            "Continuer avec Apple",
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: TextStyle(color: Colors.black, fontSize: 16),
+                          ),
                         ),
                       ],
                     ),
