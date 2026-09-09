@@ -337,6 +337,10 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         } else {
           _attachSlotListener(_slot);
           _slot!.setCompleted(false);
+          if (_slot!.player.state.position >
+              const Duration(milliseconds: 300)) {
+            _slot!.player.seek(Duration.zero).catchError((_) {});
+          }
           if (!_slot!.player.state.playing) {
             try {
               _slot!.player.play().catchError((_) {});
@@ -351,6 +355,11 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         try {
           _slot?.setCompleted(false);
           _slot?.player.pause().catchError((_) {});
+          if (_slot != null &&
+              _slot!.player.state.position >
+                  const Duration(milliseconds: 300)) {
+            _slot?.player.seek(Duration.zero).catchError((_) {});
+          }
         } catch (_) {}
         setState(() {});
       }

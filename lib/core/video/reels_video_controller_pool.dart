@@ -436,7 +436,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         initialPosition: initialPosition,
       );
     } else {
-      // Slot already has this media - play without destructive seek interruption
+      // Slot already has this media - restart from beginning like Instagram/TikTok
       activeSlot.setCompleted(false);
       try {
         (activeSlot.player.platform as dynamic)?.setProperty('aid', 'auto');
@@ -445,18 +445,24 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       try {
         if (initialPosition != null && initialPosition > Duration.zero) {
           activeSlot.player.seek(initialPosition).catchError((_) {});
+        } else if (activeSlot.player.state.position >
+            const Duration(milliseconds: 300)) {
+          activeSlot.player.seek(Duration.zero).catchError((_) {});
         }
         activeSlot.player.play().catchError((_) {});
       } catch (_) {}
     }
 
-    // 3. Pause all other slots and disable their audio so iOS AVAudioSession belongs 100% to activeSlot
+    // 3. Pause all other slots and rewind them so returning starts from beginning
     for (final slot in _slots) {
       if (slot != activeSlot) {
         try {
           (slot.player.platform as dynamic)?.setProperty('aid', 'no');
           slot.setCompleted(false);
           slot.player.pause().catchError((_) {});
+          if (slot.player.state.position > const Duration(milliseconds: 300)) {
+            slot.player.seek(Duration.zero).catchError((_) {});
+          }
         } catch (_) {}
       }
     }
@@ -577,6 +583,11 @@ class ReelsVideoControllerPool extends ChangeNotifier {
           try {
             slot.player.seek(initialPosition).catchError((_) {});
           } catch (_) {}
+        } else if (slot.player.state.position >
+            const Duration(milliseconds: 300)) {
+          try {
+            slot.player.seek(Duration.zero).catchError((_) {});
+          } catch (_) {}
         }
         try {
           slot.player.play().catchError((_) {});
@@ -585,6 +596,9 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         try {
           (slot.player.platform as dynamic)?.setProperty('aid', 'no');
           slot.player.pause().catchError((_) {});
+          if (slot.player.state.position > const Duration(milliseconds: 300)) {
+            slot.player.seek(Duration.zero).catchError((_) {});
+          }
         } catch (_) {}
       }
       return;
