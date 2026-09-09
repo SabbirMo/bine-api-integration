@@ -86,9 +86,14 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           ReelsVideoControllerPool.instance.activeProductIndex != itemIdx) {
         _activateSlot();
       } else {
+        _slot!.setCompleted(false);
         if (!_slot!.player.state.playing) {
           try {
-            _slot!.player.play();
+            if (_slot!.player.state.position >
+                const Duration(milliseconds: 300)) {
+              _slot!.player.seek(Duration.zero).catchError((_) {});
+            }
+            _slot!.player.play().catchError((_) {});
           } catch (_) {}
         }
       }
@@ -179,9 +184,14 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         ReelsVideoControllerPool.instance.activeProductIndex == itemIdx) {
       _slot = existing;
       _attachSlotListener(_slot);
+      _slot!.setCompleted(false);
       if (!existing.player.state.playing) {
         try {
-          existing.player.play();
+          if (existing.player.state.position >
+              const Duration(milliseconds: 300)) {
+            existing.player.seek(Duration.zero).catchError((_) {});
+          }
+          existing.player.play().catchError((_) {});
         } catch (_) {}
       }
     } else {
@@ -241,9 +251,14 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           _activateSlot();
         } else {
           _attachSlotListener(_slot);
+          _slot!.setCompleted(false);
           if (!_slot!.player.state.playing) {
             try {
-              _slot!.player.play();
+              if (_slot!.player.state.position >
+                  const Duration(milliseconds: 300)) {
+                _slot!.player.seek(Duration.zero).catchError((_) {});
+              }
+              _slot!.player.play().catchError((_) {});
             } catch (_) {}
           }
         }
@@ -251,7 +266,13 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       } else {
         _attachSlotListener(null);
         try {
-          _slot?.player.pause();
+          _slot?.setCompleted(false);
+          _slot?.player.pause().catchError((_) {});
+          if (_slot != null &&
+              _slot!.player.state.position >
+                  const Duration(milliseconds: 300)) {
+            _slot?.player.seek(Duration.zero).catchError((_) {});
+          }
         } catch (_) {}
         setState(() {});
       }
@@ -289,11 +310,16 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           behavior: HitTestBehavior.opaque,
           onTap: () {
             if (slot != null) {
-              if (slot.player.state.playing) {
-                slot.player.pause();
+              if (slot.isCompleted.value) {
+                slot.setCompleted(false);
+                _isManuallyPaused.value = false;
+                slot.player.seek(Duration.zero).catchError((_) {});
+                slot.player.play().catchError((_) {});
+              } else if (slot.player.state.playing) {
+                slot.player.pause().catchError((_) {});
                 _isManuallyPaused.value = true;
               } else {
-                slot.player.play();
+                slot.player.play().catchError((_) {});
                 _isManuallyPaused.value = false;
               }
             }
@@ -384,39 +410,42 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                     },
                   ),
 
-                // 4. Play icon overlay — ONLY shown when user manually paused the video
+                // 4. Play/Replay icon overlay — shown when user manually paused OR when video ends
                 if (slot != null)
                   ListenableBuilder(
                     listenable: Listenable.merge([
                       slot.isPlaying,
+                      slot.isCompleted,
                       _isManuallyPaused,
                     ]),
                     builder: (context, child) {
                       final isPlaying = slot.isPlaying.value;
+                      final isCompleted = slot.isCompleted.value;
                       final isManuallyPaused = _isManuallyPaused.value;
 
-                      // Never show during loading/buffering or when playing
-                      if (isPlaying || !isManuallyPaused) {
+                      // Never show during loading/buffering or when actively playing
+                      if (isPlaying || (!isManuallyPaused && !isCompleted)) {
                         return const SizedBox.shrink();
                       }
-                      return child!;
-                    },
-                    child: const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(12),
-                        child: DecoratedBox(
-                          decoration: _playIconDecoration,
-                          child: Padding(
-                            padding: EdgeInsets.all(12),
-                            child: Icon(
-                              Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 50,
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: DecoratedBox(
+                            decoration: _playIconDecoration,
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Icon(
+                                isCompleted
+                                    ? Icons.replay_rounded
+                                    : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 50,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
               ],
             ),

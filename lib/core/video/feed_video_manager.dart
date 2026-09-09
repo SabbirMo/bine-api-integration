@@ -290,11 +290,19 @@ class FeedVideoManager extends ChangeNotifier {
       if (state.currentUrl == url) {
         if (autoPlay && !state.isPlaying) {
           try {
-            state.player.play();
+            if (state.player.state.position >
+                const Duration(milliseconds: 300)) {
+              state.player.seek(Duration.zero).catchError((_) {});
+            }
+            state.player.play().catchError((_) {});
           } catch (_) {}
         } else if (!autoPlay && state.isPlaying) {
           try {
-            state.player.pause();
+            state.player.pause().catchError((_) {});
+            if (state.player.state.position >
+                const Duration(milliseconds: 300)) {
+              state.player.seek(Duration.zero).catchError((_) {});
+            }
           } catch (_) {}
         }
         return state;
@@ -313,7 +321,11 @@ class FeedVideoManager extends ChangeNotifier {
         p.isBuffering = false;
         if (autoPlay && !p.isPlaying) {
           try {
-            p.player.play();
+            if (p.player.state.position >
+                const Duration(milliseconds: 300)) {
+              p.player.seek(Duration.zero).catchError((_) {});
+            }
+            p.player.play().catchError((_) {});
           } catch (_) {}
         }
         return p;
@@ -377,11 +389,19 @@ class FeedVideoManager extends ChangeNotifier {
       } catch (_) {}
     } else if (autoPlay && !state.isPlaying) {
       try {
-        state.player.play();
+        if (state.player.state.position >
+            const Duration(milliseconds: 300)) {
+          state.player.seek(Duration.zero).catchError((_) {});
+        }
+        state.player.play().catchError((_) {});
       } catch (_) {}
     } else if (!autoPlay && state.isPlaying) {
       try {
-        state.player.pause();
+        state.player.pause().catchError((_) {});
+        if (state.player.state.position >
+            const Duration(milliseconds: 300)) {
+          state.player.seek(Duration.zero).catchError((_) {});
+        }
       } catch (_) {}
     }
 
@@ -695,14 +715,20 @@ class FeedVideoManager extends ChangeNotifier {
       if (url != null && url.isNotEmpty) {
         if (_currentPlayingKey != null && _currentPlayingKey != bestKey) {
           try {
-            _keyToPlayer[_currentPlayingKey]?.player.pause();
+            final oldPlayer = _keyToPlayer[_currentPlayingKey];
+            oldPlayer?.player.pause().catchError((_) {});
+            oldPlayer?.player.seek(Duration.zero).catchError((_) {});
           } catch (_) {}
         }
         _currentPlayingKey = bestKey;
         final playerState = _getOrCreatePlayer(bestKey, url, autoPlay: true);
         if (!playerState.isPlaying) {
           try {
-            playerState.player.play();
+            if (playerState.player.state.position >
+                const Duration(milliseconds: 300)) {
+              playerState.player.seek(Duration.zero).catchError((_) {});
+            }
+            playerState.player.play().catchError((_) {});
           } catch (_) {}
         }
 
@@ -822,7 +848,8 @@ class FeedVideoManager extends ChangeNotifier {
     for (final entry in _keyToPlayer.entries) {
       if (entry.key != exceptKey) {
         try {
-          entry.value.player.pause();
+          entry.value.player.pause().catchError((_) {});
+          entry.value.player.seek(Duration.zero).catchError((_) {});
         } catch (_) {}
       }
     }
@@ -834,7 +861,8 @@ class FeedVideoManager extends ChangeNotifier {
     _isGloballyPaused = true;
     for (final p in _playerPool) {
       try {
-        p.player.pause();
+        p.player.pause().catchError((_) {});
+        p.player.seek(Duration.zero).catchError((_) {});
       } catch (_) {}
     }
     _currentPlayingKey = null;

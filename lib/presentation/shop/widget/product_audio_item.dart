@@ -84,10 +84,12 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
     }
     if (oldWidget.isActive != widget.isActive) {
       if (widget.isActive) {
-        _player.play();
+        _player.seek(Duration.zero).catchError((_) {});
+        _player.play().catchError((_) {});
         setState(() => _isPlaying = true);
       } else {
-        _player.pause();
+        _player.pause().catchError((_) {});
+        _player.seek(Duration.zero).catchError((_) {});
         setState(() => _isPlaying = false);
       }
     }

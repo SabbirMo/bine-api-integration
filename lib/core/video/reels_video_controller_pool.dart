@@ -20,12 +20,14 @@ class ReelsPlayerSlot {
   final ValueNotifier<bool> hasFirstFrame = ValueNotifier<bool>(false);
   final ValueNotifier<String?> error = ValueNotifier<String?>(null);
   final ValueNotifier<bool> isLandscape = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> isCompleted = ValueNotifier<bool>(false);
 
   void setPlaying(bool val) => _safeUpdate(isPlaying, val);
   void setBuffering(bool val) => _safeUpdate(isBuffering, val);
   void setHasFirstFrame(bool val) => _safeUpdate(hasFirstFrame, val);
   void setError(String? val) => _safeUpdate(error, val);
   void setIsLandscape(bool val) => _safeUpdate(isLandscape, val);
+  void setCompleted(bool val) => _safeUpdate(isCompleted, val);
 
   void _safeUpdate<T>(ValueNotifier<T> notifier, T val) {
     if (notifier.value == val) return;
@@ -65,6 +67,7 @@ class ReelsPlayerSlot {
     player = newPlayer;
     videoController = newController;
     setIsLandscape(false);
+    setCompleted(false);
     _setupSubscriptions();
   }
 
@@ -83,7 +86,18 @@ class ReelsPlayerSlot {
     _subscriptions.add(
       player.stream.playing.listen((p) {
         setPlaying(p);
-        if (p) checkFirstFrameReady();
+        if (p) {
+          setCompleted(false);
+          checkFirstFrameReady();
+        }
+      }),
+    );
+    _subscriptions.add(
+      player.stream.completed.listen((c) {
+        setCompleted(c);
+        if (c) {
+          setPlaying(false);
+        }
       }),
     );
     _subscriptions.add(
@@ -174,6 +188,7 @@ class ReelsPlayerSlot {
     setHasFirstFrame(false);
     setError(null);
     setIsLandscape(false);
+    setCompleted(false);
   }
 
   void dispose() {
@@ -189,6 +204,7 @@ class ReelsPlayerSlot {
     isBuffering.dispose();
     hasFirstFrame.dispose();
     error.dispose();
+    isCompleted.dispose();
   }
 }
 
@@ -276,8 +292,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         p.setProperty('demuxer-max-bytes', '25MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
         p.setProperty('demuxer-max-back-bytes', '25MiB'),
-        // Native infinite file loop: avoids Dart playlist reload & network re-fetching on loop!
-        p.setProperty('loop-file', 'inf'),
+        // loop-file: no ensures completed event fires when video reaches end so play button appears
+        p.setProperty('loop-file', 'no'),
         p.setProperty('network-timeout', '10'),
         p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
         p.setProperty('vd-lavc-fast', 'yes'),
@@ -385,18 +401,29 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         initialPosition: initialPosition,
       );
     } else {
-      // Slot already has this media - play immediately
+      // Slot already has this media - rewind to start (only if already played past 300ms) and play
+      activeSlot.setCompleted(false);
       activeSlot.player.setVolume(_isMuted ? 0.0 : 100.0);
       try {
-        activeSlot.player.play();
+        if (initialPosition != null && initialPosition > Duration.zero) {
+          activeSlot.player.seek(initialPosition).catchError((_) {});
+        } else if (activeSlot.player.state.position >
+            const Duration(milliseconds: 300)) {
+          activeSlot.player.seek(Duration.zero).catchError((_) {});
+        }
+        activeSlot.player.play().catchError((_) {});
       } catch (_) {}
     }
 
-    // 3. Pause all other slots
+    // 3. Pause all other slots and rewind them to start so returning starts from beginning
     for (final slot in _slots) {
       if (slot != activeSlot) {
         try {
-          slot.player.pause();
+          slot.setCompleted(false);
+          slot.player.pause().catchError((_) {});
+          if (slot.player.state.position > const Duration(milliseconds: 300)) {
+            slot.player.seek(Duration.zero).catchError((_) {});
+          }
         } catch (_) {}
       }
     }
@@ -534,15 +561,28 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     Duration? initialPosition,
   }) {
     if (slot.currentUrl == url && slot.currentItemIndex == itemIndex) {
+      slot.setCompleted(false);
       if (autoPlay && !slot.player.state.playing) {
         slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         if (initialPosition != null && initialPosition > Duration.zero) {
           try {
-            slot.player.seek(initialPosition);
+            slot.player.seek(initialPosition).catchError((_) {});
+          } catch (_) {}
+        } else if (slot.player.state.position >
+            const Duration(milliseconds: 300)) {
+          try {
+            slot.player.seek(Duration.zero).catchError((_) {});
           } catch (_) {}
         }
         try {
-          slot.player.play();
+          slot.player.play().catchError((_) {});
+        } catch (_) {}
+      } else if (!autoPlay) {
+        try {
+          slot.player.pause().catchError((_) {});
+          if (slot.player.state.position > const Duration(milliseconds: 300)) {
+            slot.player.seek(Duration.zero).catchError((_) {});
+          }
         } catch (_) {}
       }
       return;
