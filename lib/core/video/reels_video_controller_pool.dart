@@ -83,6 +83,29 @@ class ReelsPlayerSlot {
       }
     }
 
+    void checkCompletion(bool fromCompletedStream) {
+      final pos = player.state.position;
+      final dur = player.state.duration;
+
+      // Genuine completion check:
+      // Video must have valid duration (> 800ms), must have rendered first frame,
+      // and position must genuinely be near the end (within 800ms of duration).
+      // This strictly prevents iOS VideoToolbox premature completed events on initial load/seek.
+      if (dur > const Duration(milliseconds: 800) &&
+          hasFirstFrame.value &&
+          pos >= dur - const Duration(milliseconds: 800)) {
+        setCompleted(true);
+        setPlaying(false);
+      } else if (!fromCompletedStream) {
+        // If playback position is well before the end, ensure completed is false
+        if (isCompleted.value &&
+            dur > Duration.zero &&
+            pos < dur - const Duration(milliseconds: 1200)) {
+          setCompleted(false);
+        }
+      }
+    }
+
     _subscriptions.add(
       player.stream.playing.listen((p) {
         setPlaying(p);
@@ -94,9 +117,10 @@ class ReelsPlayerSlot {
     );
     _subscriptions.add(
       player.stream.completed.listen((c) {
-        setCompleted(c);
-        if (c) {
-          setPlaying(false);
+        if (!c) {
+          setCompleted(false);
+        } else {
+          checkCompletion(true);
         }
       }),
     );
@@ -148,6 +172,7 @@ class ReelsPlayerSlot {
         if (pos > Duration.zero) {
           checkFirstFrameReady();
         }
+        checkCompletion(false);
       }),
     );
     videoController.waitUntilFirstFrameRendered
@@ -655,7 +680,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     notifyListeners();
   }
 
-  void resume() {
+  void resume({bool force = false}) {
+    if (_isGloballyPaused && !force) return;
     _isGloballyPaused = false;
     if (_activeProductIndex != null && _activeUrl != null) {
       final slot = getSlotForIndex(_activeProductIndex!, _activeUrl!);

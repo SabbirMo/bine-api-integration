@@ -76,8 +76,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       if (mounted) setState(() => _isScreenPaused = true);
       ReelsVideoControllerPool.instance.pauseAll();
     } else if (state == AppLifecycleState.resumed) {
-      if (mounted) setState(() => _isScreenPaused = false);
-      ReelsVideoControllerPool.instance.resume();
+      final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
+      if (isCurrentRoute && !_isScreenPaused) {
+        ReelsVideoControllerPool.instance.resume();
+      }
     }
   }
 
@@ -260,7 +262,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                       },
                       onResume: () {
                         if (mounted) setState(() => _isScreenPaused = false);
-                        ReelsVideoControllerPool.instance.resume();
+                        ReelsVideoControllerPool.instance.resume(force: true);
                       },
                     );
                   },

@@ -180,7 +180,6 @@ class _ProductDetailsActionSidebarState
       if (mounted) {
         setState(() => _isAddingToCart = false);
       }
-      widget.onResume?.call();
       if (!mounted) return;
 
       final checkToken = await TokenStorage.getAccessToken();
@@ -203,9 +202,11 @@ class _ProductDetailsActionSidebarState
             ),
           ),
         );
+        widget.onResume?.call();
         return;
       }
 
+      widget.onResume?.call();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

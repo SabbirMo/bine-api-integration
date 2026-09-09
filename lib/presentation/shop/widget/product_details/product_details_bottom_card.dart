@@ -161,6 +161,7 @@ class _ProductDetailsBottomCardState extends State<ProductDetailsBottomCard> {
       return;
     }
 
+    widget.onPause?.call();
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ValidationScreen()),
