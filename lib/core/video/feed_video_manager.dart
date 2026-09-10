@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
+import 'package:binetatour/core/video/video_route_observer.dart';
 
 class FeedPlayerState extends ChangeNotifier {
   final Player player;
@@ -103,7 +104,11 @@ class FeedPlayerState extends ChangeNotifier {
 
     _errorSub = player.stream.error.listen((error) {
       final errorStr = error.toString().toLowerCase();
-      if (errorStr.contains('audio device') || errorStr.contains('no sound')) {
+      if (errorStr.contains('audio device') ||
+          errorStr.contains('no sound') ||
+          errorStr.contains('coreaudio') ||
+          errorStr.contains('ao: ') ||
+          errorStr.contains('audio output')) {
         return; // Ignore harmless audio device warning for muted feed players
       }
       debugPrint("⚠️ [FeedVideoManager] Player error for $currentKey: $error");
@@ -115,6 +120,7 @@ class FeedPlayerState extends ChangeNotifier {
 
   void stopAndReset() {
     try {
+      (player.platform as dynamic)?.setProperty('aid', 'no');
       player.stop();
     } catch (_) {}
     currentUrl = null;
@@ -208,7 +214,10 @@ class FeedVideoManager extends ChangeNotifier {
     _isFeedMuted = !_isFeedMuted;
     for (final p in _playerPool) {
       try {
-        p.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
+        final isCurrent = p.currentKey == _currentPlayingKey;
+        final aid = (!_isFeedMuted && isCurrent) ? 'auto' : 'no';
+        (p.player.platform as dynamic)?.setProperty('aid', aid);
+        p.player.setVolume((!_isFeedMuted && isCurrent) ? 100.0 : 0.0);
       } catch (_) {}
     }
     notifyListeners();
@@ -272,6 +281,10 @@ class FeedVideoManager extends ChangeNotifier {
         p.setProperty('loop-file', 'inf'),
         p.setProperty('network-timeout', '10'),
         p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
+        p.setProperty('audio-stream-silence', 'yes'),
+        p.setProperty('ao-null-fallback', 'yes'),
+        // Explicitly disable audio track on feed players unless active & unmuted to prevent iOS AVAudioSession conflict
+        p.setProperty('aid', _isFeedMuted ? 'no' : 'auto'),
       ]);
     } catch (_) {}
   }
@@ -290,6 +303,11 @@ class FeedVideoManager extends ChangeNotifier {
       if (state.currentUrl == url) {
         if (autoPlay && !state.isPlaying) {
           try {
+            (state.player.platform as dynamic)?.setProperty(
+              'aid',
+              _isFeedMuted ? 'no' : 'auto',
+            );
+            state.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
             if (state.player.state.position >
                 const Duration(milliseconds: 300)) {
               state.player.seek(Duration.zero).catchError((_) {});
@@ -298,6 +316,7 @@ class FeedVideoManager extends ChangeNotifier {
           } catch (_) {}
         } else if (!autoPlay && state.isPlaying) {
           try {
+            (state.player.platform as dynamic)?.setProperty('aid', 'no');
             state.player.pause().catchError((_) {});
             if (state.player.state.position >
                 const Duration(milliseconds: 300)) {
@@ -321,6 +340,11 @@ class FeedVideoManager extends ChangeNotifier {
         p.isBuffering = false;
         if (autoPlay && !p.isPlaying) {
           try {
+            (p.player.platform as dynamic)?.setProperty(
+              'aid',
+              _isFeedMuted ? 'no' : 'auto',
+            );
+            p.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
             if (p.player.state.position >
                 const Duration(milliseconds: 300)) {
               p.player.seek(Duration.zero).catchError((_) {});
@@ -357,6 +381,7 @@ class FeedVideoManager extends ChangeNotifier {
             _keyToPlayer.remove(p.currentKey);
           }
           try {
+            (state.player.platform as dynamic)?.setProperty('aid', 'no');
             state.player.pause();
           } catch (_) {}
           break;
@@ -382,13 +407,20 @@ class FeedVideoManager extends ChangeNotifier {
       state.hasFirstFrame = false;
       state.isBuffering = true;
       try {
-        state.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
+        final aid = (autoPlay && !_isFeedMuted) ? 'auto' : 'no';
+        (state.player.platform as dynamic)?.setProperty('aid', aid);
+        state.player.setVolume((autoPlay && !_isFeedMuted) ? 100.0 : 0.0);
       } catch (_) {}
       try {
         state.player.open(Media(targetUrl), play: autoPlay);
       } catch (_) {}
     } else if (autoPlay && !state.isPlaying) {
       try {
+        (state.player.platform as dynamic)?.setProperty(
+          'aid',
+          _isFeedMuted ? 'no' : 'auto',
+        );
+        state.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
         if (state.player.state.position >
             const Duration(milliseconds: 300)) {
           state.player.seek(Duration.zero).catchError((_) {});
@@ -397,6 +429,7 @@ class FeedVideoManager extends ChangeNotifier {
       } catch (_) {}
     } else if (!autoPlay && state.isPlaying) {
       try {
+        (state.player.platform as dynamic)?.setProperty('aid', 'no');
         state.player.pause().catchError((_) {});
         if (state.player.state.position >
             const Duration(milliseconds: 300)) {
@@ -571,7 +604,9 @@ class FeedVideoManager extends ChangeNotifier {
     if (_activeTabIndex == 2) {
       if (_currentPlayingKey != null) {
         try {
-          _keyToPlayer[_currentPlayingKey]?.player.pause();
+          final p = _keyToPlayer[_currentPlayingKey];
+          (p?.player.platform as dynamic)?.setProperty('aid', 'no');
+          p?.player.pause();
         } catch (_) {}
         _currentPlayingKey = null;
         if (oldPlayingKey != _currentPlayingKey) {
@@ -717,6 +752,7 @@ class FeedVideoManager extends ChangeNotifier {
         if (_currentPlayingKey != null && _currentPlayingKey != bestKey) {
           try {
             final oldPlayer = _keyToPlayer[_currentPlayingKey];
+            (oldPlayer?.player.platform as dynamic)?.setProperty('aid', 'no');
             oldPlayer?.player.pause().catchError((_) {});
             oldPlayer?.player.seek(Duration.zero).catchError((_) {});
           } catch (_) {}
@@ -725,6 +761,11 @@ class FeedVideoManager extends ChangeNotifier {
         final playerState = _getOrCreatePlayer(bestKey, url, autoPlay: true);
         if (!playerState.isPlaying) {
           try {
+            (playerState.player.platform as dynamic)?.setProperty(
+              'aid',
+              _isFeedMuted ? 'no' : 'auto',
+            );
+            playerState.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
             if (playerState.player.state.position >
                 const Duration(milliseconds: 300)) {
               playerState.player.seek(Duration.zero).catchError((_) {});
@@ -849,6 +890,7 @@ class FeedVideoManager extends ChangeNotifier {
     for (final entry in _keyToPlayer.entries) {
       if (entry.key != exceptKey) {
         try {
+          (entry.value.player.platform as dynamic)?.setProperty('aid', 'no');
           entry.value.player.pause().catchError((_) {});
           entry.value.player.seek(Duration.zero).catchError((_) {});
         } catch (_) {}
@@ -862,6 +904,7 @@ class FeedVideoManager extends ChangeNotifier {
     _isGloballyPaused = true;
     for (final p in _playerPool) {
       try {
+        (p.player.platform as dynamic)?.setProperty('aid', 'no');
         p.player.pause().catchError((_) {});
         p.player.seek(Duration.zero).catchError((_) {});
       } catch (_) {}
@@ -875,6 +918,7 @@ class FeedVideoManager extends ChangeNotifier {
     _isGloballyPaused = true;
     for (final p in _playerPool) {
       try {
+        (p.player.platform as dynamic)?.setProperty('aid', 'no');
         p.stopAndReset();
       } catch (_) {}
     }
@@ -888,6 +932,10 @@ class FeedVideoManager extends ChangeNotifier {
     if (_activeTabIndex == 2) {
       _isGloballyPaused = true;
       pauseAll();
+      return;
+    }
+    // Only resume if returning to root route or force is true (prevents invisible background playback)
+    if (!force && !VideoRouteObserver.instance.isRootRoute) {
       return;
     }
     _isGloballyPaused = false;

@@ -119,6 +119,15 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                     if (mounted &&
                         widget.isActive &&
                         !_isManuallyPaused.value) {
+                      try {
+                        final isMuted =
+                            ReelsVideoControllerPool.instance.isMuted;
+                        (slot.player.platform as dynamic)?.setProperty(
+                          'aid',
+                          isMuted ? 'no' : 'auto',
+                        );
+                        slot.player.setVolume(isMuted ? 0.0 : 100.0);
+                      } catch (_) {}
                       slot.player.play().catchError((_) {});
                     }
                   })
@@ -182,6 +191,15 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                   !newSlot.isCompleted.value &&
                   !newSlot.isPlaying.value &&
                   !ReelsVideoControllerPool.instance.isGloballyPaused) {
+                try {
+                  final isMuted =
+                      ReelsVideoControllerPool.instance.isMuted;
+                  (newSlot.player.platform as dynamic)?.setProperty(
+                    'aid',
+                    isMuted ? 'no' : 'auto',
+                  );
+                  newSlot.player.setVolume(isMuted ? 0.0 : 100.0);
+                } catch (_) {}
                 newSlot.player.play().catchError((_) {});
               }
             });
@@ -389,6 +407,12 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           }
           if (!_slot!.player.state.playing) {
             try {
+              final isMuted = ReelsVideoControllerPool.instance.isMuted;
+              (_slot!.player.platform as dynamic)?.setProperty(
+                'aid',
+                isMuted ? 'no' : 'auto',
+              );
+              _slot!.player.setVolume(isMuted ? 0.0 : 100.0);
               _slot!.player.play().catchError((_) {});
             } catch (_) {}
           }
@@ -400,6 +424,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         _attachSlotListener(null);
         try {
           _slot?.setCompleted(false);
+          (_slot?.player.platform as dynamic)?.setProperty('aid', 'no');
           _slot?.player.pause().catchError((_) {});
           if (_slot != null &&
               _slot!.player.state.position >

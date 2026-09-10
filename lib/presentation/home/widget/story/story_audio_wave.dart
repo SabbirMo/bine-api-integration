@@ -37,6 +37,7 @@ class _StoryAudioWaveState extends State<StoryAudioWave>
         _controller.repeat(reverse: true);
       } else {
         _controller.stop();
+        _controller.reset();
       }
     }
   }
@@ -66,6 +67,7 @@ class _StoryAudioWaveState extends State<StoryAudioWave>
       32,
       50,
       40,
+      69,
     ];
     final List<double> actualHeights = widget.isReversed
         ? sideHeights
@@ -82,9 +84,11 @@ class _StoryAudioWaveState extends State<StoryAudioWave>
             final double baseH = actualHeights[index];
             double currentHeight = widget.isPlaying
                 ? baseH + (factor * (baseH * 0.3))
-                : baseH * 0.3;
+                : baseH * 0.25;
             currentHeight = currentHeight.clamp(2.0, 80.0);
-            final double opacity = (baseH / 50).clamp(0.2, 1.0);
+            final double opacity = widget.isPlaying
+                ? (baseH / 50).clamp(0.4, 1.0)
+                : 0.25;
 
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 1.5),

@@ -7,6 +7,8 @@ class VideoRouteObserver extends NavigatorObserver {
   VideoRouteObserver._();
 
   int _routeDepth = 0;
+  bool get isRootRoute => _routeDepth == 0;
+  int get routeDepth => _routeDepth;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -23,13 +25,15 @@ class VideoRouteObserver extends NavigatorObserver {
     super.didPop(route, previousRoute);
     if (previousRoute != null) {
       if (_routeDepth > 0) _routeDepth--;
-      // Returned back to the previous screen!
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (FeedVideoManager.instance.activeTabIndex != 2) {
-          FeedVideoManager.instance.resume();
-          VisibilityDetectorController.instance.notifyNow();
-        }
-      });
+      // Only resume feed videos if we returned back to the root feed screen!
+      if (_routeDepth == 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (FeedVideoManager.instance.activeTabIndex != 2) {
+            FeedVideoManager.instance.resume();
+            VisibilityDetectorController.instance.notifyNow();
+          }
+        });
+      }
     }
   }
 
@@ -38,12 +42,14 @@ class VideoRouteObserver extends NavigatorObserver {
     super.didRemove(route, previousRoute);
     if (previousRoute != null) {
       if (_routeDepth > 0) _routeDepth--;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (FeedVideoManager.instance.activeTabIndex != 2) {
-          FeedVideoManager.instance.resume();
-          VisibilityDetectorController.instance.notifyNow();
-        }
-      });
+      if (_routeDepth == 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (FeedVideoManager.instance.activeTabIndex != 2) {
+            FeedVideoManager.instance.resume();
+            VisibilityDetectorController.instance.notifyNow();
+          }
+        });
+      }
     }
   }
 }

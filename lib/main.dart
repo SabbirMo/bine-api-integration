@@ -24,6 +24,7 @@ import 'package:binetatour/core/story/story_hls_preloader.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/reels_video_controller_pool.dart';
+import 'package:binetatour/core/video/video_route_observer.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 @pragma('vm:entry-point')
@@ -145,9 +146,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       ReelsVideoControllerPool.instance.pauseAll();
     } else if (state == AppLifecycleState.resumed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Only resume if app is still mounted and on front frame
-        FeedVideoManager.instance.resume();
-        ReelsVideoControllerPool.instance.resume();
+        // Only resume feed videos if currently on root route; sub-routes manage their own resume
+        if (VideoRouteObserver.instance.isRootRoute) {
+          FeedVideoManager.instance.resume();
+        } else {
+          ReelsVideoControllerPool.instance.resume();
+        }
       });
     }
   }

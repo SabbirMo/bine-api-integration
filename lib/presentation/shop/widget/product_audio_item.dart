@@ -22,7 +22,12 @@ class ProductAudioItem extends StatefulWidget {
 }
 
 class _ProductAudioItemState extends State<ProductAudioItem> {
-  late final Player _player = Player();
+  late final Player _player = Player(
+    configuration: const PlayerConfiguration(
+      bufferSize: 2 * 1024 * 1024,
+      logLevel: MPVLogLevel.warn,
+    ),
+  );
   bool _isPlaying = false;
   bool _isInitialized = false;
 
@@ -33,6 +38,21 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
   }
 
   Future<void> _initPlayer() async {
+    try {
+      final platform = _player.platform;
+      if (platform != null) {
+        final p = platform as dynamic;
+        await Future.wait(<Future<dynamic>>[
+          p.setProperty('audio-stream-silence', 'yes'),
+          p.setProperty('ao-null-fallback', 'yes'),
+          p.setProperty(
+            'aid',
+            (widget.isActive && !widget.isMuted) ? 'auto' : 'no',
+          ),
+        ]);
+      }
+    } catch (_) {}
+
     _player.setPlaylistMode(PlaylistMode.single);
     _player.setVolume(widget.isMuted ? 0.0 : 100.0);
 
@@ -45,6 +65,14 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
     });
 
     _player.stream.error.listen((error) {
+      final lower = error.toString().toLowerCase();
+      if (lower.contains('audio device') ||
+          lower.contains('no sound') ||
+          lower.contains('coreaudio') ||
+          lower.contains('ao: ') ||
+          lower.contains('audio output')) {
+        return;
+      }
       debugPrint('Audio Player Error: $error');
     });
 
@@ -80,16 +108,28 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
   void didUpdateWidget(ProductAudioItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isMuted != widget.isMuted) {
-      _player.setVolume(widget.isMuted ? 0.0 : 100.0);
+      try {
+        final aid = (widget.isActive && !widget.isMuted) ? 'auto' : 'no';
+        (_player.platform as dynamic)?.setProperty('aid', aid);
+        _player.setVolume(widget.isMuted ? 0.0 : 100.0);
+      } catch (_) {}
     }
     if (oldWidget.isActive != widget.isActive) {
       if (widget.isActive) {
-        _player.seek(Duration.zero).catchError((_) {});
-        _player.play().catchError((_) {});
+        try {
+          final aid = widget.isMuted ? 'no' : 'auto';
+          (_player.platform as dynamic)?.setProperty('aid', aid);
+          _player.setVolume(widget.isMuted ? 0.0 : 100.0);
+          _player.seek(Duration.zero).catchError((_) {});
+          _player.play().catchError((_) {});
+        } catch (_) {}
         setState(() => _isPlaying = true);
       } else {
-        _player.pause().catchError((_) {});
-        _player.seek(Duration.zero).catchError((_) {});
+        try {
+          (_player.platform as dynamic)?.setProperty('aid', 'no');
+          _player.pause().catchError((_) {});
+          _player.seek(Duration.zero).catchError((_) {});
+        } catch (_) {}
         setState(() => _isPlaying = false);
       }
     }
@@ -98,6 +138,7 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
   @override
   void dispose() {
     try {
+      (_player.platform as dynamic)?.setProperty('aid', 'no');
       _player.stop();
       _player.dispose();
     } catch (_) {}
@@ -107,10 +148,18 @@ class _ProductAudioItemState extends State<ProductAudioItem> {
   void _togglePlay() {
     setState(() {
       if (_isPlaying) {
-        _player.pause();
+        try {
+          (_player.platform as dynamic)?.setProperty('aid', 'no');
+          _player.pause();
+        } catch (_) {}
         _isPlaying = false;
       } else {
-        _player.play();
+        try {
+          final aid = widget.isMuted ? 'no' : 'auto';
+          (_player.platform as dynamic)?.setProperty('aid', aid);
+          _player.setVolume(widget.isMuted ? 0.0 : 100.0);
+          _player.play();
+        } catch (_) {}
         _isPlaying = true;
       }
     });

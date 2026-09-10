@@ -47,14 +47,14 @@ class StoryDetailProvider extends ChangeNotifier {
   }
 
   // --- Engine Getters ---
-  StoryPlayerEngine get _activeEngine => (_useEngineA ? _engineA : _engineB) ?? _engineA!;
-  StoryPlayerEngine get _backgroundEngine => (_useEngineA ? _engineB : _engineA) ?? _engineB!;
+  StoryPlayerEngine? get _activeEngine => _useEngineA ? _engineA : _engineB;
+  StoryPlayerEngine? get _backgroundEngine => _useEngineA ? _engineB : _engineA;
 
   bool get isEngineAActive => _useEngineA;
   VideoController? get videoControllerA => _engineA?.videoController;
   VideoController? get videoControllerB => _engineB?.videoController;
-  VideoController? get videoController => _activeEngine.videoController;
-  Player? get player => _activeEngine.player;
+  VideoController? get videoController => _activeEngine?.videoController;
+  Player? get player => _activeEngine?.player;
   StoryPlayerEngine? get engine => _activeEngine;
 
   // --- State Getters ---
@@ -68,18 +68,20 @@ class StoryDetailProvider extends ChangeNotifier {
 
   bool get isMuted => _isMuted;
   bool get isPaused => _isPaused;
-  bool get isPlaying => _activeEngine.isPlaying;
-  bool get isBuffering => _activeEngine.isBuffering;
+  bool get isPlaying =>
+      !_isPaused && (_activeEngine?.isPlaying ?? false) && !isBuffering;
+  bool get isBuffering => _activeEngine?.isBuffering ?? false;
   bool get isLoading => !hasFirstFrame && isBuffering;
-  bool get hasFirstFrame => _activeEngine.hasFirstFrame;
-  double get progress => _activeEngine.progress;
+  bool get hasFirstFrame => _activeEngine?.hasFirstFrame ?? false;
+  double get progress => _activeEngine?.progress ?? 0.0;
   double get currentMediaProgress => progress;
   double get imageProgress => progress;
-  String? get error => _activeEngine.error;
+  String? get error => _activeEngine?.error;
 
   // --- Lifecycle & Initialization ---
 
   void _initEngines() {
+    if (isTestMode) return;
     if (_engineA != null && _engineB != null) return;
     _cleanupEngines();
 
@@ -119,10 +121,14 @@ class StoryDetailProvider extends ChangeNotifier {
     _engineListeners.add(() => eng.isPlayingNotifier.removeListener(updateUI));
 
     eng.isBufferingNotifier.addListener(updateUI);
-    _engineListeners.add(() => eng.isBufferingNotifier.removeListener(updateUI));
+    _engineListeners.add(
+      () => eng.isBufferingNotifier.removeListener(updateUI),
+    );
 
     eng.hasFirstFrameNotifier.addListener(updateUI);
-    _engineListeners.add(() => eng.hasFirstFrameNotifier.removeListener(updateUI));
+    _engineListeners.add(
+      () => eng.hasFirstFrameNotifier.removeListener(updateUI),
+    );
 
     eng.errorNotifier.addListener(updateUI);
     _engineListeners.add(() => eng.errorNotifier.removeListener(updateUI));
@@ -178,7 +184,7 @@ class StoryDetailProvider extends ChangeNotifier {
 
     // 3. Load active story on active engine
     if (!isTestMode) {
-      await _activeEngine.loadStory(story, autoPlay: play);
+      await _activeEngine?.loadStory(story, autoPlay: play);
 
       // Pre-roll the NEXT story onto the background engine to Frame 0
       _prewarmNextStory(index);
@@ -191,11 +197,18 @@ class StoryDetailProvider extends ChangeNotifier {
     if (_isDisposed || isTestMode) return;
     if (currentIndex + 1 < stories.length) {
       final nextStory = stories[currentIndex + 1];
-      _backgroundEngine.loadStory(nextStory, autoPlay: false);
+      // Only pre-warm video stories on the background hardware texture.
+      // Audio and image stories do not use a video texture surface and
+      // should be loaded fresh with autoPlay: true when active.
+      if (nextStory.isVideo) {
+        _backgroundEngine?.setMuted(true);
+        _backgroundEngine?.loadStory(nextStory, autoPlay: false);
+      }
     } else if (allGroups != null && categoryIndex + 1 < allGroups!.length) {
       final nextCat = allGroups![categoryIndex + 1];
-      if (nextCat.stories.isNotEmpty) {
-        _backgroundEngine.loadStory(nextCat.stories.first, autoPlay: false);
+      if (nextCat.stories.isNotEmpty && nextCat.stories.first.isVideo) {
+        _backgroundEngine?.setMuted(true);
+        _backgroundEngine?.loadStory(nextCat.stories.first, autoPlay: false);
       }
     }
   }
@@ -205,16 +218,30 @@ class StoryDetailProvider extends ChangeNotifier {
   void nextStory() {
     if (_isDisposed) return;
     if (_currentIndex < stories.length - 1) {
-      // 1. Pause current engine
-      _activeEngine.pause();
+      // 1. Pause current engine and mute to release audio session
+      if (!isTestMode) {
+        _activeEngine?.pause();
+        _activeEngine?.setMuted(true);
+      }
 
       // 2. Flip active engine pointer (Engine A <-> Engine B)
       _useEngineA = !_useEngineA;
       _currentIndex++;
       _isPaused = false;
 
-      // 3. Start the newly active engine immediately (it was already pre-rolled to Frame 0!)
-      _activeEngine.play();
+      final incomingStory = stories[_currentIndex];
+
+      // 3. Restore configured mute state and start or load the incoming story
+      if (!isTestMode) {
+        _activeEngine?.setMuted(_isMuted);
+        if (incomingStory.isVideo &&
+            _activeEngine?.currentStory?.id == incomingStory.id &&
+            _activeEngine?.hasFirstFrame == true) {
+          _activeEngine?.play();
+        } else {
+          _activeEngine?.loadStory(incomingStory, autoPlay: true);
+        }
+      }
       notifyListeners();
 
       // 4. Pre-roll the next upcoming story onto the idle background engine
@@ -233,7 +260,10 @@ class StoryDetailProvider extends ChangeNotifier {
         storyProvider!.viewStory(currentStory!.id!).catchError((_) {});
       }
     } else {
-      _activeEngine.pause();
+      if (!isTestMode) {
+        _activeEngine?.pause();
+        _activeEngine?.setMuted(true);
+      }
       if (onFinished != null) {
         onFinished!();
       }
@@ -243,13 +273,19 @@ class StoryDetailProvider extends ChangeNotifier {
   void previousStory() {
     if (_isDisposed) return;
     if (_currentIndex > 0) {
-      _activeEngine.pause();
+      if (!isTestMode) {
+        _activeEngine?.pause();
+        _activeEngine?.setMuted(true);
+      }
       _useEngineA = !_useEngineA;
       _currentIndex--;
       _isPaused = false;
 
-      _activeEngine.loadStory(stories[_currentIndex], autoPlay: true);
-      _prewarmNextStory(_currentIndex);
+      if (!isTestMode) {
+        _activeEngine?.setMuted(_isMuted);
+        _activeEngine?.loadStory(stories[_currentIndex], autoPlay: true);
+        _prewarmNextStory(_currentIndex);
+      }
 
       StoryPreloader.preloadAround(
         stories: stories,
@@ -267,6 +303,10 @@ class StoryDetailProvider extends ChangeNotifier {
 
   void jumpToStory(int index, {bool play = true}) {
     if (_isDisposed || stories.isEmpty) return;
+    if (!isTestMode) {
+      _activeEngine?.pause();
+      _activeEngine?.setMuted(true);
+    }
     final target = index.clamp(0, stories.length - 1);
     _loadStory(target, play: play);
   }
@@ -274,14 +314,18 @@ class StoryDetailProvider extends ChangeNotifier {
   void pauseStory() {
     if (_isDisposed) return;
     _isPaused = true;
-    _activeEngine.pause();
+    if (!isTestMode) {
+      _activeEngine?.pause();
+    }
     notifyListeners();
   }
 
   void resumeStory() {
     if (_isDisposed) return;
     _isPaused = false;
-    _activeEngine.play();
+    if (!isTestMode) {
+      _activeEngine?.play();
+    }
     notifyListeners();
   }
 

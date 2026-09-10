@@ -462,7 +462,7 @@ class VideoCacheManager {
     }
 
     // Fallback: If header is not HTML/XML text, allow through
-    final asciiPrefix = String.fromCharCodes(bytes.take(8)).toLowerCase();
+    final asciiPrefix = String.fromCharCodes(bytes.take(16)).toLowerCase();
     if (asciiPrefix.startsWith('<!doctype') ||
         asciiPrefix.startsWith('<html') ||
         asciiPrefix.startsWith('<?xml') ||

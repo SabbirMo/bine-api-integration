@@ -252,6 +252,9 @@ class ReelsPlayerSlot {
         // Filter harmless errors from slot recycling and audio device
         if (errStr.contains('audio device') ||
             errStr.contains('no sound') ||
+            errStr.contains('coreaudio') ||
+            errStr.contains('ao: ') ||
+            errStr.contains('audio output') ||
             errStr.contains('loading cancelled') ||
             errStr.contains('quitting') ||
             errStr.isEmpty) {
@@ -266,6 +269,7 @@ class ReelsPlayerSlot {
 
   void reset() {
     try {
+      (player.platform as dynamic)?.setProperty('aid', 'no');
       player.stop();
     } catch (_) {}
     currentUrl = null;
@@ -679,9 +683,10 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       slot.setCompleted(false);
       if (autoPlay && !slot.player.state.playing) {
         try {
-          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
+          final aid = _isMuted ? 'no' : 'auto';
+          (slot.player.platform as dynamic)?.setProperty('aid', aid);
+          slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         } catch (_) {}
-        slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         if (initialPosition != null && initialPosition > Duration.zero) {
           try {
             slot.player.seek(initialPosition).catchError((_) {});
@@ -698,11 +703,13 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       } else if (!autoPlay) {
         try {
           (slot.player.platform as dynamic)?.setProperty('aid', 'no');
+          slot.player.setVolume(0.0);
+          slot.player.pause().catchError((_) {});
         } catch (_) {}
-        slot.player.setVolume(0.0);
-        slot.player.pause().catchError((_) {});
         if (slot.player.state.position > const Duration(milliseconds: 300)) {
-          slot.player.seek(Duration.zero).catchError((_) {});
+          try {
+            slot.player.seek(Duration.zero).catchError((_) {});
+          } catch (_) {}
         }
       }
       return;
@@ -720,14 +727,15 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     try {
       if (autoPlay) {
         try {
-          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
+          final aid = _isMuted ? 'no' : 'auto';
+          (slot.player.platform as dynamic)?.setProperty('aid', aid);
+          slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         } catch (_) {}
-        slot.player.setVolume(_isMuted ? 0.0 : 100.0);
       } else {
         try {
           (slot.player.platform as dynamic)?.setProperty('aid', 'no');
+          slot.player.setVolume(0.0);
         } catch (_) {}
-        slot.player.setVolume(0.0);
       }
 
       final startPos =
@@ -744,10 +752,15 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     for (final slot in _slots) {
       if (slot.currentItemIndex == _activeProductIndex) {
         try {
+          (slot.player.platform as dynamic)?.setProperty(
+            'aid',
+            _isMuted ? 'no' : 'auto',
+          );
           slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         } catch (_) {}
       } else {
         try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
           slot.player.setVolume(0.0);
         } catch (_) {}
       }
@@ -772,6 +785,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     _isGloballyPaused = true;
     for (final slot in _slots) {
       try {
+        (slot.player.platform as dynamic)?.setProperty('aid', 'no');
         slot.player.pause();
       } catch (_) {}
     }
@@ -785,6 +799,10 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       final slot = getSlotForIndex(_activeProductIndex!, _activeUrl!);
       if (slot != null) {
         try {
+          (slot.player.platform as dynamic)?.setProperty(
+            'aid',
+            _isMuted ? 'no' : 'auto',
+          );
           slot.player.setVolume(_isMuted ? 0.0 : 100.0);
           slot.player.play();
         } catch (_) {}

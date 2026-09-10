@@ -34,12 +34,17 @@ class StoryPlayerEngine {
   bool _isDisposed = false;
   bool _isMuted = false;
   bool _hasCompleted = false;
+  bool _isExplicitlyPaused = false;
   int _currentGenerationId = 0;
   int _activeCompletedGenerationId = -1;
   int _retryCount = 0;
   static const int _maxRetries = 2;
   DateTime? _transitionStartTime;
   DateTime? _openStartTime;
+  Timer? _stallWatchdogTimer;
+  Duration _lastStallCheckPosition = Duration.zero;
+  Duration _knownDuration = Duration.zero;
+  int _stallCount = 0;
 
   ValueListenable<double> get progressNotifier => _progressNotifier;
   ValueListenable<bool> get isPlayingNotifier => _isPlayingNotifier;
@@ -58,6 +63,7 @@ class StoryPlayerEngine {
   String? get error => _errorNotifier.value;
   VideoController get videoController => _videoController;
   Player get player => _player;
+  StoryContent? get currentStory => _currentStory;
 
   StoryPlayerEngine({required this.onCompleted, bool initialMuted = false})
     : _isMuted = initialMuted {
@@ -116,6 +122,100 @@ class StoryPlayerEngine {
     _bufferingWatchdogTimer = null;
   }
 
+  void _triggerCompletion(String reason) {
+    if (_isDisposed || _currentStory?.isImage == true) return;
+    final int currentGen = _currentGenerationId;
+    if (!_hasCompleted && _activeCompletedGenerationId != currentGen) {
+      debugPrint('🏁 [StoryPlayerEngine] Story completion triggered ($reason)');
+      _cancelBufferingWatchdog();
+      _stopStallWatchdog();
+      _hasCompleted = true;
+      _activeCompletedGenerationId = currentGen;
+      _progressNotifier.value = 1.0;
+      onCompleted();
+    }
+  }
+
+  void _startStallWatchdog(int genId) {
+    _stopStallWatchdog();
+    if (_isDisposed || _currentStory?.isImage == true) return;
+
+    _stallCount = 0;
+    _lastStallCheckPosition = _player.state.position;
+
+    _stallWatchdogTimer = Timer.periodic(const Duration(milliseconds: 750), (
+      timer,
+    ) {
+      if (_isDisposed ||
+          genId != _currentGenerationId ||
+          _isExplicitlyPaused ||
+          _hasCompleted ||
+          _currentStory?.isImage == true ||
+          _isBufferingNotifier.value) {
+        return;
+      }
+
+      final currentPos = _player.state.position;
+      final isPlaying = _isPlayingNotifier.value;
+      final hasRendered = _hasFirstFrameNotifier.value;
+      final effectiveDur = _knownDuration > Duration.zero
+          ? _knownDuration
+          : _player.state.duration;
+
+      // If playback position has reached near the end of media, this is completion, NOT a stall!
+      if (effectiveDur > Duration.zero &&
+          (currentPos >= effectiveDur - const Duration(milliseconds: 700))) {
+        _triggerCompletion('stall watchdog reached end of media');
+        return;
+      }
+
+      if (hasRendered && isPlaying && !_isBufferingNotifier.value) {
+        if (currentPos == _lastStallCheckPosition &&
+            currentPos > Duration.zero) {
+          _stallCount++;
+          if (_stallCount >= 2) {
+            _stallCount = 0;
+            // For audio, position freeze at or near end is completion
+            if (_currentStory?.isAudio == true &&
+                effectiveDur > Duration.zero &&
+                currentPos >= effectiveDur - const Duration(seconds: 1)) {
+              _triggerCompletion('audio stall watchdog reached end');
+              return;
+            }
+            debugPrint(
+              '⚡️ [StoryPlayerEngine] iOS playback freeze detected at $currentPos. Auto-unfreezing...',
+            );
+            try {
+              _player
+                  .pause()
+                  .then((_) {
+                    if (!_isDisposed &&
+                        genId == _currentGenerationId &&
+                        !_isExplicitlyPaused &&
+                        !_hasCompleted) {
+                      play().catchError((_) {});
+                    }
+                  })
+                  .catchError((_) {});
+            } catch (_) {}
+          }
+        } else {
+          _stallCount = 0;
+          _lastStallCheckPosition = currentPos;
+        }
+      } else {
+        _stallCount = 0;
+        _lastStallCheckPosition = currentPos;
+      }
+    });
+  }
+
+  void _stopStallWatchdog() {
+    _stallWatchdogTimer?.cancel();
+    _stallWatchdogTimer = null;
+    _stallCount = 0;
+  }
+
   void _setupPlayerListeners() {
     void checkFirstFrameReady() {
       if (_isDisposed || _hasFirstFrameNotifier.value) return;
@@ -146,7 +246,44 @@ class StoryPlayerEngine {
         _isPlayingNotifier.value = playing;
         if (playing) {
           _errorNotifier.value = null;
+          if (_currentStory?.isAudio == true) {
+            _hasMediaStartedForCurrentGen = true;
+          }
           checkFirstFrameReady();
+        } else {
+          // Playback stopped (transitioned to playing: false)
+          if (!_isExplicitlyPaused && !_hasCompleted) {
+            final effectiveDur = _knownDuration > Duration.zero
+                ? _knownDuration
+                : _player.state.duration;
+            final pos = _player.state.position;
+            final isNearEnd =
+                effectiveDur > Duration.zero &&
+                (pos >= effectiveDur - const Duration(milliseconds: 500));
+
+            if (isNearEnd) {
+              // Playback naturally reached the end of the track
+              _triggerCompletion('playback stopped near end of track');
+            } else if (_currentStory?.isAudio == true &&
+                _hasMediaStartedForCurrentGen &&
+                !_isBufferingNotifier.value) {
+              // Audio story stopped without user pause and without buffering -> EOF reached
+              _triggerCompletion('audio playback reached end');
+            } else if (_hasMediaStartedForCurrentGen) {
+              // Unexpected pause mid-stream - auto-resume watchdog
+              Future.delayed(const Duration(milliseconds: 60), () {
+                if (!_isDisposed &&
+                    !_isExplicitlyPaused &&
+                    !_hasCompleted &&
+                    !_player.state.playing) {
+                  debugPrint(
+                    '⚡️ [StoryPlayerEngine] Auto-resuming unexpected playback pause at $pos',
+                  );
+                  play().catchError((_) {});
+                }
+              });
+            }
+          }
         }
       }),
     );
@@ -154,15 +291,18 @@ class StoryPlayerEngine {
     _subscriptions.add(
       _player.stream.duration.listen((dur) {
         if (_isDisposed || _currentStory?.isImage == true) return;
-        if (dur > Duration.zero && !_metadataReadyNotifier.value) {
-          _metadataReadyNotifier.value = true;
-          if (_openStartTime != null) {
-            final ms = DateTime.now()
-                .difference(_openStartTime!)
-                .inMilliseconds;
-            debugPrint(
-              '📋 [StoryPerf] metadata ready (+${ms}ms, duration: ${dur.inSeconds}s)',
-            );
+        if (dur > Duration.zero) {
+          _knownDuration = dur;
+          if (!_metadataReadyNotifier.value) {
+            _metadataReadyNotifier.value = true;
+            if (_openStartTime != null) {
+              final ms = DateTime.now()
+                  .difference(_openStartTime!)
+                  .inMilliseconds;
+              debugPrint(
+                '📋 [StoryPerf] metadata ready (+${ms}ms, duration: ${dur.inSeconds}s)',
+              );
+            }
           }
         }
       }),
@@ -208,18 +348,6 @@ class StoryPlayerEngine {
       }),
     );
 
-    void triggerCompletion(String reason) {
-      if (_isDisposed || _currentStory?.isImage == true) return;
-      final int currentGen = _currentGenerationId;
-      if (!_hasCompleted && _activeCompletedGenerationId != currentGen) {
-        _cancelBufferingWatchdog();
-        _hasCompleted = true;
-        _activeCompletedGenerationId = currentGen;
-        _progressNotifier.value = 1.0;
-        onCompleted();
-      }
-    }
-
     _subscriptions.add(
       _player.stream.position.listen((pos) {
         if (_isDisposed || _currentStory?.isImage == true) return;
@@ -232,20 +360,23 @@ class StoryPlayerEngine {
           checkFirstFrameReady();
         }
 
-        final dur = _player.state.duration;
-        if (dur > Duration.zero &&
+        final effectiveDur = _knownDuration > Duration.zero
+            ? _knownDuration
+            : _player.state.duration;
+        if (effectiveDur > Duration.zero &&
             _hasMediaStartedForCurrentGen &&
             _hasFirstFrameNotifier.value) {
-          final frac = (pos.inMilliseconds / dur.inMilliseconds).clamp(
+          final frac = (pos.inMilliseconds / effectiveDur.inMilliseconds).clamp(
             0.0,
             1.0,
           );
           _progressNotifier.value = frac;
 
-          // Fail-safe: if position reaches within 200ms of end of video, auto-advance
-          if (dur.inMilliseconds > 1000 &&
-              pos.inMilliseconds >= dur.inMilliseconds - 200) {
-            triggerCompletion('position reached end');
+          // Fail-safe: if position reaches near end of audio/video, auto-advance
+          final thresholdMs = _currentStory?.isAudio == true ? 500 : 350;
+          if (effectiveDur.inMilliseconds > 800 &&
+              pos.inMilliseconds >= effectiveDur.inMilliseconds - thresholdMs) {
+            _triggerCompletion('position reached end');
           }
         }
       }),
@@ -253,8 +384,9 @@ class StoryPlayerEngine {
 
     _subscriptions.add(
       _player.stream.completed.listen((completed) {
-        if (completed && _hasMediaStartedForCurrentGen) {
-          triggerCompletion('completed stream event');
+        if (completed &&
+            (_hasMediaStartedForCurrentGen || _currentStory?.isAudio == true)) {
+          _triggerCompletion('completed stream event');
         }
       }),
     );
@@ -263,7 +395,11 @@ class StoryPlayerEngine {
       _player.stream.error.listen((err) async {
         if (_isDisposed || _currentStory?.isImage == true) return;
         final lower = err.toString().toLowerCase();
-        if (lower.contains('audio device') || lower.contains('no sound')) {
+        if (lower.contains('audio device') ||
+            lower.contains('no sound') ||
+            lower.contains('coreaudio') ||
+            lower.contains('ao: ') ||
+            lower.contains('audio output')) {
           return;
         }
 
@@ -332,6 +468,7 @@ class StoryPlayerEngine {
           p.setProperty('vd-lavc-fast', 'yes'),
           p.setProperty('vd-lavc-skiploopfilter', 'all'),
           p.setProperty('audio-stream-silence', 'yes'),
+          p.setProperty('ao-null-fallback', 'yes'),
           p.setProperty('audio-buffer', '0.05'),
           p.setProperty('network-timeout', '10'),
           p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
@@ -392,7 +529,13 @@ class StoryPlayerEngine {
           ? story.fallbackUrl!
           : story.url;
       final cachedPath = VideoCacheManager.instance.getCachedFilePath(target);
-      return cachedPath ?? target;
+      if (cachedPath != null) {
+        return cachedPath;
+      }
+      if (target.isNotEmpty && target.startsWith('http')) {
+        VideoCacheManager.instance.preCacheVideo(target);
+      }
+      return target;
     }
     return story.url;
   }
@@ -406,6 +549,7 @@ class StoryPlayerEngine {
     _currentStory = story;
     _hasCompleted = false;
     _hasMediaStartedForCurrentGen = false;
+    _knownDuration = Duration.zero;
     _retryCount = 0;
     _imageTimer?.cancel();
     _imageTimer = null;
@@ -420,6 +564,8 @@ class StoryPlayerEngine {
     debugPrint('📡 [StoryPerf] HLS open');
 
     if (story.isImage) {
+      _stopStallWatchdog();
+      _isExplicitlyPaused = !autoPlay;
       try {
         await _player.stop();
       } catch (_) {}
@@ -435,13 +581,28 @@ class StoryPlayerEngine {
       _hasFirstFrameNotifier.value =
           story.isAudio; // Audio doesn't need video texture frame
       _isBufferingNotifier.value = false;
-      _isPlayingNotifier.value = autoPlay;
+      _isPlayingNotifier.value = false;
+      _isExplicitlyPaused = !autoPlay;
 
       if (autoPlay) {
         _startBufferingWatchdog(loadId);
+        _startStallWatchdog(loadId);
         // Immediately cancel background prefetch to dedicate 100% bandwidth to foreground playback
         StoryHlsPreloader.instance.cancel();
+      } else {
+        _stopStallWatchdog();
       }
+
+      // Explicitly configure audio track before opening media:
+      // When autoPlay is false (background pre-roll), audio track MUST be disabled ('aid': 'no')
+      // to prevent iOS AVAudioSession contention with the active engine.
+      try {
+        final platform = _player.platform;
+        if (platform != null) {
+          final aid = (autoPlay && !_isMuted) ? 'auto' : 'no';
+          await (platform as dynamic).setProperty('aid', aid);
+        }
+      } catch (_) {}
 
       await _player.setVolume(autoPlay ? (_isMuted ? 0.0 : 100.0) : 0.0);
 
@@ -494,10 +655,20 @@ class StoryPlayerEngine {
 
   Future<void> play() async {
     if (_isDisposed) return;
+    _isExplicitlyPaused = false;
     if (_currentStory?.isImage == true) {
+      _stopStallWatchdog();
       _startImageTimer(_currentGenerationId);
     } else {
+      _startStallWatchdog(_currentGenerationId);
       try {
+        final platform = _player.platform;
+        if (platform != null) {
+          await (platform as dynamic).setProperty(
+            'aid',
+            _isMuted ? 'no' : 'auto',
+          );
+        }
         await _player.setVolume(_isMuted ? 0.0 : 100.0);
         await _player.play();
       } catch (_) {}
@@ -507,12 +678,18 @@ class StoryPlayerEngine {
 
   Future<void> pause() async {
     if (_isDisposed) return;
+    _isExplicitlyPaused = true;
+    _stopStallWatchdog();
     if (_currentStory?.isImage == true) {
       _imageTimer?.cancel();
       _imageTimer = null;
     } else {
       try {
         await _player.pause();
+        final platform = _player.platform;
+        if (platform != null) {
+          await (platform as dynamic).setProperty('aid', 'no');
+        }
       } catch (_) {}
     }
     _isPlayingNotifier.value = false;
@@ -522,12 +699,17 @@ class StoryPlayerEngine {
     if (_isDisposed) return;
     _isMuted = muted;
     try {
+      final platform = _player.platform;
+      if (platform != null) {
+        await (platform as dynamic).setProperty('aid', muted ? 'no' : 'auto');
+      }
       await _player.setVolume(muted ? 0.0 : 100.0);
     } catch (_) {}
   }
 
   void dispose() {
     _isDisposed = true;
+    _stopStallWatchdog();
     _imageTimer?.cancel();
     _imageTimer = null;
     _cancelBufferingWatchdog();
@@ -536,6 +718,10 @@ class StoryPlayerEngine {
     }
     _subscriptions.clear();
     try {
+      final platform = _player.platform;
+      if (platform != null) {
+        (platform as dynamic).setProperty('aid', 'no');
+      }
       _player.stop();
       _player.dispose();
     } catch (_) {}

@@ -35,7 +35,24 @@ class HomeProductCardProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _player = Player();
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          bufferSize: 2 * 1024 * 1024,
+          logLevel: MPVLogLevel.warn,
+        ),
+      );
+      try {
+        final platform = _player!.platform;
+        if (platform != null) {
+          final p = platform as dynamic;
+          await Future.wait(<Future<dynamic>>[
+            p.setProperty('audio-stream-silence', 'yes'),
+            p.setProperty('ao-null-fallback', 'yes'),
+            p.setProperty('aid', 'no'),
+          ]);
+        }
+      } catch (_) {}
+
       _videoController = VideoController(
         _player!,
         configuration: const VideoControllerConfiguration(
@@ -112,6 +129,8 @@ class HomeProductCardProvider extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     try {
+      final p = _player?.platform as dynamic;
+      p?.setProperty('aid', 'no');
       _player?.stop();
       _player?.dispose();
     } catch (_) {}
