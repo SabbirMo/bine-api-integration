@@ -34,7 +34,7 @@ class VideoCacheManager {
   final Map<String, Completer<String?>> _inFlightCompleters = {};
   final Queue<String> _downloadQueue = Queue<String>();
   int _activeDownloadsCount = 0;
-  static const int _maxConcurrentDownloads = 3;
+  static const int _maxConcurrentDownloads = 1;
 
   // In-memory cache maps: url -> verified local absolute file path
   final Map<String, String> _memoryPathCache = {};

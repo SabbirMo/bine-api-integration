@@ -556,7 +556,8 @@ class FeedVideoManager extends ChangeNotifier {
   }
 
   void evaluatePlaybackNow() {
-    if (!_isGloballyPaused) {
+    if (_activeTabIndex != 2) {
+      _isGloballyPaused = false;
       _evaluatePlayback();
     }
   }
@@ -884,7 +885,7 @@ class FeedVideoManager extends ChangeNotifier {
 
   /// Resume playback when returning to the screen
   void resume({bool force = false}) {
-    if (_activeTabIndex == 2 || (_isGloballyPaused && !force)) {
+    if (_activeTabIndex == 2) {
       _isGloballyPaused = true;
       pauseAll();
       return;

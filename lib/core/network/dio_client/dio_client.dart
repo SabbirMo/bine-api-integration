@@ -14,9 +14,9 @@ class DioClient {
       _dio = Dio(
         BaseOptions(
           baseUrl: BaseUrl.baseUrl,
-          connectTimeout: const Duration(seconds: 15),
+          connectTimeout: const Duration(seconds: 25),
           receiveTimeout: const Duration(seconds: 30),
-          sendTimeout: const Duration(seconds: 5),
+          sendTimeout: const Duration(seconds: 15),
           headers: {'Content-Type': 'application/json'},
         ),
       );
@@ -45,9 +45,9 @@ class DioClient {
       final dio = Dio(
         BaseOptions(
           baseUrl: BaseUrl.baseUrl,
-          connectTimeout: const Duration(seconds: 12),
-          receiveTimeout: const Duration(seconds: 12),
-          sendTimeout: const Duration(seconds: 12),
+          connectTimeout: const Duration(seconds: 25),
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 20),
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',

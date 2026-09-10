@@ -220,7 +220,11 @@ class _ProductMediaGalleryState extends State<ProductMediaGallery> {
       // Precache secondary images in gallery for instant horizontal swipes
       for (final m in newMediaList) {
         if (m.isImage && m.url.startsWith('http')) {
-          precacheImage(NetworkImage(m.url), context).catchError((_) {});
+          precacheImage(
+            NetworkImage(m.url),
+            context,
+            onError: (_, _) {},
+          ).catchError((_) {});
         }
       }
       setState(() {

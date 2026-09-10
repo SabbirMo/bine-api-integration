@@ -2,7 +2,6 @@ import 'package:binetatour/core/story/story_preloader.dart';
 import 'package:binetatour/core/story/story_hls_preloader.dart';
 import 'package:binetatour/core/utils/media_url_resolver.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
-import 'package:binetatour/core/video/reels_video_controller_pool.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:binetatour/presentation/home/widget/category_section_header.dart';
@@ -1240,23 +1239,8 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                   }
                 }
 
-                // 1. Hand off active playing feed player directly to Reels pool
-                // This ensures the video keeps playing without ANY interruption or loading spinner!
-                final cardKey =
-                    'feed_prod_${widget.section.categoryId}_${product.id}';
-                final resolvedVideoUrl = _resolveUrl(product.effectiveVideoUrl);
-                final feedPlayer = FeedVideoManager.instance
-                    .handoffActivePlayer(cardKey);
-
-                if (feedPlayer != null && resolvedVideoUrl.isNotEmpty) {
-                  ReelsVideoControllerPool.instance.adoptFeedPlayer(
-                    feedPlayer: feedPlayer,
-                    itemIndex: targetInitialIndex,
-                    url: resolvedVideoUrl,
-                  );
-                } else {
-                  FeedVideoManager.instance.pauseAllExcept(cardKey);
-                }
+                // 1. Pause feed videos before opening details
+                FeedVideoManager.instance.pauseAll();
 
                 // 2. Launch route transition — Hero flight smoothly expands the playing video!
                 final pushFuture = Navigator.push(
@@ -1271,11 +1255,12 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
 
                 await pushFuture;
 
-                FeedVideoManager.instance.setActiveTab(0);
-                FeedVideoManager.instance.resume();
+                FeedVideoManager.instance.resume(force: true);
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   VisibilityDetectorController.instance.notifyNow();
-                  FeedVideoManager.instance.evaluatePlaybackNow();
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    FeedVideoManager.instance.evaluatePlaybackNow();
+                  });
                 });
               },
             ),

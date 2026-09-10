@@ -21,6 +21,9 @@ class ReelsPlayerSlot {
   final ValueNotifier<String?> error = ValueNotifier<String?>(null);
   final ValueNotifier<bool> isLandscape = ValueNotifier<bool>(false);
   final ValueNotifier<bool> isCompleted = ValueNotifier<bool>(false);
+  final ValueNotifier<Duration> duration = ValueNotifier<Duration>(
+    Duration.zero,
+  );
 
   void setPlaying(bool val) => _safeUpdate(isPlaying, val);
   void setBuffering(bool val) => _safeUpdate(isBuffering, val);
@@ -28,6 +31,7 @@ class ReelsPlayerSlot {
   void setError(String? val) => _safeUpdate(error, val);
   void setIsLandscape(bool val) => _safeUpdate(isLandscape, val);
   void setCompleted(bool val) => _safeUpdate(isCompleted, val);
+  void setDuration(Duration val) => _safeUpdate(duration, val);
 
   void _safeUpdate<T>(ValueNotifier<T> notifier, T val) {
     if (notifier.value == val) return;
@@ -76,8 +80,11 @@ class ReelsPlayerSlot {
       if (hasFirstFrame.value) return;
 
       final pos = player.state.position;
-      // Truly ready when position advanced
-      if (pos > Duration.zero) {
+      final isBufferingNow = player.state.buffering;
+      final w = player.state.width ?? 0;
+
+      // Frame is ready if playback clock advanced OR (dimensions decoded and not actively buffering)
+      if (pos > Duration.zero || (w > 0 && !isBufferingNow)) {
         setHasFirstFrame(true);
         setBuffering(false);
       }
@@ -85,25 +92,54 @@ class ReelsPlayerSlot {
 
     void checkCompletion(bool fromCompletedStream) {
       final pos = player.state.position;
-      final dur = player.state.duration;
+      final dur = player.state.duration > Duration.zero
+          ? player.state.duration
+          : duration.value;
 
       // Genuine completion check:
-      // Video must have valid duration (> 3 seconds), must have rendered first frame,
-      // and position must genuinely be near the end (within 500ms of duration).
-      // This strictly prevents iOS VideoToolbox premature EOF events on initial chunk load/seek.
-      if (dur > const Duration(seconds: 3) &&
-          hasFirstFrame.value &&
-          pos >= dur - const Duration(milliseconds: 500)) {
+      // Spurious premature EOF events (from iOS VideoToolbox during initial chunk load / seek)
+      // only happen before the first frame renders or when position is still at the very start (< 1 second).
+      final bool isSpuriousStartup =
+          !hasFirstFrame.value ||
+          (pos < const Duration(seconds: 1) &&
+              dur > const Duration(seconds: 3));
+
+      // If video has progressed past startup and completed event fired:
+      final bool isGenuineCompletion =
+          !isSpuriousStartup &&
+          (pos > Duration.zero) &&
+          (dur <= Duration.zero ||
+              pos >= dur - const Duration(seconds: 2) ||
+              (dur.inMilliseconds > 3000 &&
+                  pos.inMilliseconds >= (dur.inMilliseconds * 0.85)));
+
+      if (isGenuineCompletion) {
         setCompleted(true);
-      } else {
-        // Spurious completed event from iOS VideoToolbox/demuxer during startup/chunk transition:
-        // Position is NOT genuinely at the end. Auto-resume immediately!
+        setPlaying(false);
+        setBuffering(false);
+        try {
+          player.pause().catchError((_) {});
+        } catch (_) {}
+      } else if (isSpuriousStartup) {
+        // Spurious completed event from iOS VideoToolbox/demuxer during initial startup/chunk transition:
+        // Auto-resume if active!
         setCompleted(false);
         if (ReelsVideoControllerPool.instance.activeProductIndex ==
                 currentItemIndex &&
             !ReelsVideoControllerPool.instance.isGloballyPaused) {
           try {
             player.play().catchError((_) {});
+          } catch (_) {}
+        }
+      } else {
+        // Position has advanced but didn't meet strict 85% threshold.
+        // Still treat as completed if pos has played for at least 3 seconds and stream reported completed:
+        if (pos >= const Duration(seconds: 3)) {
+          setCompleted(true);
+          setPlaying(false);
+          setBuffering(false);
+          try {
+            player.pause().catchError((_) {});
           } catch (_) {}
         }
       }
@@ -113,7 +149,15 @@ class ReelsPlayerSlot {
       player.stream.playing.listen((p) {
         setPlaying(p);
         if (p) {
-          setCompleted(false);
+          final pos = player.state.position;
+          final dur = player.state.duration;
+          final isAtEnd =
+              isCompleted.value &&
+              dur > Duration.zero &&
+              pos >= dur - const Duration(milliseconds: 1500);
+          if (!isAtEnd) {
+            setCompleted(false);
+          }
           checkFirstFrameReady();
         }
       }),
@@ -133,6 +177,13 @@ class ReelsPlayerSlot {
         if (b &&
             hasFirstFrame.value &&
             player.state.position < const Duration(milliseconds: 400)) {
+          return;
+        }
+        // If player is actively rendering and playing with position > 0,
+        // ignore demuxer background chunk buffering events so spinner doesn't falsely show
+        if (b &&
+            player.state.playing &&
+            player.state.position > Duration.zero) {
           return;
         }
         setBuffering(b);
@@ -157,16 +208,20 @@ class ReelsPlayerSlot {
     _subscriptions.add(
       player.stream.videoParams.listen((params) {
         if (params.w != null && params.w! > 0) {
-          checkFirstFrameReady();
           updateDimensions(params.w, params.h);
+          if (!player.state.buffering) {
+            checkFirstFrameReady();
+          }
         }
       }),
     );
     _subscriptions.add(
       player.stream.width.listen((w) {
         if (w != null && w > 0) {
-          checkFirstFrameReady();
           updateDimensions(w, player.state.height);
+          if (!player.state.buffering) {
+            checkFirstFrameReady();
+          }
         }
       }),
     );
@@ -174,9 +229,19 @@ class ReelsPlayerSlot {
       player.stream.position.listen((pos) {
         if (pos > Duration.zero) {
           checkFirstFrameReady();
+          if (isBuffering.value && player.state.playing) {
+            setBuffering(false);
+          }
         }
         // Note: NEVER call checkCompletion from position.listen!
         // Completion must solely be signaled by player.stream.completed.
+      }),
+    );
+    _subscriptions.add(
+      player.stream.duration.listen((dur) {
+        if (dur > Duration.zero) {
+          setDuration(dur);
+        }
       }),
     );
     videoController.waitUntilFirstFrameRendered
@@ -218,6 +283,7 @@ class ReelsPlayerSlot {
     setError(null);
     setIsLandscape(false);
     setCompleted(false);
+    setDuration(Duration.zero);
   }
 
   void dispose() {
@@ -234,6 +300,7 @@ class ReelsPlayerSlot {
     hasFirstFrame.dispose();
     error.dispose();
     isCompleted.dispose();
+    duration.dispose();
   }
 }
 
@@ -276,7 +343,10 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     for (int i = 0; i < poolSize; i++) {
       final player = Player(
         configuration: const PlayerConfiguration(
-          bufferSize: 2 * 1024 * 1024, // 2MB lightweight buffer
+          bufferSize:
+              32 *
+              1024 *
+              1024, // 32MB buffer for continuous smooth streaming of any length video
           logLevel: MPVLogLevel.warn,
         ),
       );
@@ -288,7 +358,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         ),
       );
 
-      _applyMpvProperties(player, isAudioEnabled: false);
+      _applyMpvProperties(player);
 
       try {
         player.setPlaylistMode(PlaylistMode.none);
@@ -301,10 +371,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     }
   }
 
-  Future<void> _applyMpvProperties(
-    Player player, {
-    bool isAudioEnabled = false,
-  }) async {
+  Future<void> _applyMpvProperties(Player player) async {
     try {
       final platform = player.platform;
       if (platform == null) return;
@@ -314,19 +381,23 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         // Auto adaptive bitrate: dynamically adjusts quality based on network throughput
         p.setProperty('hls-bitrate', 'auto'),
         p.setProperty('cache', 'yes'),
-        p.setProperty('cache-secs', '15'),
-        p.setProperty('demuxer-readahead-secs', '8'),
+        p.setProperty('cache-secs', '45'),
+        p.setProperty('cache-pause', 'no'),
+        p.setProperty('cache-pause-wait', '0'),
+        p.setProperty('cache-pause-initial', 'no'),
+        p.setProperty('demuxer-lavf-analyzeduration', '0'),
+        p.setProperty('demuxer-lavf-probesize', '32768'),
+        p.setProperty('force-seekable', 'yes'),
+        p.setProperty('demuxer-readahead-secs', '30'),
         p.setProperty('demuxer-max-bytes', '32MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
-        p.setProperty('demuxer-max-back-bytes', '25MiB'),
+        p.setProperty('demuxer-max-back-bytes', '20MiB'),
         // loop-file: no ensures completed event fires when video reaches end so replay icon appears
         p.setProperty('loop-file', 'no'),
         p.setProperty('network-timeout', '15'),
         p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
         p.setProperty('audio-stream-silence', 'yes'),
         p.setProperty('ao-null-fallback', 'yes'),
-        // Disable audio track on background/idle slots to prevent AVAudioSession conflict on iOS
-        p.setProperty('aid', isAudioEnabled ? 'auto' : 'no'),
       ]);
     } catch (_) {}
   }
@@ -374,23 +445,18 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     _activeUrl = url;
     _isGloballyPaused = false;
 
-    // Enable audio on active slot
-    try {
-      (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
-    } catch (_) {}
-
-    // Pause other slots and disable audio
-    for (int i = 1; i < _slots.length; i++) {
-      try {
-        (slot.player.platform as dynamic)?.setProperty('aid', 'no');
-        _slots[i].player.pause();
-      } catch (_) {}
-    }
-
     // Unmute for full screen reels
     try {
       slot.player.setVolume(_isMuted ? 0.0 : 100.0);
     } catch (_) {}
+
+    // Pause other slots and mute them
+    for (int i = 1; i < _slots.length; i++) {
+      try {
+        _slots[i].player.setVolume(0.0);
+        _slots[i].player.pause();
+      } catch (_) {}
+    }
 
     return slot;
   }
@@ -438,29 +504,26 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     } else {
       // Slot already has this media - restart from beginning like Instagram/TikTok
       activeSlot.setCompleted(false);
-      try {
-        (activeSlot.player.platform as dynamic)?.setProperty('aid', 'auto');
-      } catch (_) {}
       activeSlot.player.setVolume(_isMuted ? 0.0 : 100.0);
       try {
         if (initialPosition != null && initialPosition > Duration.zero) {
           activeSlot.player.seek(initialPosition).catchError((_) {});
-        } else if (activeSlot.player.state.position >
-            const Duration(milliseconds: 300)) {
+        } else if (activeSlot.isCompleted.value ||
+            activeSlot.player.state.position > Duration.zero) {
           activeSlot.player.seek(Duration.zero).catchError((_) {});
         }
         activeSlot.player.play().catchError((_) {});
       } catch (_) {}
     }
-    // hello heldof jsdlkfjls fsajfls
-    // 3. Pause all other slots and rewind them so returning starts from beginning
+
+    // 3. Pause all other slots, mute them, and rewind to 0 for instant fresh replay
     for (final slot in _slots) {
       if (slot != activeSlot) {
         try {
-          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
+          slot.player.setVolume(0.0);
           slot.setCompleted(false);
           slot.player.pause().catchError((_) {});
-          if (slot.player.state.position > const Duration(milliseconds: 300)) {
+          if (slot.player.state.position > Duration.zero) {
             slot.player.seek(Duration.zero).catchError((_) {});
           }
         } catch (_) {}
@@ -487,9 +550,9 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     String? secondPrevUrl,
   }) {
     _prewarmTimer?.cancel();
-    // Allow the active video 800ms of dedicated network & CPU bandwidth
-    // to render and buffer its first chunks cleanly before prewarming background candidates.
-    _prewarmTimer = Timer(const Duration(milliseconds: 800), () {
+    // Allow the active video 250ms of dedicated network & CPU bandwidth
+    // before prewarming adjacent candidates.
+    _prewarmTimer = Timer(const Duration(milliseconds: 250), () {
       if (!_initialized || _activeProductIndex != currentItemIndex) return;
       _prewarmSurroundingVideos(
         currentItemIndex: currentItemIndex,
@@ -500,7 +563,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     });
   }
 
-  /// Pre-streams next video into idle slot so it is ready at frame 0.
+  /// Pre-streams BOTH next and previous videos into idle slots so they are ready at frame 0.
   /// Preserves the ideal [previous, active, next] distribution across the 3 pool slots.
   void _prewarmSurroundingVideos({
     required int currentItemIndex,
@@ -508,35 +571,72 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     required String? prevUrl,
     String? secondPrevUrl,
   }) {
+    final Map<int, String> wantedTargets = {};
+
+    // 1. Next target
     final int nextIndex = currentItemIndex + 1;
     final String? nextUrl = (nextUrls != null && nextUrls.isNotEmpty)
         ? nextUrls.first.trim()
         : null;
-
     if (nextUrl != null && nextUrl.isNotEmpty) {
+      wantedTargets[nextIndex] = nextUrl;
+    }
+
+    // 2. Previous target
+    final int prevIndex = currentItemIndex - 1;
+    final String? pUrl =
+        (prevUrl != null && prevUrl.trim().isNotEmpty && currentItemIndex > 0)
+        ? prevUrl.trim()
+        : null;
+    if (pUrl != null && pUrl.isNotEmpty) {
+      wantedTargets[prevIndex] = pUrl;
+    } else if (nextUrls != null && nextUrls.length > 1) {
+      final secondNextUrl = nextUrls[1].trim();
+      if (secondNextUrl.isNotEmpty) {
+        wantedTargets[currentItemIndex + 2] = secondNextUrl;
+      }
+    }
+
+    for (final entry in wantedTargets.entries) {
+      final targetIdx = entry.key;
+      final targetUrl = entry.value;
+
       final alreadyLoaded = _slots.any(
-        (s) => s.currentUrl == nextUrl && s.currentItemIndex == nextIndex,
+        (s) => s.currentUrl == targetUrl && s.currentItemIndex == targetIdx,
       );
-      if (!alreadyLoaded) {
-        ReelsPlayerSlot? candidate;
+      if (alreadyLoaded) continue;
+
+      // Find candidate slot that is NOT active and NOT another wanted target
+      ReelsPlayerSlot? candidate;
+      for (final slot in _slots) {
+        if (slot.currentItemIndex != currentItemIndex &&
+            slot.currentUrl == null) {
+          candidate = slot;
+          break;
+        }
+      }
+      if (candidate == null) {
         for (final slot in _slots) {
-          if (slot.currentItemIndex != currentItemIndex &&
-              slot.currentUrl == null) {
+          if (slot.currentItemIndex == currentItemIndex) continue;
+          final isOtherWanted = wantedTargets.keys.any(
+            (k) => k != targetIdx && slot.currentItemIndex == k,
+          );
+          if (isOtherWanted) continue;
+          candidate = slot;
+          break;
+        }
+      }
+      if (candidate == null) {
+        for (final slot in _slots) {
+          if (slot.currentItemIndex != currentItemIndex) {
             candidate = slot;
             break;
           }
         }
-        if (candidate == null) {
-          for (final slot in _slots) {
-            if (slot.currentItemIndex != currentItemIndex) {
-              candidate = slot;
-              break;
-            }
-          }
-        }
-        if (candidate != null) {
-          _loadMediaIntoSlot(candidate, nextIndex, nextUrl, autoPlay: false);
-        }
+      }
+
+      if (candidate != null) {
+        _loadMediaIntoSlot(candidate, targetIdx, targetUrl, autoPlay: false);
       }
     }
   }
@@ -575,16 +675,13 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     if (slot.currentUrl == url && slot.currentItemIndex == itemIndex) {
       slot.setCompleted(false);
       if (autoPlay && !slot.player.state.playing) {
-        try {
-          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
-        } catch (_) {}
         slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         if (initialPosition != null && initialPosition > Duration.zero) {
           try {
             slot.player.seek(initialPosition).catchError((_) {});
           } catch (_) {}
-        } else if (slot.player.state.position >
-            const Duration(milliseconds: 300)) {
+        } else if (slot.isCompleted.value ||
+            slot.player.state.position > Duration.zero) {
           try {
             slot.player.seek(Duration.zero).catchError((_) {});
           } catch (_) {}
@@ -594,9 +691,9 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         } catch (_) {}
       } else if (!autoPlay) {
         try {
-          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
+          slot.player.setVolume(0.0);
           slot.player.pause().catchError((_) {});
-          if (slot.player.state.position > const Duration(milliseconds: 300)) {
+          if (slot.player.state.position > Duration.zero) {
             slot.player.seek(Duration.zero).catchError((_) {});
           }
         } catch (_) {}
@@ -607,7 +704,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     slot.currentItemIndex = itemIndex;
     slot.currentUrl = url;
     slot.setHasFirstFrame(false);
-    slot.setBuffering(true);
+    slot.setBuffering(autoPlay);
     slot.setError(null);
 
     final cachedPath = VideoCacheManager.instance.getCachedFilePath(url);
@@ -615,14 +712,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
 
     try {
       if (autoPlay) {
-        try {
-          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
-        } catch (_) {}
         slot.player.setVolume(_isMuted ? 0.0 : 100.0);
       } else {
-        try {
-          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
-        } catch (_) {}
         slot.player.setVolume(0.0);
       }
 

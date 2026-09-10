@@ -66,7 +66,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _precacheAround(widget.initialProductIndex);
+        _schedulePrecacheAround(widget.initialProductIndex);
       }
     });
   }
@@ -179,23 +179,32 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
             precacheImage(
               NetworkImage(resolvedThumb),
               context,
+              onError: (_, _) {},
             ).catchError((_) {});
           }
         }
       }
     }
 
-    // 4. Batch-enqueue priority downloads (Immediate next and last product at queue head)
-    if (priorityVideos.isNotEmpty) {
-      VideoCacheManager.instance.preCachePriorityUrls(priorityVideos);
+    // 4. Batch-enqueue priority downloads (Only the immediate next video to preserve 100% bandwidth for active video)
+    final nextIdx = index + 1;
+    if (nextIdx < total) {
+      final p = widget.allProducts[nextIdx];
+      final vUrl = p.effectiveVideoUrl;
+      if (vUrl.isNotEmpty) {
+        final clean = _resolveUrl(vUrl);
+        if (clean.isNotEmpty) {
+          VideoCacheManager.instance.preCachePriority(clean);
+        }
+      }
     }
   }
 
   void _schedulePrecacheAround(int index) {
     _precacheTimer?.cancel();
-    // Allow the active video 1500ms of dedicated network bandwidth to stream smoothly
+    // Allow the active video 3000ms of dedicated network bandwidth to stream smoothly
     // before starting heavy background precaching downloads.
-    _precacheTimer = Timer(const Duration(milliseconds: 1500), () {
+    _precacheTimer = Timer(const Duration(milliseconds: 3000), () {
       if (!mounted || _currentPageNotifier.value != index) return;
       _precacheAround(index);
     });
