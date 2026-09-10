@@ -41,7 +41,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   Timer? _stallWatchdogTimer;
   Duration _lastStallCheckPosition = Duration.zero;
   int _stallCount = 0;
-  int _unfreezeAttempts = 0;
 
   // Global memoized aspect ratios by URL (prevents layout jump on swiping)
   static final Map<String, bool> _landscapeCache = {};
@@ -63,10 +62,9 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
   void _startStallWatchdog(ReelsPlayerSlot slot) {
     _stallWatchdogTimer?.cancel();
     _stallCount = 0;
-    _unfreezeAttempts = 0;
     _lastStallCheckPosition = slot.player.state.position;
 
-    _stallWatchdogTimer = Timer.periodic(const Duration(milliseconds: 1000), (
+    _stallWatchdogTimer = Timer.periodic(const Duration(milliseconds: 750), (
       timer,
     ) {
       if (!mounted ||
@@ -85,7 +83,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       final hasRendered = slot.hasFirstFrame.value;
 
       // 1. Completion detection:
-      // If position has reached within 1.5s of total duration, video has finished:
       final isNearEnd =
           dur > Duration.zero &&
           (currentPos >= dur - const Duration(milliseconds: 1500) ||
@@ -102,77 +99,39 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         return;
       }
 
-      // 2. Position tracking:
-      if (currentPos != _lastStallCheckPosition) {
-        // Video is progressing forward smoothly!
-        _stallCount = 0;
-        _unfreezeAttempts = 0;
-        _lastStallCheckPosition = currentPos;
-        if (slot.isBuffering.value) {
-          slot.setBuffering(false);
-        }
-        return;
-      }
-
-      // Position has NOT advanced:
-      if (currentPos == _lastStallCheckPosition) {
-        _stallCount++;
-
-        // Case A: Startup stall (0:00:00 or < 1s, hasn't started rendering yet):
-        // Only on initial startup does a pause/play kick safely jumpstart the native decoder pipeline.
-        if (currentPos <= const Duration(seconds: 1) &&
-            !hasRendered &&
-            isPlayingState) {
-          if (_stallCount >= 3 && _unfreezeAttempts < 2) {
+      // 2. iOS VideoToolbox freeze unfreeze (from commit 96bb812):
+      // Only check for stall if the video has already rendered and claims to be playing while not buffering:
+      if (hasRendered && isPlayingState && !slot.isBuffering.value) {
+        if (currentPos == _lastStallCheckPosition &&
+            currentPos > Duration.zero) {
+          _stallCount++;
+          // Stalled for >= 1.5 seconds at the exact same position while supposedly playing:
+          if (_stallCount >= 2) {
             _stallCount = 0;
-            _unfreezeAttempts++;
             debugPrint(
-              '⚡️ [ProductVideoItem] Startup stall at $currentPos. Unfreezing (attempt $_unfreezeAttempts/2)...',
+              '⚡️ [ProductVideoItem] iOS playback freeze detected at $currentPos. Auto-unfreezing...',
             );
+            // Quick pause then play kick to unfreeze native libmpv/VideoToolbox pipeline
             try {
               slot.player
                   .pause()
                   .then((_) {
                     if (mounted &&
                         widget.isActive &&
-                        !_isManuallyPaused.value &&
-                        !slot.isCompleted.value) {
+                        !_isManuallyPaused.value) {
                       slot.player.play().catchError((_) {});
                     }
                   })
                   .catchError((_) {});
             } catch (_) {}
           }
-          return;
+        } else {
+          _stallCount = 0;
+          _lastStallCheckPosition = currentPos;
         }
-
-        // Case B: Mid-stream pause (currentPos > 1s):
-        // Mid-stream, the video is simply waiting for network buffer!
-        // DO NOT call pause() and play() mid-stream because it aborts the active HTTP download!
-        if (currentPos > const Duration(seconds: 1) &&
-            isPlayingState &&
-            !slot.isCompleted.value) {
-          // If paused for >= 3 seconds without position advancing, show buffering spinner to the user:
-          if (_stallCount >= 3 && !slot.isBuffering.value) {
-            slot.setBuffering(true);
-          }
-
-          // If paused for >= 10 consecutive seconds without moving:
-          if (_stallCount >= 10) {
-            _stallCount = 0;
-            // If duration was unknown and it played for substantial time, conclude it reached EOF:
-            if (dur <= Duration.zero &&
-                currentPos >= const Duration(seconds: 4)) {
-              slot.setCompleted(true);
-              slot.setPlaying(false);
-              slot.setBuffering(false);
-              try {
-                slot.player.pause().catchError((_) {});
-              } catch (_) {}
-              _stopStallWatchdog();
-            }
-          }
-        }
+      } else {
+        _stallCount = 0;
+        _lastStallCheckPosition = currentPos;
       }
     });
   }
@@ -181,7 +140,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     _stallWatchdogTimer?.cancel();
     _stallWatchdogTimer = null;
     _stallCount = 0;
-    _unfreezeAttempts = 0;
   }
 
   void _attachSlotListener(ReelsPlayerSlot? newSlot) {
@@ -415,7 +373,27 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     } else if (oldWidget.isActive != widget.isActive) {
       _isManuallyPaused.value = false;
       if (widget.isActive) {
-        _activateSlot();
+        final itemIdx = widget.itemIndex ?? widget.productId;
+        _slot = ReelsVideoControllerPool.instance.getSlotForIndex(
+          itemIdx,
+          _cachedVideoUrl,
+        );
+        if (_slot == null) {
+          _activateSlot();
+        } else {
+          _attachSlotListener(_slot);
+          _slot!.setCompleted(false);
+          if (_slot!.player.state.position >
+              const Duration(milliseconds: 300)) {
+            _slot!.player.seek(Duration.zero).catchError((_) {});
+          }
+          if (!_slot!.player.state.playing) {
+            try {
+              _slot!.player.play().catchError((_) {});
+            } catch (_) {}
+          }
+          _startStallWatchdog(_slot!);
+        }
         setState(() {});
       } else {
         _stopStallWatchdog();
@@ -423,7 +401,9 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
         try {
           _slot?.setCompleted(false);
           _slot?.player.pause().catchError((_) {});
-          if (_slot != null && _slot!.player.state.position > Duration.zero) {
+          if (_slot != null &&
+              _slot!.player.state.position >
+                  const Duration(milliseconds: 300)) {
             _slot?.player.seek(Duration.zero).catchError((_) {});
           }
         } catch (_) {}

@@ -79,7 +79,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       ReelsVideoControllerPool.instance.pauseAll();
     } else if (state == AppLifecycleState.resumed) {
       final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
-      if (isCurrentRoute && !_isScreenPaused) {
+      if (isCurrentRoute && !isExpanded) {
+        if (mounted) setState(() => _isScreenPaused = false);
         ReelsVideoControllerPool.instance.resume();
       }
     }

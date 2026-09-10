@@ -179,13 +179,6 @@ class ReelsPlayerSlot {
             player.state.position < const Duration(milliseconds: 400)) {
           return;
         }
-        // If player is actively rendering and playing with position > 0,
-        // ignore demuxer background chunk buffering events so spinner doesn't falsely show
-        if (b &&
-            player.state.playing &&
-            player.state.position > Duration.zero) {
-          return;
-        }
         setBuffering(b);
         if (!b) {
           checkFirstFrameReady();
@@ -358,7 +351,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         ),
       );
 
-      _applyMpvProperties(player);
+      _applyMpvProperties(player, isAudioEnabled: false);
 
       try {
         player.setPlaylistMode(PlaylistMode.none);
@@ -371,7 +364,10 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     }
   }
 
-  Future<void> _applyMpvProperties(Player player) async {
+  Future<void> _applyMpvProperties(
+    Player player, {
+    bool isAudioEnabled = false,
+  }) async {
     try {
       final platform = player.platform;
       if (platform == null) return;
@@ -381,14 +377,14 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         // Auto adaptive bitrate: dynamically adjusts quality based on network throughput
         p.setProperty('hls-bitrate', 'auto'),
         p.setProperty('cache', 'yes'),
-        p.setProperty('cache-secs', '45'),
+        p.setProperty('cache-secs', '15'),
         p.setProperty('cache-pause', 'no'),
         p.setProperty('cache-pause-wait', '0'),
         p.setProperty('cache-pause-initial', 'no'),
         p.setProperty('demuxer-lavf-analyzeduration', '0'),
         p.setProperty('demuxer-lavf-probesize', '32768'),
         p.setProperty('force-seekable', 'yes'),
-        p.setProperty('demuxer-readahead-secs', '30'),
+        p.setProperty('demuxer-readahead-secs', '8'),
         p.setProperty('demuxer-max-bytes', '32MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
         p.setProperty('demuxer-max-back-bytes', '20MiB'),
@@ -398,6 +394,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
         p.setProperty('audio-stream-silence', 'yes'),
         p.setProperty('ao-null-fallback', 'yes'),
+        // Disable audio track on background/idle slots to prevent AVAudioSession conflict on iOS
+        p.setProperty('aid', isAudioEnabled ? 'auto' : 'no'),
       ]);
     } catch (_) {}
   }
@@ -504,12 +502,16 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     } else {
       // Slot already has this media - restart from beginning like Instagram/TikTok
       activeSlot.setCompleted(false);
+      try {
+        (activeSlot.player.platform as dynamic)?.setProperty('aid', 'auto');
+      } catch (_) {}
       activeSlot.player.setVolume(_isMuted ? 0.0 : 100.0);
       try {
         if (initialPosition != null && initialPosition > Duration.zero) {
           activeSlot.player.seek(initialPosition).catchError((_) {});
         } else if (activeSlot.isCompleted.value ||
-            activeSlot.player.state.position > Duration.zero) {
+            activeSlot.player.state.position >
+                const Duration(milliseconds: 300)) {
           activeSlot.player.seek(Duration.zero).catchError((_) {});
         }
         activeSlot.player.play().catchError((_) {});
@@ -520,10 +522,11 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     for (final slot in _slots) {
       if (slot != activeSlot) {
         try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
           slot.player.setVolume(0.0);
           slot.setCompleted(false);
           slot.player.pause().catchError((_) {});
-          if (slot.player.state.position > Duration.zero) {
+          if (slot.player.state.position > const Duration(milliseconds: 300)) {
             slot.player.seek(Duration.zero).catchError((_) {});
           }
         } catch (_) {}
@@ -550,9 +553,9 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     String? secondPrevUrl,
   }) {
     _prewarmTimer?.cancel();
-    // Allow the active video 250ms of dedicated network & CPU bandwidth
-    // before prewarming adjacent candidates.
-    _prewarmTimer = Timer(const Duration(milliseconds: 250), () {
+    // Allow the active video 800ms of dedicated network & CPU bandwidth
+    // to render and buffer its first chunks cleanly before prewarming background candidates.
+    _prewarmTimer = Timer(const Duration(milliseconds: 800), () {
       if (!_initialized || _activeProductIndex != currentItemIndex) return;
       _prewarmSurroundingVideos(
         currentItemIndex: currentItemIndex,
@@ -675,13 +678,16 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     if (slot.currentUrl == url && slot.currentItemIndex == itemIndex) {
       slot.setCompleted(false);
       if (autoPlay && !slot.player.state.playing) {
+        try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
+        } catch (_) {}
         slot.player.setVolume(_isMuted ? 0.0 : 100.0);
         if (initialPosition != null && initialPosition > Duration.zero) {
           try {
             slot.player.seek(initialPosition).catchError((_) {});
           } catch (_) {}
         } else if (slot.isCompleted.value ||
-            slot.player.state.position > Duration.zero) {
+            slot.player.state.position > const Duration(milliseconds: 300)) {
           try {
             slot.player.seek(Duration.zero).catchError((_) {});
           } catch (_) {}
@@ -691,12 +697,13 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         } catch (_) {}
       } else if (!autoPlay) {
         try {
-          slot.player.setVolume(0.0);
-          slot.player.pause().catchError((_) {});
-          if (slot.player.state.position > Duration.zero) {
-            slot.player.seek(Duration.zero).catchError((_) {});
-          }
+          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
         } catch (_) {}
+        slot.player.setVolume(0.0);
+        slot.player.pause().catchError((_) {});
+        if (slot.player.state.position > const Duration(milliseconds: 300)) {
+          slot.player.seek(Duration.zero).catchError((_) {});
+        }
       }
       return;
     }
@@ -712,8 +719,14 @@ class ReelsVideoControllerPool extends ChangeNotifier {
 
     try {
       if (autoPlay) {
+        try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'auto');
+        } catch (_) {}
         slot.player.setVolume(_isMuted ? 0.0 : 100.0);
       } else {
+        try {
+          (slot.player.platform as dynamic)?.setProperty('aid', 'no');
+        } catch (_) {}
         slot.player.setVolume(0.0);
       }
 
