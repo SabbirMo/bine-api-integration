@@ -40,6 +40,7 @@ class VideoCacheManager {
   // In-flight HLS prefetch tracking to prevent duplicate concurrent prefetching
   final Set<String> _prefetchedHlsUrls = {};
   final Set<String> _prefetchingHlsUrls = {};
+  final Map<String, CancelToken> _hlsCancelTokens = {};
 
   // In-memory cache maps: url -> verified local absolute file path
   final Map<String, String> _memoryPathCache = {};
@@ -271,13 +272,43 @@ class VideoCacheManager {
     _processQueue();
   }
 
-  /// Pre-fetches the master .m3u8 manifest, child rendition playlist, init.mp4, and first 2-3 segments
+  /// Cancels any active in-flight HLS prefetch for URLs not in [keepUrls].
+  /// Called when user swipes to immediately free up 100% of network bandwidth for the active player.
+  void cancelHlsPrefetchExcept(List<String> keepUrls) {
+    final keepSet = <String>{};
+    for (final raw in keepUrls) {
+      if (raw.trim().isEmpty) continue;
+      String hls = raw.trim();
+      if (hls.contains('cloudflarestream.com')) {
+        final cfId = extractCloudflareId(hls);
+        if (cfId != null && cfId.isNotEmpty) {
+          hls =
+              'https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/manifest/video.m3u8';
+        }
+      }
+      keepSet.add(hls);
+    }
+
+    final toCancel = _hlsCancelTokens.keys
+        .where((url) => !keepSet.contains(url))
+        .toList();
+
+    for (final url in toCancel) {
+      try {
+        _hlsCancelTokens[url]?.cancel('Stale HLS prefetch cancelled on user swipe');
+      } catch (_) {}
+      _hlsCancelTokens.remove(url);
+      _prefetchingHlsUrls.remove(url);
+    }
+  }
+
+  /// Pre-fetches the master .m3u8 manifest, child rendition playlist, init.mp4, and first 1-2 segments
   /// for HLS streams (specifically Cloudflare Stream).
   /// This primes Cloudflare's Edge node (<20ms response for player) and warms network buffers
-  /// with negligible bandwidth (~300KB vs 50MB full MP4 download) preventing receive timeouts.
+  /// with negligible bandwidth (~250-350KB vs 1MB+ for 3 segments) preventing receive timeouts.
   Future<void> preFetchHlsSegments(
     String rawUrl, {
-    int segmentCount = 3,
+    int segmentCount = 1,
   }) async {
     if (rawUrl.trim().isEmpty || !rawUrl.startsWith('http')) return;
 
@@ -297,6 +328,8 @@ class VideoCacheManager {
       return;
     }
     _prefetchingHlsUrls.add(hlsUrl);
+    final cancelToken = CancelToken();
+    _hlsCancelTokens[hlsUrl] = cancelToken;
 
     try {
       final stopwatch = Stopwatch()..start();
@@ -304,12 +337,14 @@ class VideoCacheManager {
       // 1. Fetch Master Playlist (sets Edge Cache HIT on Cloudflare)
       final masterRes = await _dio.get<String>(
         hlsUrl,
+        cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.plain,
-          receiveTimeout: const Duration(seconds: 8),
-          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 6),
+          sendTimeout: const Duration(seconds: 4),
         ),
       );
+      if (cancelToken.isCancelled) return;
       final masterBody = masterRes.data;
       if (masterBody == null || masterBody.isEmpty) return;
 
@@ -353,19 +388,21 @@ class VideoCacheManager {
       }
 
       final chosenChild = targetChildPath ?? lowestChildPath;
-      if (chosenChild == null) return;
+      if (chosenChild == null || cancelToken.isCancelled) return;
 
       final childUrl = masterUri.resolve(chosenChild).toString();
 
       // 3. Fetch Child Rendition Playlist
       final childRes = await _dio.get<String>(
         childUrl,
+        cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.plain,
-          receiveTimeout: const Duration(seconds: 8),
-          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 6),
+          sendTimeout: const Duration(seconds: 4),
         ),
       );
+      if (cancelToken.isCancelled) return;
       final childBody = childRes.data;
       if (childBody == null || childBody.isEmpty) return;
 
@@ -392,83 +429,102 @@ class VideoCacheManager {
 
       int totalBytes = masterBody.length + childBody.length;
 
-      // 5. Fetch Audio Manifest if distinct
-      if (audioPlaylistPath != null) {
-        try {
-          final audioUrl = masterUri.resolve(audioPlaylistPath).toString();
-          final audioRes = await _dio.get<String>(
-            audioUrl,
-            options: Options(
-              responseType: ResponseType.plain,
-              receiveTimeout: const Duration(seconds: 5),
-            ),
-          );
-          if (audioRes.data != null) {
-            totalBytes += audioRes.data!.length;
-            final audioLines = const LineSplitter().convert(audioRes.data!);
-            for (final al in audioLines) {
-              final t = al.trim();
-              if (t.startsWith('#EXT-X-MAP:URI="')) {
-                final endIdx = t.indexOf('"', 16);
-                if (endIdx != -1) {
-                  final aInit = Uri.parse(
-                    audioUrl,
-                  ).resolve(t.substring(16, endIdx)).toString();
-                  final aInitRes = await _dio.get<ResponseBody>(
-                    aInit,
-                    options: Options(
-                      responseType: ResponseType.stream,
-                      receiveTimeout: const Duration(seconds: 5),
-                    ),
-                  );
-                  if (aInitRes.data != null) {
-                    await for (final chunk in aInitRes.data!.stream) {
-                      totalBytes += chunk.length;
+      // 5 & 6. Concurrently fetch Audio Manifest/Init and Video Init segment (fMP4) via Future.wait
+      await Future.wait([
+        // Audio Manifest and Init
+        if (audioPlaylistPath != null)
+          (() async {
+            try {
+              if (cancelToken.isCancelled) return;
+              final audioUrl = masterUri.resolve(audioPlaylistPath!).toString();
+              final audioRes = await _dio.get<String>(
+                audioUrl,
+                cancelToken: cancelToken,
+                options: Options(
+                  responseType: ResponseType.plain,
+                  receiveTimeout: const Duration(seconds: 5),
+                ),
+              );
+              if (audioRes.data != null && !cancelToken.isCancelled) {
+                totalBytes += audioRes.data!.length;
+                final audioLines = const LineSplitter().convert(audioRes.data!);
+                for (final al in audioLines) {
+                  final t = al.trim();
+                  if (t.startsWith('#EXT-X-MAP:URI="')) {
+                    final endIdx = t.indexOf('"', 16);
+                    if (endIdx != -1) {
+                      final aInit = Uri.parse(
+                        audioUrl,
+                      ).resolve(t.substring(16, endIdx)).toString();
+                      final aInitRes = await _dio.get<ResponseBody>(
+                        aInit,
+                        cancelToken: cancelToken,
+                        options: Options(
+                          responseType: ResponseType.stream,
+                          receiveTimeout: const Duration(seconds: 5),
+                        ),
+                      );
+                      if (aInitRes.data != null) {
+                        await for (final chunk in aInitRes.data!.stream) {
+                          if (cancelToken.isCancelled) break;
+                          totalBytes += chunk.length;
+                        }
+                      }
                     }
+                    break;
                   }
                 }
-                break;
               }
-            }
-          }
-        } catch (_) {}
-      }
+            } catch (_) {}
+          })(),
 
-      // 6. Fetch Video Init segment (fMP4)
-      if (initSegmentUrl != null) {
-        try {
-          final initRes = await _dio.get<ResponseBody>(
-            initSegmentUrl,
-            options: Options(
-              responseType: ResponseType.stream,
-              receiveTimeout: const Duration(seconds: 8),
-            ),
-          );
-          if (initRes.data != null) {
-            await for (final chunk in initRes.data!.stream) {
-              totalBytes += chunk.length;
-            }
-          }
-        } catch (_) {}
-      }
+        // Video Init segment (fMP4)
+        if (initSegmentUrl != null)
+          (() async {
+            try {
+              if (cancelToken.isCancelled) return;
+              final initRes = await _dio.get<ResponseBody>(
+                initSegmentUrl!,
+                cancelToken: cancelToken,
+                options: Options(
+                  responseType: ResponseType.stream,
+                  receiveTimeout: const Duration(seconds: 6),
+                ),
+              );
+              if (initRes.data != null) {
+                await for (final chunk in initRes.data!.stream) {
+                  if (cancelToken.isCancelled) break;
+                  totalBytes += chunk.length;
+                }
+              }
+            } catch (_) {}
+          })(),
+      ]);
 
-      // 7. Fetch first 2-3 segments
+      if (cancelToken.isCancelled) return;
+
+      // 7. Fetch first media segments (segmentCount, default 1)
       for (final segUrl in segmentUrls) {
+        if (cancelToken.isCancelled) break;
         try {
           final segRes = await _dio.get<ResponseBody>(
             segUrl,
+            cancelToken: cancelToken,
             options: Options(
               responseType: ResponseType.stream,
-              receiveTimeout: const Duration(seconds: 8),
+              receiveTimeout: const Duration(seconds: 6),
             ),
           );
           if (segRes.data != null) {
             await for (final chunk in segRes.data!.stream) {
+              if (cancelToken.isCancelled) break;
               totalBytes += chunk.length;
             }
           }
         } catch (_) {}
       }
+
+      if (cancelToken.isCancelled) return;
 
       stopwatch.stop();
       final elapsedMs = stopwatch.elapsedMilliseconds;
@@ -481,11 +537,16 @@ class VideoCacheManager {
 
       _prefetchedHlsUrls.add(hlsUrl);
       debugPrint(
-        '⚡️ [Cloudflare Stream] Pre-fetched first 2-3s of next video -> $hlsUrl ($totalBytes bytes in ${elapsedMs}ms, CF-Cache: $cfCache, CF-RAY: $cfRay, ABR Tier: ${NetworkQualityEstimator.instance.currentTier.name})',
+        '⚡️ [Cloudflare Stream] Pre-fetched first ${segmentCount * 3}s of next video -> $hlsUrl ($totalBytes bytes in ${elapsedMs}ms, CF-Cache: $cfCache, CF-RAY: $cfRay, ABR Tier: ${NetworkQualityEstimator.instance.currentTier.name})',
       );
     } catch (e) {
+      if (e is DioException && e.type == DioExceptionType.cancel) {
+        // Cancelled cleanly when user swiped away - expected behavior
+        return;
+      }
       debugPrint('ℹ️ [VideoCacheManager] HLS pre-fetch error: $e');
     } finally {
+      _hlsCancelTokens.remove(hlsUrl);
       _prefetchingHlsUrls.remove(hlsUrl);
     }
   }
@@ -799,6 +860,11 @@ class VideoCacheManager {
         token.cancel('clearCache called');
       }
       _activeCancelTokens.clear();
+      for (final token in _hlsCancelTokens.values) {
+        token.cancel('clearCache called');
+      }
+      _hlsCancelTokens.clear();
+      _prefetchingHlsUrls.clear();
       _downloadQueue.clear();
       _downloadingUrls.clear();
       _inFlightCompleters.clear();

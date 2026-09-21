@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 import 'package:binetatour/providers/product_provider.dart';
@@ -120,19 +119,18 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
       final isPlayingState = slot.player.state.playing;
       final hasRendered = slot.hasFirstFrame.value;
 
-      // 1. Completion detection: only trigger if actually at the very end of video
+      // 1. Seamless auto-loop detection:
+      // When video reaches end, seamlessly loop back to start without pausing or showing any restart button
       final isNearEnd =
           dur > const Duration(seconds: 1) &&
-          (currentPos >= dur - const Duration(milliseconds: 600) ||
+          (currentPos >= dur - const Duration(milliseconds: 400) ||
               currentPos.inMilliseconds >= (dur.inMilliseconds * 0.98));
       if (isNearEnd) {
-        slot.setCompleted(true);
-        slot.setPlaying(false);
-        slot.setBuffering(false);
+        slot.setCompleted(false);
         try {
-          slot.player.pause().catchError((_) {});
+          slot.player.seek(Duration.zero).catchError((_) {});
+          slot.player.play().catchError((_) {});
         } catch (_) {}
-        _stopStallWatchdog();
         return;
       }
 
@@ -223,10 +221,12 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                 : newSlot.player.state.duration;
             final isNearEnd =
                 dur > const Duration(seconds: 1) &&
-                (pos >= dur - const Duration(milliseconds: 600) ||
+                (pos >= dur - const Duration(milliseconds: 400) ||
                     pos.inMilliseconds >= (dur.inMilliseconds * 0.98));
             if (isNearEnd) {
-              newSlot.setCompleted(true);
+              newSlot.setCompleted(false);
+              newSlot.player.seek(Duration.zero).catchError((_) {});
+              newSlot.player.play().catchError((_) {});
               return;
             }
 
@@ -543,52 +543,6 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
     super.dispose();
   }
 
-  bool _isReplaying = false;
-
-  Future<void> _replayVideo(ReelsPlayerSlot slot) async {
-    if (_isReplaying) return;
-    _isReplaying = true;
-    _stopStallWatchdog();
-
-    slot.setCompleted(false);
-    _isManuallyPaused.value = false;
-
-    try {
-      final isMuted = ReelsVideoControllerPool.instance.isMuted;
-      (slot.player.platform as dynamic)?.setProperty(
-        'aid',
-        isMuted ? 'no' : 'auto',
-      );
-      slot.player.setVolume(isMuted ? 0.0 : 100.0);
-    } catch (_) {}
-
-    try {
-      await slot.player.seek(Duration.zero);
-    } catch (_) {}
-
-    if (!mounted || !widget.isActive || _isManuallyPaused.value) {
-      _isReplaying = false;
-      return;
-    }
-
-    try {
-      await slot.player.play();
-    } catch (_) {
-      try {
-        final cleanUrl = MediaUrlResolver.resolveUrl(_cachedVideoUrl);
-        if (cleanUrl.isNotEmpty) {
-          await slot.player.open(Media(cleanUrl), play: true);
-        }
-      } catch (_) {}
-    }
-
-    _isReplaying = false;
-
-    if (mounted && widget.isActive && !_isManuallyPaused.value) {
-      _startStallWatchdog(slot);
-    }
-  }
-
   void _togglePlayPause(ReelsPlayerSlot slot) {
     if (slot.player.state.playing) {
       slot.player.pause().catchError((_) {});
@@ -624,11 +578,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           behavior: HitTestBehavior.opaque,
           onTap: () {
             if (slot != null) {
-              if (slot.isCompleted.value) {
-                _replayVideo(slot);
-              } else {
-                _togglePlayPause(slot);
-              }
+              _togglePlayPause(slot);
             }
           },
           child: ColoredBox(
@@ -731,33 +681,25 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                     },
                   ),
 
-                // 4. Play/Replay icon overlay — shown when user manually paused OR when video ends
+                // 4. Play icon overlay — shown ONLY when user manually paused (NO restart/replay icon)
                 if (slot != null)
                   ListenableBuilder(
                     listenable: Listenable.merge([
                       slot.isPlaying,
-                      slot.isCompleted,
                       _isManuallyPaused,
                     ]),
                     builder: (context, child) {
                       final isPlaying = slot.isPlaying.value;
-                      final isCompleted = slot.isCompleted.value;
                       final isManuallyPaused = _isManuallyPaused.value;
 
-                      // Never show during loading/buffering or when actively playing
-                      if (isPlaying || (!isManuallyPaused && !isCompleted)) {
+                      // Never show during loading/buffering, when actively playing, or when auto-looping
+                      if (isPlaying || !isManuallyPaused) {
                         return const SizedBox.shrink();
                       }
                       return Center(
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            if (isCompleted) {
-                              _replayVideo(slot);
-                            } else {
-                              _togglePlayPause(slot);
-                            }
-                          },
+                          onTap: () => _togglePlayPause(slot),
                           child: Padding(
                             padding: const EdgeInsets.all(24),
                             child: DecoratedBox(
@@ -765,9 +707,7 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
                                 child: Icon(
-                                  isCompleted
-                                      ? Icons.replay_rounded
-                                      : Icons.play_arrow_rounded,
+                                  Icons.play_arrow_rounded,
                                   color: Colors.white,
                                   size: 50,
                                 ),

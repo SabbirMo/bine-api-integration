@@ -93,47 +93,17 @@ class ReelsPlayerSlot {
     }
 
     void checkCompletion(bool fromCompletedStream) {
-      final pos = player.state.position;
-      final dur = player.state.duration > Duration.zero
-          ? player.state.duration
-          : duration.value;
-
-      // Genuine completion check:
-      // Spurious premature EOF events (from iOS VideoToolbox/demuxer during initial chunk load / seek)
-      // only happen before the first frame renders or when position is still at the very start (< 1 second).
-      final bool isSpuriousStartup =
-          !hasFirstFrame.value ||
-          (pos < const Duration(seconds: 1) &&
-              dur > const Duration(seconds: 3));
-
-      // A genuine completion ONLY happens when:
-      // 1. Playback is past startup
-      // 2. Video duration is known and valid (> 1 sec)
-      // 3. Current position has ACTUALLY reached the end (within 600ms of duration or >= 98%)
-      final bool isGenuineCompletion =
-          !isSpuriousStartup &&
-          dur > const Duration(seconds: 1) &&
-          (pos >= dur - const Duration(milliseconds: 600) ||
-              pos.inMilliseconds >= (dur.inMilliseconds * 0.98));
-
-      if (isGenuineCompletion) {
-        setCompleted(true);
-        setPlaying(false);
-        setBuffering(false);
+      // Seamless auto-loop: When video reaches end, immediately loop back to 0 and continue playing.
+      // Never pause or show a restart/replay button.
+      setCompleted(false);
+      if (ReelsVideoControllerPool.instance.activeProductIndex ==
+              currentItemIndex &&
+          !ReelsVideoControllerPool.instance.isGloballyPaused) {
         try {
-          player.pause().catchError((_) {});
-        } catch (_) {}
-      } else {
-        // Spurious completed event from network packet drop, buffering glitch, or chunk transition mid-stream:
-        // Do NOT cut off the video! Auto-resume playback if active.
-        setCompleted(false);
-        if (ReelsVideoControllerPool.instance.activeProductIndex ==
-                currentItemIndex &&
-            !ReelsVideoControllerPool.instance.isGloballyPaused) {
-          try {
+          player.seek(Duration.zero).then((_) {
             player.play().catchError((_) {});
-          } catch (_) {}
-        }
+          }).catchError((_) {});
+        } catch (_) {}
       }
     }
 
@@ -380,8 +350,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         p.setProperty('demuxer-max-bytes', '8MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
         p.setProperty('demuxer-max-back-bytes', '20MiB'),
-        // loop-file: no ensures completed event fires when video reaches end so replay icon appears
-        p.setProperty('loop-file', 'no'),
+        // Native infinite loop: seamlessly loops video without Dart reload or network re-fetching
+        p.setProperty('loop-file', 'inf'),
         p.setProperty('network-timeout', '15'),
         p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
         p.setProperty('audio-stream-silence', 'yes'),

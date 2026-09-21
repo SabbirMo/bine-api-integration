@@ -187,8 +187,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       }
     }
 
-    // 4. Pre-fetch HLS manifest and first 2-3 segments for the NEXT 2 VIDEOS in the queue
-    // (Crucial for Reels per client specification — primes Cloudflare Edge near user in <20ms)
+    // 4. Pre-fetch HLS manifest and first segment for the NEXT 2 VIDEOS in the queue
+    // Collect upcoming URLs for the queue:
+    final upcomingVideoUrls = <String>[];
     for (int offset = 1; offset <= 2; offset++) {
       final upcomingIdx = index + offset;
       if (upcomingIdx < total) {
@@ -197,10 +198,32 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
         if (vUrl.isNotEmpty) {
           final clean = _resolveUrl(vUrl);
           if (clean.isNotEmpty) {
-            VideoCacheManager.instance.preFetchHlsSegments(clean);
+            upcomingVideoUrls.add(clean);
           }
         }
       }
+    }
+
+    // Cancel any stale in-flight downloads for previous videos to free 100% bandwidth for active video:
+    VideoCacheManager.instance.cancelHlsPrefetchExcept(upcomingVideoUrls);
+
+    // Prioritized sequential pre-fetch:
+    // 1st priority: Immediate next video (index + 1) gets dedicated bandwidth
+    if (upcomingVideoUrls.isNotEmpty) {
+      VideoCacheManager.instance
+          .preFetchHlsSegments(upcomingVideoUrls.first, segmentCount: 1)
+          .then((_) {
+            // 2nd priority: When next video finishes and user is still on this screen/page:
+            if (mounted &&
+                _currentPageNotifier.value == index &&
+                upcomingVideoUrls.length > 1) {
+              VideoCacheManager.instance.preFetchHlsSegments(
+                upcomingVideoUrls[1],
+                segmentCount: 1,
+              );
+            }
+          })
+          .catchError((_) {});
     }
   }
 
@@ -220,6 +243,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     _precacheTimer?.cancel();
     _verticalController.dispose();
     _currentPageNotifier.dispose();
+    VideoCacheManager.instance.cancelHlsPrefetchExcept([]);
     ReelsVideoControllerPool.instance.releaseSession();
     super.dispose();
   }
