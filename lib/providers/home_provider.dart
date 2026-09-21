@@ -43,7 +43,27 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
+  Future<void>? _inFlightFetch;
+
   Future<void> fetchHomeData({bool forceLoading = false, int page = 1}) async {
+    if (_inFlightFetch != null) {
+      return _inFlightFetch!;
+    }
+    _inFlightFetch = _executeFetchHomeData(
+      forceLoading: forceLoading,
+      page: page,
+    );
+    try {
+      await _inFlightFetch;
+    } finally {
+      _inFlightFetch = null;
+    }
+  }
+
+  Future<void> _executeFetchHomeData({
+    bool forceLoading = false,
+    int page = 1,
+  }) async {
     // Only show full-screen blocking spinner if we have NO cached data at all
     if (_homeData == null || forceLoading) {
       _isLoading = true;
@@ -65,16 +85,19 @@ class HomeProvider extends ChangeNotifier {
       Map<String, dynamic> jsonMap = {};
       if (data is Map) {
         final mapData = Map<String, dynamic>.from(data);
-        if (mapData.containsKey('banner') || mapData.containsKey('story_categories')) {
+        if (mapData.containsKey('banner') ||
+            mapData.containsKey('story_categories')) {
           jsonMap = mapData;
-        } else if (mapData['results'] is List && (mapData['results'] as List).isNotEmpty) {
+        } else if (mapData['results'] is List &&
+            (mapData['results'] as List).isNotEmpty) {
           final first = (mapData['results'] as List).first;
           if (first is Map) {
             jsonMap = Map<String, dynamic>.from(first);
           }
         } else if (mapData['data'] is Map) {
           final dataMap = Map<String, dynamic>.from(mapData['data'] as Map);
-          if (dataMap['results'] is List && (dataMap['results'] as List).isNotEmpty) {
+          if (dataMap['results'] is List &&
+              (dataMap['results'] as List).isNotEmpty) {
             final first = (dataMap['results'] as List).first;
             jsonMap = first is Map ? Map<String, dynamic>.from(first) : dataMap;
           } else {

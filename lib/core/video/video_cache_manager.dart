@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:binetatour/core/video/network_quality_estimator.dart';
 
 /// Production-Grade Non-Blocking Disk & Memory Video Cache Manager.
 /// - Eliminates Main-Thread Synchronous Disk I/O (prevents ANRs).
@@ -22,8 +23,8 @@ class VideoCacheManager {
 
   final Dio _dio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 25),
+      connectTimeout: const Duration(seconds: 25),
+      receiveTimeout: const Duration(seconds: 90),
       responseType: ResponseType.stream,
     ),
   );
@@ -35,6 +36,10 @@ class VideoCacheManager {
   final Queue<String> _downloadQueue = Queue<String>();
   int _activeDownloadsCount = 0;
   static const int _maxConcurrentDownloads = 1;
+
+  // In-flight HLS prefetch tracking to prevent duplicate concurrent prefetching
+  final Set<String> _prefetchedHlsUrls = {};
+  final Set<String> _prefetchingHlsUrls = {};
 
   // In-memory cache maps: url -> verified local absolute file path
   final Map<String, String> _memoryPathCache = {};
@@ -101,7 +106,9 @@ class VideoCacheManager {
     }
   }
 
-  static final RegExp _cloudflareRegExp = RegExp(r'cloudflarestream\.com\/([a-zA-Z0-9]+)');
+  static final RegExp _cloudflareRegExp = RegExp(
+    r'cloudflarestream\.com\/([a-zA-Z0-9]+)',
+  );
 
   /// Extracts the Cloudflare Stream video ID from any Cloudflare URL
   static String? extractCloudflareId(String url) {
@@ -210,10 +217,12 @@ class VideoCacheManager {
   /// Pre-cache video with normal queue priority.
   Future<void> preCacheVideo(String url) async {
     if (url.trim().isEmpty || !url.startsWith('http')) return;
-    final downloadUrl = getDownloadableUrl(url);
-    if (!url.contains('cloudflarestream.com') && url.toLowerCase().contains('.m3u8')) {
+    if (url.contains('cloudflarestream.com') ||
+        url.toLowerCase().contains('.m3u8')) {
+      preFetchHlsSegments(url);
       return;
     }
+    final downloadUrl = getDownloadableUrl(url);
     if (isCached(url) || isCached(downloadUrl)) return;
     if (_downloadingUrls.contains(downloadUrl) ||
         _downloadQueue.contains(downloadUrl)) {
@@ -227,10 +236,12 @@ class VideoCacheManager {
   /// Prioritize caching of upcoming active/next video (jumps to front of queue).
   Future<void> preCachePriority(String url) async {
     if (url.trim().isEmpty || !url.startsWith('http')) return;
-    final downloadUrl = getDownloadableUrl(url);
-    if (!url.contains('cloudflarestream.com') && url.toLowerCase().contains('.m3u8')) {
+    if (url.contains('cloudflarestream.com') ||
+        url.toLowerCase().contains('.m3u8')) {
+      preFetchHlsSegments(url);
       return;
     }
+    final downloadUrl = getDownloadableUrl(url);
     if (isCached(url) || isCached(downloadUrl)) return;
     if (_downloadingUrls.contains(downloadUrl)) return;
 
@@ -246,16 +257,237 @@ class VideoCacheManager {
     for (int i = urls.length - 1; i >= 0; i--) {
       final raw = urls[i].trim();
       if (raw.isEmpty || !raw.startsWith('http')) continue;
-      final downloadUrl = getDownloadableUrl(raw);
-      if (!raw.contains('cloudflarestream.com') && raw.toLowerCase().contains('.m3u8')) {
+      if (raw.contains('cloudflarestream.com') ||
+          raw.toLowerCase().contains('.m3u8')) {
+        preFetchHlsSegments(raw);
         continue;
       }
+      final downloadUrl = getDownloadableUrl(raw);
       if (isCached(raw) || isCached(downloadUrl)) continue;
 
       _downloadQueue.remove(downloadUrl);
       _downloadQueue.addFirst(downloadUrl);
     }
     _processQueue();
+  }
+
+  /// Pre-fetches the master .m3u8 manifest, child rendition playlist, init.mp4, and first 2-3 segments
+  /// for HLS streams (specifically Cloudflare Stream).
+  /// This primes Cloudflare's Edge node (<20ms response for player) and warms network buffers
+  /// with negligible bandwidth (~300KB vs 50MB full MP4 download) preventing receive timeouts.
+  Future<void> preFetchHlsSegments(
+    String rawUrl, {
+    int segmentCount = 3,
+  }) async {
+    if (rawUrl.trim().isEmpty || !rawUrl.startsWith('http')) return;
+
+    // Normalize URL to .m3u8 manifest
+    String hlsUrl = rawUrl.trim();
+    if (hlsUrl.contains('cloudflarestream.com')) {
+      final cfId = extractCloudflareId(hlsUrl);
+      if (cfId != null && cfId.isNotEmpty) {
+        hlsUrl =
+            'https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/manifest/video.m3u8';
+      }
+    }
+    if (!hlsUrl.contains('.m3u8')) return;
+
+    if (_prefetchedHlsUrls.contains(hlsUrl) ||
+        _prefetchingHlsUrls.contains(hlsUrl)) {
+      return;
+    }
+    _prefetchingHlsUrls.add(hlsUrl);
+
+    try {
+      final stopwatch = Stopwatch()..start();
+
+      // 1. Fetch Master Playlist (sets Edge Cache HIT on Cloudflare)
+      final masterRes = await _dio.get<String>(
+        hlsUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 5),
+        ),
+      );
+      final masterBody = masterRes.data;
+      if (masterBody == null || masterBody.isEmpty) return;
+
+      final cfCache = masterRes.headers.value('cf-cache-status') ?? 'N/A';
+      final cfRay = masterRes.headers.value('cf-ray') ?? 'N/A';
+
+      final masterUri = Uri.parse(hlsUrl);
+
+      // 2. Parse variant playlists from master
+      final lines = const LineSplitter().convert(masterBody);
+      String? targetChildPath;
+      String? lowestChildPath;
+      int lowestBandwidth = 999999999;
+      String? audioPlaylistPath;
+
+      for (int i = 0; i < lines.length; i++) {
+        final line = lines[i].trim();
+        if (line.startsWith('#EXT-X-MEDIA:TYPE=AUDIO') &&
+            line.contains('URI="')) {
+          final start = line.indexOf('URI="') + 5;
+          final end = line.indexOf('"', start);
+          if (end != -1) {
+            audioPlaylistPath = line.substring(start, end);
+          }
+        } else if (line.startsWith('#EXT-X-STREAM-INF:')) {
+          final bwMatch = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
+          final bw = bwMatch != null ? int.tryParse(bwMatch.group(1)!) ?? 0 : 0;
+          if (i + 1 < lines.length) {
+            final nextLine = lines[i + 1].trim();
+            if (nextLine.isNotEmpty && !nextLine.startsWith('#')) {
+              if (bw > 0 && bw < lowestBandwidth) {
+                lowestBandwidth = bw;
+                lowestChildPath = nextLine;
+              }
+              if (line.contains('240') || line.contains('360')) {
+                targetChildPath = nextLine;
+              }
+            }
+          }
+        }
+      }
+
+      final chosenChild = targetChildPath ?? lowestChildPath;
+      if (chosenChild == null) return;
+
+      final childUrl = masterUri.resolve(chosenChild).toString();
+
+      // 3. Fetch Child Rendition Playlist
+      final childRes = await _dio.get<String>(
+        childUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          receiveTimeout: const Duration(seconds: 8),
+          sendTimeout: const Duration(seconds: 5),
+        ),
+      );
+      final childBody = childRes.data;
+      if (childBody == null || childBody.isEmpty) return;
+
+      final childUri = Uri.parse(childUrl);
+      final childLines = const LineSplitter().convert(childBody);
+
+      // 4. Extract init segment (fMP4) and media segments
+      String? initSegmentUrl;
+      final List<String> segmentUrls = [];
+
+      for (final cl in childLines) {
+        final trimmed = cl.trim();
+        if (trimmed.startsWith('#EXT-X-MAP:URI="')) {
+          final endIdx = trimmed.indexOf('"', 16);
+          if (endIdx != -1) {
+            final initUri = trimmed.substring(16, endIdx);
+            initSegmentUrl = childUri.resolve(initUri).toString();
+          }
+        } else if (trimmed.isNotEmpty && !trimmed.startsWith('#')) {
+          segmentUrls.add(childUri.resolve(trimmed).toString());
+          if (segmentUrls.length >= segmentCount) break;
+        }
+      }
+
+      int totalBytes = masterBody.length + childBody.length;
+
+      // 5. Fetch Audio Manifest if distinct
+      if (audioPlaylistPath != null) {
+        try {
+          final audioUrl = masterUri.resolve(audioPlaylistPath).toString();
+          final audioRes = await _dio.get<String>(
+            audioUrl,
+            options: Options(
+              responseType: ResponseType.plain,
+              receiveTimeout: const Duration(seconds: 5),
+            ),
+          );
+          if (audioRes.data != null) {
+            totalBytes += audioRes.data!.length;
+            final audioLines = const LineSplitter().convert(audioRes.data!);
+            for (final al in audioLines) {
+              final t = al.trim();
+              if (t.startsWith('#EXT-X-MAP:URI="')) {
+                final endIdx = t.indexOf('"', 16);
+                if (endIdx != -1) {
+                  final aInit = Uri.parse(
+                    audioUrl,
+                  ).resolve(t.substring(16, endIdx)).toString();
+                  final aInitRes = await _dio.get<ResponseBody>(
+                    aInit,
+                    options: Options(
+                      responseType: ResponseType.stream,
+                      receiveTimeout: const Duration(seconds: 5),
+                    ),
+                  );
+                  if (aInitRes.data != null) {
+                    await for (final chunk in aInitRes.data!.stream) {
+                      totalBytes += chunk.length;
+                    }
+                  }
+                }
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 6. Fetch Video Init segment (fMP4)
+      if (initSegmentUrl != null) {
+        try {
+          final initRes = await _dio.get<ResponseBody>(
+            initSegmentUrl,
+            options: Options(
+              responseType: ResponseType.stream,
+              receiveTimeout: const Duration(seconds: 8),
+            ),
+          );
+          if (initRes.data != null) {
+            await for (final chunk in initRes.data!.stream) {
+              totalBytes += chunk.length;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 7. Fetch first 2-3 segments
+      for (final segUrl in segmentUrls) {
+        try {
+          final segRes = await _dio.get<ResponseBody>(
+            segUrl,
+            options: Options(
+              responseType: ResponseType.stream,
+              receiveTimeout: const Duration(seconds: 8),
+            ),
+          );
+          if (segRes.data != null) {
+            await for (final chunk in segRes.data!.stream) {
+              totalBytes += chunk.length;
+            }
+          }
+        } catch (_) {}
+      }
+
+      stopwatch.stop();
+      final elapsedMs = stopwatch.elapsedMilliseconds;
+
+      // Update Network Quality Estimator
+      NetworkQualityEstimator.instance.recordMeasurement(
+        bytes: totalBytes,
+        durationMs: elapsedMs,
+      );
+
+      _prefetchedHlsUrls.add(hlsUrl);
+      debugPrint(
+        '⚡️ [Cloudflare Stream] Pre-fetched first 2-3s of next video -> $hlsUrl ($totalBytes bytes in ${elapsedMs}ms, CF-Cache: $cfCache, CF-RAY: $cfRay, ABR Tier: ${NetworkQualityEstimator.instance.currentTier.name})',
+      );
+    } catch (e) {
+      debugPrint('ℹ️ [VideoCacheManager] HLS pre-fetch error: $e');
+    } finally {
+      _prefetchingHlsUrls.remove(hlsUrl);
+    }
   }
 
   /// Batch pre-cache
@@ -384,16 +616,27 @@ class VideoCacheManager {
       _memoryPathCache[url] = file.path;
       final cfId = extractCloudflareId(url);
       if (cfId != null) {
-        _memoryPathCache['https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/downloads/default.mp4'] = file.path;
-        _memoryPathCache['https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/manifest/video.m3u8'] = file.path;
+        _memoryPathCache['https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/downloads/default.mp4'] =
+            file.path;
+        _memoryPathCache['https://customer-xe2czubswwdkm567.cloudflarestream.com/$cfId/manifest/video.m3u8'] =
+            file.path;
       }
       completer.complete(file.path);
 
       // Async cache pruning without blocking playback
       _cleanOldCacheIfNeeded();
     } catch (e) {
-      if (e is! DioException || e.type != DioExceptionType.cancel) {
-        debugPrint('⚠️ [VideoCacheManager] Pre-cache error for $url: $e');
+      if (e is DioException) {
+        // Background opportunistic caching timeout/cancel is expected under slow network conditions
+        // and does not impact active HLS streaming playback.
+        if (kDebugMode &&
+            e.type != DioExceptionType.cancel &&
+            e.type != DioExceptionType.receiveTimeout &&
+            e.type != DioExceptionType.connectionTimeout) {
+          debugPrint('ℹ️ [VideoCacheManager] Pre-cache skipped: ${e.message}');
+        }
+      } else if (kDebugMode) {
+        debugPrint('ℹ️ [VideoCacheManager] Pre-cache error: $e');
       }
       if (tempFile != null) {
         _safeDeleteFile(tempFile);

@@ -48,10 +48,8 @@ class _AccueilScreenState extends State<AccueilScreen>
     try {
       _storiesPrecached = false;
       _productsPrecached = false;
-      // Fetch Home Data with highest priority (fastest UI update) with timeout
-      await context.read<HomeProvider>().fetchHomeData().timeout(
-        const Duration(seconds: 6),
-      );
+      // Fetch Home Data with highest priority (fastest UI update)
+      await context.read<HomeProvider>().fetchHomeData();
       // Silently refresh cart data in background
       if (mounted) {
         context.read<CartProvider>().fetchCart(showLoading: false).catchError((
@@ -64,10 +62,10 @@ class _AccueilScreenState extends State<AccueilScreen>
           .difference(AppStartupTracker.appStartTime)
           .inMilliseconds;
       debugPrint(
-        '📊 [HomeFeedBenchmark] Home feed initial data loaded in ${renderTime}ms from app launch (Zero video contention)',
+        '📊 [HomeFeedBenchmark] Home feed data refreshed in ${renderTime}ms from app launch',
       );
     } catch (e) {
-      debugPrint("Home refresh error or timeout: $e");
+      debugPrint("Home refresh error: $e");
     }
   }
 
@@ -86,10 +84,6 @@ class _AccueilScreenState extends State<AccueilScreen>
         );
       }
     };
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refreshHomeData();
-    });
   }
 
   @override
@@ -1164,15 +1158,31 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                       continue;
                     }
 
+                    final pThumb = p.effectiveThumbnailUrl.isNotEmpty
+                        ? _resolveUrl(p.effectiveThumbnailUrl)
+                        : (p.mainImage != null
+                              ? _resolveUrl(p.mainImage!)
+                              : resolvedThumbnail);
+
                     List<shop_model.MediaModel> mediaList = [];
                     if (p.safeMedia.isNotEmpty) {
-                      mediaList = p.safeMedia;
+                      mediaList = p.safeMedia.map((m) {
+                        final mThumb =
+                            (m.thumbnailUrl != null &&
+                                m.thumbnailUrl!.isNotEmpty)
+                            ? m.thumbnailUrl
+                            : pThumb;
+                        return shop_model.MediaModel(
+                          id: m.id,
+                          mediaType: m.mediaType,
+                          mediaUrl: m.mediaUrl,
+                          hlsUrl: m.hlsUrl,
+                          thumbnailUrl: mThumb,
+                          videoStatus: m.videoStatus,
+                          videoDuration: m.videoDuration,
+                        );
+                      }).toList();
                     } else if (p.effectiveVideoUrl.isNotEmpty) {
-                      final pThumb = p.effectiveThumbnailUrl.isNotEmpty
-                          ? _resolveUrl(p.effectiveThumbnailUrl)
-                          : (p.mainImage != null
-                                ? _resolveUrl(p.mainImage!)
-                                : resolvedThumbnail);
                       mediaList = [
                         shop_model.MediaModel(
                           id: 0,
@@ -1209,7 +1219,8 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                             ? p.priceAfterDiscount!
                             : (p.sellingPrice ?? '0'),
                         status: p.status ?? '',
-                        mainImage: p.mainImage,
+                        mainImage: p.mainImage ?? pThumb,
+                        thumbnailUrl: pThumb,
                         media: mediaList,
                       ),
                     );
@@ -1220,6 +1231,12 @@ class _ProductSectionWidgetState extends State<ProductSectionWidget> {
                 if (convertedProducts.isNotEmpty &&
                     targetInitialIndex >= 0 &&
                     targetInitialIndex < convertedProducts.length) {
+                  final targetProd = convertedProducts[targetInitialIndex];
+                  final tUrl = targetProd.effectiveThumbnailUrl;
+                  if (tUrl.isNotEmpty && tUrl.startsWith('http')) {
+                    precacheImage(NetworkImage(tUrl), context);
+                  }
+
                   final indices = [
                     targetInitialIndex,
                     targetInitialIndex + 1,

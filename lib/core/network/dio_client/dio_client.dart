@@ -1,5 +1,6 @@
 import 'package:binetatour/core/base_url/base_url.dart';
 import 'package:binetatour/core/network/auth_interceptor/auth_interceptor.dart';
+import 'package:binetatour/core/network/retry_interceptor/network_retry_interceptor.dart';
 import 'package:binetatour/core/network/timing_interceptor/api_timing_interceptor.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -15,12 +16,13 @@ class DioClient {
         BaseOptions(
           baseUrl: BaseUrl.baseUrl,
           connectTimeout: const Duration(seconds: 25),
-          receiveTimeout: const Duration(seconds: 30),
-          sendTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 20),
           headers: {'Content-Type': 'application/json'},
         ),
       );
 
+      _dio!.interceptors.add(NetworkRetryInterceptor(_dio!));
       _dio!.interceptors.add(ApiTimingInterceptor());
       _dio!.interceptors.add(AuthInterceptor(_dio!));
       if (kDebugMode) {
@@ -46,7 +48,7 @@ class DioClient {
         BaseOptions(
           baseUrl: BaseUrl.baseUrl,
           connectTimeout: const Duration(seconds: 25),
-          receiveTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 60),
           sendTimeout: const Duration(seconds: 20),
           headers: {
             'Content-Type': 'application/json',
@@ -55,6 +57,7 @@ class DioClient {
         ),
       );
 
+      dio.interceptors.add(NetworkRetryInterceptor(dio));
       dio.interceptors.add(ApiTimingInterceptor());
 
       if (kDebugMode) {

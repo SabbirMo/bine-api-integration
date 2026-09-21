@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
+import 'package:binetatour/core/video/network_quality_estimator.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 
 /// State of an individual player in the Reels pre-streaming pool.
@@ -81,10 +82,11 @@ class ReelsPlayerSlot {
 
       final pos = player.state.position;
       final isBufferingNow = player.state.buffering;
-      final w = player.state.width ?? 0;
 
-      // Frame is ready if playback clock advanced OR (dimensions decoded and not actively buffering)
-      if (pos > Duration.zero || (w > 0 && !isBufferingNow)) {
+      // Frame is ready ONLY when playback clock has genuinely advanced past Duration.zero.
+      // NEVER trigger on width > 0 alone because width is decoded from the container header
+      // before any video frame has actually been rendered to the texture, which caused a black flash!
+      if (pos > Duration.zero && !isBufferingNow) {
         setHasFirstFrame(true);
         setBuffering(false);
       }
@@ -97,21 +99,22 @@ class ReelsPlayerSlot {
           : duration.value;
 
       // Genuine completion check:
-      // Spurious premature EOF events (from iOS VideoToolbox during initial chunk load / seek)
+      // Spurious premature EOF events (from iOS VideoToolbox/demuxer during initial chunk load / seek)
       // only happen before the first frame renders or when position is still at the very start (< 1 second).
       final bool isSpuriousStartup =
           !hasFirstFrame.value ||
           (pos < const Duration(seconds: 1) &&
               dur > const Duration(seconds: 3));
 
-      // If video has progressed past startup and completed event fired:
+      // A genuine completion ONLY happens when:
+      // 1. Playback is past startup
+      // 2. Video duration is known and valid (> 1 sec)
+      // 3. Current position has ACTUALLY reached the end (within 600ms of duration or >= 98%)
       final bool isGenuineCompletion =
           !isSpuriousStartup &&
-          (pos > Duration.zero) &&
-          (dur <= Duration.zero ||
-              pos >= dur - const Duration(seconds: 2) ||
-              (dur.inMilliseconds > 3000 &&
-                  pos.inMilliseconds >= (dur.inMilliseconds * 0.85)));
+          dur > const Duration(seconds: 1) &&
+          (pos >= dur - const Duration(milliseconds: 600) ||
+              pos.inMilliseconds >= (dur.inMilliseconds * 0.98));
 
       if (isGenuineCompletion) {
         setCompleted(true);
@@ -120,26 +123,15 @@ class ReelsPlayerSlot {
         try {
           player.pause().catchError((_) {});
         } catch (_) {}
-      } else if (isSpuriousStartup) {
-        // Spurious completed event from iOS VideoToolbox/demuxer during initial startup/chunk transition:
-        // Auto-resume if active!
+      } else {
+        // Spurious completed event from network packet drop, buffering glitch, or chunk transition mid-stream:
+        // Do NOT cut off the video! Auto-resume playback if active.
         setCompleted(false);
         if (ReelsVideoControllerPool.instance.activeProductIndex ==
                 currentItemIndex &&
             !ReelsVideoControllerPool.instance.isGloballyPaused) {
           try {
             player.play().catchError((_) {});
-          } catch (_) {}
-        }
-      } else {
-        // Position has advanced but didn't meet strict 85% threshold.
-        // Still treat as completed if pos has played for at least 3 seconds and stream reported completed:
-        if (pos >= const Duration(seconds: 3)) {
-          setCompleted(true);
-          setPlaying(false);
-          setBuffering(false);
-          try {
-            player.pause().catchError((_) {});
           } catch (_) {}
         }
       }
@@ -180,6 +172,10 @@ class ReelsPlayerSlot {
           return;
         }
         setBuffering(b);
+        if (b && hasFirstFrame.value) {
+          // Mid-stream buffer stall detected -> downgrade ABR tier to LOW (240p) so playback recovers instantly!
+          NetworkQualityEstimator.instance.recordPlaybackStall();
+        }
         if (!b) {
           checkFirstFrameReady();
         }
@@ -237,14 +233,6 @@ class ReelsPlayerSlot {
         }
       }),
     );
-    videoController.waitUntilFirstFrameRendered
-        .then((_) {
-          if (!player.state.buffering) {
-            setHasFirstFrame(true);
-            setBuffering(false);
-          }
-        })
-        .catchError((_) {});
 
     _subscriptions.add(
       player.stream.error.listen((err) {
@@ -341,9 +329,8 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       final player = Player(
         configuration: const PlayerConfiguration(
           bufferSize:
-              32 *
-              1024 *
-              1024, // 32MB buffer for continuous smooth streaming of any length video
+              (1.5 * 1024 * 1024) ~/
+              1, // 1.5MB tuned for instant first-frame start on slow/weak networks
           logLevel: MPVLogLevel.warn,
         ),
       );
@@ -376,20 +363,21 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       final platform = player.platform;
       if (platform == null) return;
       final p = platform as dynamic;
+      final hlsBitrate = NetworkQualityEstimator.instance.getMpvHlsBitrate();
       await Future.wait(<Future<dynamic>>[
         p.setProperty('hwdec', 'auto-safe'),
-        // Auto adaptive bitrate: dynamically adjusts quality based on network throughput
-        p.setProperty('hls-bitrate', 'auto'),
+        // Dynamic Adaptive Bitrate (ABR): starts at 240p (min) for instant startup, ramps up to 360p/480p/720p as bandwidth allows
+        p.setProperty('hls-bitrate', hlsBitrate),
         p.setProperty('cache', 'yes'),
-        p.setProperty('cache-secs', '15'),
-        p.setProperty('cache-pause', 'no'),
-        p.setProperty('cache-pause-wait', '0'),
+        p.setProperty('cache-secs', '6'),
+        p.setProperty('cache-pause', 'yes'),
+        p.setProperty('cache-pause-wait', '1'),
         p.setProperty('cache-pause-initial', 'no'),
         p.setProperty('demuxer-lavf-analyzeduration', '0'),
         p.setProperty('demuxer-lavf-probesize', '32768'),
         p.setProperty('force-seekable', 'yes'),
-        p.setProperty('demuxer-readahead-secs', '8'),
-        p.setProperty('demuxer-max-bytes', '32MiB'),
+        p.setProperty('demuxer-readahead-secs', '3'),
+        p.setProperty('demuxer-max-bytes', '8MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
         p.setProperty('demuxer-max-back-bytes', '20MiB'),
         // loop-file: no ensures completed event fires when video reaches end so replay icon appears
@@ -398,6 +386,9 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
         p.setProperty('audio-stream-silence', 'yes'),
         p.setProperty('ao-null-fallback', 'yes'),
+        p.setProperty('vd-lavc-fast', 'yes'),
+        p.setProperty('vd-lavc-skiploopfilter', 'all'),
+        p.setProperty('audio-buffer', '0.05'),
         // Disable audio track on background/idle slots to prevent AVAudioSession conflict on iOS
         p.setProperty('aid', isAudioEnabled ? 'auto' : 'no'),
       ]);
@@ -557,9 +548,9 @@ class ReelsVideoControllerPool extends ChangeNotifier {
     String? secondPrevUrl,
   }) {
     _prewarmTimer?.cancel();
-    // Allow the active video 800ms of dedicated network & CPU bandwidth
-    // to render and buffer its first chunks cleanly before prewarming background candidates.
-    _prewarmTimer = Timer(const Duration(milliseconds: 800), () {
+    // Fast 500ms debounce ensures the next reel is already primed & buffered at frame 0
+    // well before the user swipes down, enabling instantaneous 0ms transition.
+    _prewarmTimer = Timer(const Duration(milliseconds: 500), () {
       if (!_initialized || _activeProductIndex != currentItemIndex) return;
       _prewarmSurroundingVideos(
         currentItemIndex: currentItemIndex,
@@ -580,27 +571,23 @@ class ReelsVideoControllerPool extends ChangeNotifier {
   }) {
     final Map<int, String> wantedTargets = {};
 
-    // 1. Next target
+    // 1. Next target takes single highest priority (95% of user swipes are downward to next reel).
+    // Prewarming only ONE candidate avoids splitting scarce mobile bandwidth across multiple simultaneous streams.
     final int nextIndex = currentItemIndex + 1;
     final String? nextUrl = (nextUrls != null && nextUrls.isNotEmpty)
         ? nextUrls.first.trim()
         : null;
     if (nextUrl != null && nextUrl.isNotEmpty) {
       wantedTargets[nextIndex] = nextUrl;
-    }
-
-    // 2. Previous target
-    final int prevIndex = currentItemIndex - 1;
-    final String? pUrl =
-        (prevUrl != null && prevUrl.trim().isNotEmpty && currentItemIndex > 0)
-        ? prevUrl.trim()
-        : null;
-    if (pUrl != null && pUrl.isNotEmpty) {
-      wantedTargets[prevIndex] = pUrl;
-    } else if (nextUrls != null && nextUrls.length > 1) {
-      final secondNextUrl = nextUrls[1].trim();
-      if (secondNextUrl.isNotEmpty) {
-        wantedTargets[currentItemIndex + 2] = secondNextUrl;
+    } else {
+      // 2. Fallback to previous target only if no next reel exists
+      final int prevIndex = currentItemIndex - 1;
+      final String? pUrl =
+          (prevUrl != null && prevUrl.trim().isNotEmpty && currentItemIndex > 0)
+          ? prevUrl.trim()
+          : null;
+      if (pUrl != null && pUrl.isNotEmpty) {
+        wantedTargets[prevIndex] = pUrl;
       }
     }
 
@@ -737,6 +724,11 @@ class ReelsVideoControllerPool extends ChangeNotifier {
           slot.player.setVolume(0.0);
         } catch (_) {}
       }
+
+      final hlsBitrate = NetworkQualityEstimator.instance.getMpvHlsBitrate();
+      try {
+        (slot.player.platform as dynamic)?.setProperty('hls-bitrate', hlsBitrate);
+      } catch (_) {}
 
       final startPos =
           (initialPosition != null && initialPosition > Duration.zero)

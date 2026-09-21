@@ -62,6 +62,66 @@ class ProductModel {
     this.stock = 0,
   });
 
+  ProductModel copyWith({
+    int? id,
+    String? productName,
+    int? categoryId,
+    String? categoryName,
+    int? subcategoryId,
+    String? subcategoryName,
+    String? sellingPrice,
+    String? discountPercentage,
+    String? priceAfterDiscount,
+    String? status,
+    String? mainImage,
+    List<MediaModel>? media,
+    String? videoUrl,
+    String? hlsUrl,
+    String? thumbnailUrl,
+    String? actualPrice,
+    String? deliveryPrice,
+    String? description,
+    String? deliveryMessage,
+    List<ProductVariantModel>? variants,
+    String? createdAt,
+    String? stockMode,
+    int? stockQuantity,
+    int? unassignedStock,
+    int? totalStock,
+    bool? noVariant,
+    int? stock,
+  }) {
+    return ProductModel(
+      id: id ?? this.id,
+      productName: productName ?? this.productName,
+      categoryId: categoryId ?? this.categoryId,
+      categoryName: categoryName ?? this.categoryName,
+      subcategoryId: subcategoryId ?? this.subcategoryId,
+      subcategoryName: subcategoryName ?? this.subcategoryName,
+      sellingPrice: sellingPrice ?? this.sellingPrice,
+      discountPercentage: discountPercentage ?? this.discountPercentage,
+      priceAfterDiscount: priceAfterDiscount ?? this.priceAfterDiscount,
+      status: status ?? this.status,
+      mainImage: mainImage ?? this.mainImage,
+      media: media ?? this.media,
+      videoUrl: videoUrl ?? this.videoUrl,
+      hlsUrl: hlsUrl ?? this.hlsUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      actualPrice: actualPrice ?? this.actualPrice,
+      deliveryPrice: deliveryPrice ?? this.deliveryPrice,
+      description: description ?? this.description,
+      deliveryMessage: deliveryMessage ?? this.deliveryMessage,
+      variants: variants ?? this.variants,
+      createdAt: createdAt ?? this.createdAt,
+      stockMode: stockMode ?? this.stockMode,
+      stockQuantity: stockQuantity ?? this.stockQuantity,
+      unassignedStock: unassignedStock ?? this.unassignedStock,
+      totalStock: totalStock ?? this.totalStock,
+      noVariant: noVariant ?? this.noVariant,
+      stock: stock ?? this.stock,
+    );
+  }
+
   bool get isProductMode =>
       stockMode == 'product' ||
       noVariant ||
@@ -123,12 +183,25 @@ class ProductModel {
         thumbnail = m.effectiveMediaUrl;
         break;
       }
+      if (m.mediaType == 'video' || m.effectiveMediaUrl.isNotEmpty) {
+        final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(
+          m.effectiveMediaUrl.isNotEmpty ? m.effectiveMediaUrl : m.mediaUrl,
+        );
+        if (extracted.isNotEmpty) {
+          thumbnail = extracted;
+          break;
+        }
+      }
     }
-    if (thumbnail.isEmpty && mainImage != null && !_isLocalVideoUrl(mainImage!)) {
+    if (thumbnail.isEmpty &&
+        mainImage != null &&
+        !_isLocalVideoUrl(mainImage!)) {
       thumbnail = mainImage!;
     }
     if (thumbnail.isEmpty && effectiveVideoUrl.isNotEmpty) {
-      thumbnail = MediaUrlResolver.extractThumbnailFromVideoUrl(effectiveVideoUrl);
+      thumbnail = MediaUrlResolver.extractThumbnailFromVideoUrl(
+        effectiveVideoUrl,
+      );
     }
     return thumbnail;
   }
@@ -266,6 +339,50 @@ class ProductModel {
         ? subCatIdRaw.toInt()
         : int.tryParse(subCatIdRaw?.toString() ?? '');
 
+    String? thumb =
+        json['thumbnail_url']?.toString() ??
+        json['thumbnail']?.toString() ??
+        json['thumb_url']?.toString();
+    if (thumb == null || thumb.isEmpty) {
+      for (final m in parsedMedia) {
+        if (m.thumbnailUrl != null && m.thumbnailUrl!.isNotEmpty) {
+          thumb = m.thumbnailUrl;
+          break;
+        }
+        if (m.mediaType == 'image' && m.effectiveMediaUrl.isNotEmpty) {
+          thumb = m.effectiveMediaUrl;
+          break;
+        }
+        if (m.mediaType == 'video' || m.effectiveMediaUrl.isNotEmpty) {
+          final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(
+            m.effectiveMediaUrl.isNotEmpty ? m.effectiveMediaUrl : m.mediaUrl,
+          );
+          if (extracted.isNotEmpty) {
+            thumb = extracted;
+            break;
+          }
+        }
+      }
+    }
+    if ((thumb == null || thumb.isEmpty) &&
+        mainImg != null &&
+        !_isLocalVideoUrl(mainImg)) {
+      thumb = mainImg;
+    }
+    if ((thumb == null || thumb.isEmpty) &&
+        rawVideoUrl != null &&
+        rawVideoUrl.isNotEmpty) {
+      thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(rawVideoUrl);
+    }
+    if ((thumb == null || thumb.isEmpty) &&
+        rawHlsUrl != null &&
+        rawHlsUrl.isNotEmpty) {
+      thumb = MediaUrlResolver.extractThumbnailFromVideoUrl(rawHlsUrl);
+    }
+    if (mainImg == null || mainImg.isEmpty) {
+      mainImg = thumb;
+    }
+
     return ProductModel(
       id: json['id'] is num
           ? (json['id'] as num).toInt()
@@ -279,13 +396,11 @@ class ProductModel {
       discountPercentage: json['discount_percentage']?.toString() ?? '0',
       priceAfterDiscount: pad,
       status: json['status']?.toString() ?? '',
-      mainImage: mainImg,
+      mainImage: mainImg ?? thumb,
       media: parsedMedia,
       videoUrl: rawVideoUrl,
       hlsUrl: rawHlsUrl,
-      thumbnailUrl: json['thumbnail_url']?.toString() ??
-          json['thumbnail']?.toString() ??
-          json['thumb_url']?.toString(),
+      thumbnailUrl: thumb,
       actualPrice: json['actual_price']?.toString(),
       deliveryPrice: json['delivery_price']?.toString(),
       description: json['description']?.toString(),
@@ -356,6 +471,18 @@ class MediaModel {
       }
     }
 
+    String? thumb =
+        json['thumbnail_url']?.toString() ??
+        json['thumbnail']?.toString() ??
+        json['thumb_url']?.toString();
+    if ((thumb == null || thumb.isEmpty) && mType == 'video') {
+      final vUrl = json['hls_url']?.toString() ?? rawUrl?.toString() ?? '';
+      final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(vUrl);
+      if (extracted.isNotEmpty) {
+        thumb = extracted;
+      }
+    }
+
     return MediaModel(
       id: json['id'] is num
           ? (json['id'] as num).toInt()
@@ -363,10 +490,7 @@ class MediaModel {
       mediaType: mType,
       mediaUrl: rawUrl?.toString() ?? '',
       hlsUrl: json['hls_url']?.toString(),
-      thumbnailUrl:
-          json['thumbnail_url']?.toString() ??
-          json['thumbnail']?.toString() ??
-          json['thumb_url']?.toString(),
+      thumbnailUrl: thumb,
       videoStatus: json['video_status']?.toString(),
       videoDuration: json['video_duration'] is num
           ? (json['video_duration'] as num).toDouble()

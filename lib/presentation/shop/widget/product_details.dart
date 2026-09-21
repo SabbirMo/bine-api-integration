@@ -187,15 +187,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       }
     }
 
-    // 4. Batch-enqueue priority downloads (Only the immediate next video to preserve 100% bandwidth for active video)
-    final nextIdx = index + 1;
-    if (nextIdx < total) {
-      final p = widget.allProducts[nextIdx];
-      final vUrl = p.effectiveVideoUrl;
-      if (vUrl.isNotEmpty) {
-        final clean = _resolveUrl(vUrl);
-        if (clean.isNotEmpty) {
-          VideoCacheManager.instance.preCachePriority(clean);
+    // 4. Pre-fetch HLS manifest and first 2-3 segments for the NEXT 2 VIDEOS in the queue
+    // (Crucial for Reels per client specification — primes Cloudflare Edge near user in <20ms)
+    for (int offset = 1; offset <= 2; offset++) {
+      final upcomingIdx = index + offset;
+      if (upcomingIdx < total) {
+        final p = widget.allProducts[upcomingIdx];
+        final vUrl = p.effectiveVideoUrl;
+        if (vUrl.isNotEmpty) {
+          final clean = _resolveUrl(vUrl);
+          if (clean.isNotEmpty) {
+            VideoCacheManager.instance.preFetchHlsSegments(clean);
+          }
         }
       }
     }
@@ -203,9 +206,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
 
   void _schedulePrecacheAround(int index) {
     _precacheTimer?.cancel();
-    // Allow the active video 3000ms of dedicated network bandwidth to stream smoothly
-    // before starting heavy background precaching downloads.
-    _precacheTimer = Timer(const Duration(milliseconds: 3000), () {
+    // Fast 400ms debounce allows the active video to start playing immediately
+    // while ensuring upcoming 2 videos have manifests & first chunks pre-warmed on Cloudflare Edge.
+    _precacheTimer = Timer(const Duration(milliseconds: 400), () {
       if (!mounted || _currentPageNotifier.value != index) return;
       _precacheAround(index);
     });

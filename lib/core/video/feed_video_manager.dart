@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:binetatour/core/video/network_quality_estimator.dart';
 import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/core/video/video_route_observer.dart';
 
@@ -262,16 +263,17 @@ class FeedVideoManager extends ChangeNotifier {
       final platform = player.platform;
       if (platform == null) return;
       final p = platform as dynamic;
+      final hlsBitrate = NetworkQualityEstimator.instance.getMpvHlsBitrate();
       await Future.wait(<Future<dynamic>>[
         p.setProperty('hwdec', 'auto-safe'),
-        // Auto adaptive bitrate: dynamically adjusts quality based on network throughput
-        p.setProperty('hls-bitrate', 'auto'),
+        // Dynamic adaptive bitrate: starts at 240p (min), ramps up to 360p/480p/720p dynamically
+        p.setProperty('hls-bitrate', hlsBitrate),
         p.setProperty('cache', 'yes'),
         p.setProperty('cache-secs', '10'),
         p.setProperty('demuxer-lavf-analyzeduration', '0'),
         p.setProperty('demuxer-lavf-probesize', '32768'),
-        p.setProperty('cache-pause', 'no'),
-        p.setProperty('cache-pause-wait', '0'),
+        p.setProperty('cache-pause', 'yes'),
+        p.setProperty('cache-pause-wait', '1'),
         p.setProperty('cache-pause-initial', 'no'),
         p.setProperty('demuxer-readahead-secs', '5'),
         p.setProperty('demuxer-max-bytes', '25MiB'),
@@ -345,8 +347,7 @@ class FeedVideoManager extends ChangeNotifier {
               _isFeedMuted ? 'no' : 'auto',
             );
             p.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
-            if (p.player.state.position >
-                const Duration(milliseconds: 300)) {
+            if (p.player.state.position > const Duration(milliseconds: 300)) {
               p.player.seek(Duration.zero).catchError((_) {});
             }
             p.player.play().catchError((_) {});
@@ -421,8 +422,7 @@ class FeedVideoManager extends ChangeNotifier {
           _isFeedMuted ? 'no' : 'auto',
         );
         state.player.setVolume(_isFeedMuted ? 0.0 : 100.0);
-        if (state.player.state.position >
-            const Duration(milliseconds: 300)) {
+        if (state.player.state.position > const Duration(milliseconds: 300)) {
           state.player.seek(Duration.zero).catchError((_) {});
         }
         state.player.play().catchError((_) {});
@@ -431,8 +431,7 @@ class FeedVideoManager extends ChangeNotifier {
       try {
         (state.player.platform as dynamic)?.setProperty('aid', 'no');
         state.player.pause().catchError((_) {});
-        if (state.player.state.position >
-            const Duration(milliseconds: 300)) {
+        if (state.player.state.position > const Duration(milliseconds: 300)) {
           state.player.seek(Duration.zero).catchError((_) {});
         }
       } catch (_) {}

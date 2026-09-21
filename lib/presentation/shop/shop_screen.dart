@@ -671,10 +671,15 @@ class BoutiqueScreenState extends State<BoutiqueScreen> {
                               );
                               FeedVideoManager.instance.resume(force: true);
                               WidgetsBinding.instance.addPostFrameCallback((_) {
-                                VisibilityDetectorController.instance.notifyNow();
-                                Future.delayed(const Duration(milliseconds: 100), () {
-                                  FeedVideoManager.instance.evaluatePlaybackNow();
-                                });
+                                VisibilityDetectorController.instance
+                                    .notifyNow();
+                                Future.delayed(
+                                  const Duration(milliseconds: 100),
+                                  () {
+                                    FeedVideoManager.instance
+                                        .evaluatePlaybackNow();
+                                  },
+                                );
                               });
                             },
                           );

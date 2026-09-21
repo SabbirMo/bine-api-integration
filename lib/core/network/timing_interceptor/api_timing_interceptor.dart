@@ -22,10 +22,12 @@ class ApiTimingInterceptor extends Interceptor {
       stopwatch.stop();
       final ms = stopwatch.elapsedMilliseconds;
       final seconds = (ms / 1000).toStringAsFixed(2);
+      final cfCache = response.headers.value('cf-cache-status') ?? 'N/A';
+      final cfRay = response.headers.value('cf-ray') ?? 'N/A';
       if (kDebugMode) {
         debugPrint(
           '⏱️ [API LOAD TIME] [${response.requestOptions.method}] ${response.requestOptions.path} '
-          '-> ${seconds}s (${ms}ms) | Status: ${response.statusCode}',
+          '-> ${seconds}s (${ms}ms) | Status: ${response.statusCode} | CF-Cache: $cfCache | CF-RAY: $cfRay',
         );
       }
     }

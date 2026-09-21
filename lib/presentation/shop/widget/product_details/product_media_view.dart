@@ -64,6 +64,10 @@ class ProductMediaView extends StatelessWidget {
         !_isVideoUrl(mainImage!)) {
       return mainImage!.trim();
     }
+    if (media.url.trim().isNotEmpty) {
+      final extracted = MediaUrlResolver.extractThumbnailFromVideoUrl(media.url);
+      if (extracted.isNotEmpty) return extracted;
+    }
     return null;
   }
 
