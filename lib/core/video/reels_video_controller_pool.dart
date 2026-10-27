@@ -62,7 +62,9 @@ class ReelsPlayerSlot {
 
   void reattach(Player newPlayer, VideoController newController) {
     if (_qualityEstimatorListener != null) {
-      NetworkQualityEstimator.instance.removeListener(_qualityEstimatorListener!);
+      NetworkQualityEstimator.instance.removeListener(
+        _qualityEstimatorListener!,
+      );
       _qualityEstimatorListener = null;
     }
     for (final s in _subscriptions) {
@@ -128,9 +130,12 @@ class ReelsPlayerSlot {
               currentItemIndex &&
           !ReelsVideoControllerPool.instance.isGloballyPaused) {
         try {
-          player.seek(Duration.zero).then((_) {
-            player.play().catchError((_) {});
-          }).catchError((_) {});
+          player
+              .seek(Duration.zero)
+              .then((_) {
+                player.play().catchError((_) {});
+              })
+              .catchError((_) {});
         } catch (_) {}
       }
     }
@@ -288,7 +293,9 @@ class ReelsPlayerSlot {
 
   void dispose() {
     if (_qualityEstimatorListener != null) {
-      NetworkQualityEstimator.instance.removeListener(_qualityEstimatorListener!);
+      NetworkQualityEstimator.instance.removeListener(
+        _qualityEstimatorListener!,
+      );
       _qualityEstimatorListener = null;
     }
     for (final s in _subscriptions) {
@@ -434,6 +441,7 @@ class ReelsVideoControllerPool extends ChangeNotifier {
 
   /// Adopts an active feed player (already playing on home feed) into the Reels pool.
   /// Eliminates any loading spinner, black flash, or reload when entering product details.
+  /// add
   ReelsPlayerSlot adoptFeedPlayer({
     required FeedPlayerState feedPlayer,
     required int itemIndex,
