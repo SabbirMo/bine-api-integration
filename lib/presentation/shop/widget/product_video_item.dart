@@ -142,6 +142,10 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
           _stallCount++;
           // Stalled for >= 1.5 seconds at the exact same position while supposedly playing:
           if (_stallCount == 2) {
+            slot.setBuffering(true);
+            NetworkQualityEstimator.instance.recordPlaybackStall();
+            slot.downgradeTo240p();
+
             if (Platform.isIOS) {
               debugPrint(
                 '⚡️ [ProductVideoItem] iOS playback freeze detected at $currentPos. Auto-unfreezing...',
@@ -168,16 +172,24 @@ class _ProductVideoItemState extends State<ProductVideoItem> {
                     .catchError((_) {});
               } catch (_) {}
             } else {
-              // On Android MediaCodec, this is a network buffer starvation:
-              // Mark buffering so the UI shows the spinner and allows the buffer to fill
-              // WITHOUT hammering the decoder with continuous pause/play resets!
-              slot.setBuffering(true);
-              NetworkQualityEstimator.instance.recordPlaybackStall();
+              // Android MediaCodec: gentle play nudge to ensure hardware decoder stays active
+              try {
+                slot.player.play().catchError((_) {});
+              } catch (_) {}
             }
-          } else if (_stallCount > 3) {
-            // Persisting freeze/starvation: ensure buffering is shown and ABR dropped to 240p
-            slot.setBuffering(true);
-            NetworkQualityEstimator.instance.recordPlaybackStall();
+          } else if (_stallCount == 4) {
+            // Persisting freeze (>3s): nudge playback
+            try {
+              slot.player.play().catchError((_) {});
+            } catch (_) {}
+          } else if (_stallCount >= 6) {
+            // Persistent stall (>4.5s): soft recovery via seek to current position and play
+            _stallCount = 0;
+            _lastStallCheckPosition = Duration.zero;
+            try {
+              slot.player.seek(currentPos).catchError((_) {});
+              slot.player.play().catchError((_) {});
+            } catch (_) {}
           }
         } else {
           _stallCount = 0;

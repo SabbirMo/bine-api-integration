@@ -21,3 +21,11 @@
     java.lang.Object writeReplace();
     java.lang.Object readResolve();
 }
+
+# MediaKit & libmpv ProGuard Rules (Required for Android Release Mode)
+-keep class com.alexmercerind.** { *; }
+-keep interface com.alexmercerind.** { *; }
+-keepclasseswithmembers class * {
+    native <methods>;
+}
+

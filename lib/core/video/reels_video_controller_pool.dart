@@ -49,6 +49,8 @@ class ReelsPlayerSlot {
   }
 
   final List<StreamSubscription> _subscriptions = [];
+  bool _hasUpgradedBitrate = false;
+  VoidCallback? _qualityEstimatorListener;
 
   ReelsPlayerSlot({
     required this.index,
@@ -59,6 +61,10 @@ class ReelsPlayerSlot {
   }
 
   void reattach(Player newPlayer, VideoController newController) {
+    if (_qualityEstimatorListener != null) {
+      NetworkQualityEstimator.instance.removeListener(_qualityEstimatorListener!);
+      _qualityEstimatorListener = null;
+    }
     for (final s in _subscriptions) {
       s.cancel();
     }
@@ -73,7 +79,30 @@ class ReelsPlayerSlot {
     videoController = newController;
     setIsLandscape(false);
     setCompleted(false);
+    _hasUpgradedBitrate = false;
     _setupSubscriptions();
+  }
+
+  void downgradeTo240p() {
+    _hasUpgradedBitrate = false;
+    try {
+      (player.platform as dynamic)?.setProperty('hls-bitrate', 'min');
+    } catch (_) {}
+  }
+
+  void adaptQuality(NetworkTier tier) {
+    if (tier == NetworkTier.low) {
+      downgradeTo240p();
+      return;
+    }
+    try {
+      final bitrate = NetworkQualityEstimator.instance.getMpvHlsBitrate();
+      (player.platform as dynamic)?.setProperty('hls-bitrate', bitrate);
+      _hasUpgradedBitrate = true;
+      debugPrint(
+        '⚡️ [ReelsPlayerSlot $index] ABR dynamically adjusted hls-bitrate to $bitrate (${tier.name})',
+      );
+    } catch (_) {}
   }
 
   void _setupSubscriptions() {
@@ -84,8 +113,6 @@ class ReelsPlayerSlot {
       final isBufferingNow = player.state.buffering;
 
       // Frame is ready ONLY when playback clock has genuinely advanced past Duration.zero.
-      // NEVER trigger on width > 0 alone because width is decoded from the container header
-      // before any video frame has actually been rendered to the texture, which caused a black flash!
       if (pos > Duration.zero && !isBufferingNow) {
         setHasFirstFrame(true);
         setBuffering(false);
@@ -94,8 +121,9 @@ class ReelsPlayerSlot {
 
     void checkCompletion(bool fromCompletedStream) {
       // Seamless auto-loop: When video reaches end, immediately loop back to 0 and continue playing.
-      // Never pause or show a restart/replay button.
       setCompleted(false);
+      _hasUpgradedBitrate = false;
+      downgradeTo240p();
       if (ReelsVideoControllerPool.instance.activeProductIndex ==
               currentItemIndex &&
           !ReelsVideoControllerPool.instance.isGloballyPaused) {
@@ -142,10 +170,6 @@ class ReelsPlayerSlot {
           return;
         }
         setBuffering(b);
-        if (b && hasFirstFrame.value) {
-          // Mid-stream buffer stall detected -> downgrade ABR tier to LOW (240p) so playback recovers instantly!
-          NetworkQualityEstimator.instance.recordPlaybackStall();
-        }
         if (!b) {
           checkFirstFrameReady();
         }
@@ -153,8 +177,6 @@ class ReelsPlayerSlot {
     );
     void updateDimensions(int? w, int? h) {
       if (w != null && h != null && w > 0 && h > 0) {
-        // Only consider genuine horizontal/landscape videos (width > height * 1.15).
-        // Standard portrait videos (9:16, 3:4, 4:5, etc.) stay full-screen cover like TikTok.
         final isLand = (w / h) > 1.15;
         setIsLandscape(isLand);
       }
@@ -191,9 +213,18 @@ class ReelsPlayerSlot {
           if (isBuffering.value && player.state.playing) {
             setBuffering(false);
           }
+          // Dynamic ABR: after 1.5 seconds of smooth playback starting at 240p,
+          // adaptively upgrade if network permits:
+          if (pos >= const Duration(milliseconds: 1500) &&
+              !_hasUpgradedBitrate &&
+              !isBuffering.value &&
+              hasFirstFrame.value) {
+            final tier = NetworkQualityEstimator.instance.currentTier;
+            if (tier != NetworkTier.low) {
+              adaptQuality(tier);
+            }
+          }
         }
-        // Note: NEVER call checkCompletion from position.listen!
-        // Completion must solely be signaled by player.stream.completed.
       }),
     );
     _subscriptions.add(
@@ -223,6 +254,19 @@ class ReelsPlayerSlot {
         setBuffering(false);
       }),
     );
+
+    _qualityEstimatorListener = () {
+      final tier = NetworkQualityEstimator.instance.currentTier;
+      if (tier == NetworkTier.low) {
+        downgradeTo240p();
+      } else if (hasFirstFrame.value &&
+          isPlaying.value &&
+          !isBuffering.value &&
+          player.state.position >= const Duration(milliseconds: 1500)) {
+        adaptQuality(tier);
+      }
+    };
+    NetworkQualityEstimator.instance.addListener(_qualityEstimatorListener!);
   }
 
   void reset() {
@@ -232,6 +276,7 @@ class ReelsPlayerSlot {
     } catch (_) {}
     currentUrl = null;
     currentItemIndex = null;
+    _hasUpgradedBitrate = false;
     setPlaying(false);
     setBuffering(false);
     setHasFirstFrame(false);
@@ -242,6 +287,10 @@ class ReelsPlayerSlot {
   }
 
   void dispose() {
+    if (_qualityEstimatorListener != null) {
+      NetworkQualityEstimator.instance.removeListener(_qualityEstimatorListener!);
+      _qualityEstimatorListener = null;
+    }
     for (final s in _subscriptions) {
       s.cancel();
     }
@@ -333,27 +382,25 @@ class ReelsVideoControllerPool extends ChangeNotifier {
       final platform = player.platform;
       if (platform == null) return;
       final p = platform as dynamic;
-      final hlsBitrate = NetworkQualityEstimator.instance.getMpvHlsBitrate();
       await Future.wait(<Future<dynamic>>[
         p.setProperty('hwdec', 'auto-safe'),
-        // Dynamic Adaptive Bitrate (ABR): starts at 240p (min) for instant startup, ramps up to 360p/480p/720p as bandwidth allows
-        p.setProperty('hls-bitrate', hlsBitrate),
+        // Dynamic Adaptive Bitrate: ALWAYS start at 240p (min) for guaranteed instant 0ms startup
+        p.setProperty('hls-bitrate', 'min'),
         p.setProperty('cache', 'yes'),
-        p.setProperty('cache-secs', '6'),
+        p.setProperty('cache-secs', '15'),
         p.setProperty('cache-pause', 'yes'),
-        p.setProperty('cache-pause-wait', '1'),
-        p.setProperty('cache-pause-initial', 'no'),
+        p.setProperty('cache-pause-wait', '0.5'),
+        p.setProperty('cache-pause-initial', 'yes'),
         p.setProperty('demuxer-lavf-analyzeduration', '0'),
-        p.setProperty('demuxer-lavf-probesize', '32768'),
+        p.setProperty('demuxer-lavf-probesize', '1048576'),
         p.setProperty('force-seekable', 'yes'),
-        p.setProperty('demuxer-readahead-secs', '3'),
-        p.setProperty('demuxer-max-bytes', '8MiB'),
+        p.setProperty('demuxer-readahead-secs', '5'),
+        p.setProperty('demuxer-max-bytes', '25MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
-        p.setProperty('demuxer-max-back-bytes', '20MiB'),
+        p.setProperty('demuxer-max-back-bytes', '25MiB'),
         // Native infinite loop: seamlessly loops video without Dart reload or network re-fetching
         p.setProperty('loop-file', 'inf'),
-        p.setProperty('network-timeout', '15'),
-        p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
+        p.setProperty('network-timeout', '30'),
         p.setProperty('audio-stream-silence', 'yes'),
         p.setProperty('ao-null-fallback', 'yes'),
         p.setProperty('vd-lavc-fast', 'yes'),
@@ -695,9 +742,9 @@ class ReelsVideoControllerPool extends ChangeNotifier {
         } catch (_) {}
       }
 
-      final hlsBitrate = NetworkQualityEstimator.instance.getMpvHlsBitrate();
+      // ALWAYS open any new stream with 'min' (240p) for guaranteed instant 0ms first-frame startup
       try {
-        (slot.player.platform as dynamic)?.setProperty('hls-bitrate', hlsBitrate);
+        (slot.player.platform as dynamic)?.setProperty('hls-bitrate', 'min');
       } catch (_) {}
 
       final startPos =

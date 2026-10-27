@@ -263,26 +263,26 @@ class FeedVideoManager extends ChangeNotifier {
       final platform = player.platform;
       if (platform == null) return;
       final p = platform as dynamic;
-      final hlsBitrate = NetworkQualityEstimator.instance.getMpvHlsBitrate();
+      final hlsBitrate = NetworkQualityEstimator.instance
+          .getInitialMpvHlsBitrate();
       await Future.wait(<Future<dynamic>>[
         p.setProperty('hwdec', 'auto-safe'),
-        // Dynamic adaptive bitrate: starts at 240p (min), ramps up to 360p/480p/720p dynamically
+        // Dynamic adaptive bitrate: ALWAYS starts at 240p (min) for instant startup
         p.setProperty('hls-bitrate', hlsBitrate),
         p.setProperty('cache', 'yes'),
-        p.setProperty('cache-secs', '10'),
+        p.setProperty('cache-secs', '15'),
         p.setProperty('demuxer-lavf-analyzeduration', '0'),
-        p.setProperty('demuxer-lavf-probesize', '32768'),
+        p.setProperty('demuxer-lavf-probesize', '1048576'),
         p.setProperty('cache-pause', 'yes'),
-        p.setProperty('cache-pause-wait', '1'),
-        p.setProperty('cache-pause-initial', 'no'),
+        p.setProperty('cache-pause-wait', '0.5'),
+        p.setProperty('cache-pause-initial', 'yes'),
         p.setProperty('demuxer-readahead-secs', '5'),
         p.setProperty('demuxer-max-bytes', '25MiB'),
         // Retain past demuxed packets in memory so rewinding and looping back to 0 is 0ms instant!
         p.setProperty('demuxer-max-back-bytes', '25MiB'),
         // Native infinite file loop: avoids Dart playlist reload & network re-fetching on loop!
         p.setProperty('loop-file', 'inf'),
-        p.setProperty('network-timeout', '10'),
-        p.setProperty('user-agent', 'CloudflareStream-Flutter-MediaKit'),
+        p.setProperty('network-timeout', '30'),
         p.setProperty('audio-stream-silence', 'yes'),
         p.setProperty('ao-null-fallback', 'yes'),
         // Explicitly disable audio track on feed players unless active & unmuted to prevent iOS AVAudioSession conflict

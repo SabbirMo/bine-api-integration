@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:binetatour/core/network/network_status_service.dart';
 
 /// Transparent Auto-Retry Interceptor for idempotent GET requests.
 /// Automatically recovers from momentary device network drops, DNS wake-up stalls,
@@ -25,19 +26,32 @@ class NetworkRetryInterceptor extends Interceptor {
 
     final currentRetries = (req.extra[_retryCountKey] as int?) ?? 0;
 
-    if (isGet && isConnectionIssue && currentRetries < _maxRetries) {
-      req.extra[_retryCountKey] = currentRetries + 1;
-      debugPrint(
-        '🔄 [NetworkRetryInterceptor] Momentary connection drop on ${req.uri}. Auto-recovering in 1.5s (Attempt ${currentRetries + 1}/$_maxRetries)...',
-      );
-      await Future.delayed(const Duration(milliseconds: 1500));
-      try {
-        final response = await dio.fetch(req);
-        return handler.resolve(response);
-      } catch (e) {
-        if (e is DioException) {
-          return handler.next(e);
+    if (isConnectionIssue) {
+      if (isGet && currentRetries < _maxRetries) {
+        req.extra[_retryCountKey] = currentRetries + 1;
+        NetworkStatusService.instance.reportSlow(
+          reason: 'Auto-reconnexion en cours...',
+        );
+        debugPrint(
+          '🔄 [NetworkRetryInterceptor] Momentary connection drop on ${req.uri}. Auto-recovering in 1.5s (Attempt ${currentRetries + 1}/$_maxRetries)...',
+        );
+        await Future.delayed(const Duration(milliseconds: 1500));
+        try {
+          final response = await dio.fetch(req);
+          NetworkStatusService.instance.reportOnline();
+          return handler.resolve(response);
+        } catch (e) {
+          if (e is DioException) {
+            NetworkStatusService.instance.reportOffline(
+              reason: e.message ?? 'Connexion interrompue',
+            );
+            return handler.next(e);
+          }
         }
+      } else {
+        NetworkStatusService.instance.reportOffline(
+          reason: err.message ?? 'Réseau inaccessible',
+        );
       }
     }
 

@@ -1,8 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:binetatour/core/network/network_status_service.dart';
 
 /// Interceptor that measures and logs the load time (in seconds and milliseconds)
-/// for each API request.
+/// for each API request, and feeds live latency metrics into NetworkStatusService.
 class ApiTimingInterceptor extends Interceptor {
   static const String _stopwatchKey = '_api_timing_stopwatch';
 
@@ -30,6 +31,15 @@ class ApiTimingInterceptor extends Interceptor {
           '-> ${seconds}s (${ms}ms) | Status: ${response.statusCode} | CF-Cache: $cfCache | CF-RAY: $cfRay',
         );
       }
+
+      // Feed live network health: if an API call takes > 4.5s, report slow network
+      if (ms > 4500) {
+        NetworkStatusService.instance.reportSlow(
+          reason: 'Temps de réponse API élevé (${seconds}s)',
+        );
+      } else {
+        NetworkStatusService.instance.reportOnline();
+      }
     }
     super.onResponse(response, handler);
   }
@@ -48,6 +58,19 @@ class ApiTimingInterceptor extends Interceptor {
         );
       }
     }
+
+    if (err.type == DioExceptionType.connectionError ||
+        err.type == DioExceptionType.connectionTimeout) {
+      NetworkStatusService.instance.reportOffline(
+        reason: 'Échec de connexion (${err.type.name})',
+      );
+    } else if (err.type == DioExceptionType.sendTimeout ||
+        err.type == DioExceptionType.receiveTimeout) {
+      NetworkStatusService.instance.reportSlow(
+        reason: 'Délai réseau dépassé (${err.type.name})',
+      );
+    }
+
     super.onError(err, handler);
   }
 }

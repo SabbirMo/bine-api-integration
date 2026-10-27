@@ -25,6 +25,8 @@ import 'package:binetatour/core/video/video_cache_manager.dart';
 import 'package:binetatour/core/video/feed_video_manager.dart';
 import 'package:binetatour/core/video/reels_video_controller_pool.dart';
 import 'package:binetatour/core/video/video_route_observer.dart';
+import 'package:binetatour/core/network/network_status_service.dart';
+import 'package:binetatour/presentation/common/widgets/global_network_status_bar.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 @pragma('vm:entry-point')
@@ -96,6 +98,12 @@ void main() async {
     debugPrint('[Firebase] Initialization error: $e');
   }
 
+  try {
+    NetworkStatusService.instance.init();
+  } catch (e) {
+    debugPrint(' [NetworkStatusService] Init warning: $e');
+  }
+
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(
@@ -145,6 +153,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       FeedVideoManager.instance.pauseAll();
       ReelsVideoControllerPool.instance.pauseAll();
     } else if (state == AppLifecycleState.resumed) {
+      NetworkStatusService.instance.checkConnectivity();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Only resume feed videos if currently on root route; sub-routes manage their own resume
         if (VideoRouteObserver.instance.isRootRoute) {
@@ -182,6 +191,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       ],
       locale: Locale('fr', 'FR'),
       routerConfig: router,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            ?child,
+            const GlobalNetworkStatusBar(),
+          ],
+        );
+      },
 
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Color(0xffFF8A00)),
